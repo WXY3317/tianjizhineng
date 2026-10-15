@@ -1,4 +1,4 @@
-"""Build a portable arm/hand URDF from existing MJCF and audited STL assets."""
+"""Build a portable whole-robot URDF from existing MJCF and audited STL assets."""
 import argparse
 import hashlib
 import json
@@ -81,17 +81,16 @@ def generate(source_root, destination, sdk_root):
     asset_paths = {m.get('name'): m.get('file') for m in source.findall('asset/mesh')}
     for sub in ('urdf', 'config', 'meshes'):
         (destination/sub).mkdir(parents=True, exist_ok=True)
-    robot = ET.Element('robot', name='marvin_mesh_dual_arm_hands')
+    # The supplied lighter STL counterparts retain the same CAD link frames.
+    # Use these for RViz instead of copying the 147/97 MB OBJ render assets.
+    for name, asset in list(asset_paths.items()):
+        counterpart = str(Path(asset).with_suffix('.STL'))
+        if asset.endswith('.obj') and (source_root/counterpart).is_file():
+            asset_paths[name] = counterpart
+    robot = ET.Element('robot', name='marvin_whole_robot')
     ET.SubElement(robot, 'link', name='world')
-    fixture = ET.SubElement(robot, 'link', name='base_link')
-    visual = ET.SubElement(fixture, 'visual')
-    ET.SubElement(visual, 'origin', xyz='0 0 -0.35')
-    ET.SubElement(ET.SubElement(visual, 'geometry'), 'cylinder', radius='.11', length='.7')
-    ET.SubElement(ET.SubElement(visual, 'material', name='fixture'), 'color', rgba='.22 .25 .3 1')
-    weld = ET.SubElement(robot, 'joint', name='world_to_fixture', type='fixed')
-    ET.SubElement(weld, 'parent', link='world'); ET.SubElement(weld, 'child', link='base_link')
-    ET.SubElement(weld, 'origin', xyz='0 0 .7', rpy='0 0 0')
     manifest, hands, joint_limits, corrections = {}, {}, {}, {}
+    body_joints = []
 
     def body_link(body, name):
         link = ET.SubElement(robot, 'link', name=name)
@@ -160,10 +159,38 @@ def generate(source_root, destination, sdk_root):
         for child in body.findall('body'):
             add_hand(child, name, side)
 
+    base = source.find('worldbody/body[@name="Underpan_Base_link"]')
+    body_link(base, 'base_link')
+    # MJCF has a floating base. This kinematic scene fixes its supplied ground
+    # placement; it does not invent wheel joints or a mobile-base controller.
+    connect('world', 'base_link', base, 'world_to_base')
+    parent = 'base_link'
+    for index in range(1,7):
+        body = source.find(f'.//body[@name="Gento Luna_Leg_J{index}_Link"]')
+        name = body.get('name').replace(' ', '_')
+        source_joint = body.find('joint')
+        joint_name = source_joint.get('name').replace(' ', '_')
+        body_link(body, name)
+        connect(parent, name, body, joint_name, source_joint)
+        body_joints.append({'name':joint_name, 'range':numbers(source_joint.get('range')),
+                            'group':'torso', 'initial':0.})
+        parent = name
+    torso = parent
+    for index in range(1,3):
+        body = source.find(f'.//body[@name="Head_J{index}_Link"]')
+        name = body.get('name')
+        source_joint = body.find('joint')
+        joint_name = source_joint.get('name')
+        body_link(body, name)
+        connect(parent, name, body, joint_name, source_joint)
+        body_joints.append({'name':joint_name, 'range':numbers(source_joint.get('range')),
+                            'group':'head', 'initial':0.})
+        parent = name
+
     for side in ('L', 'R'):
         shoulder = source.find(f'.//body[@name="Arm_{side}1_Link"]')
         ET.SubElement(robot, 'link', name=f'Base_{side}')
-        connect('base_link', f'Base_{side}', shoulder, f'mount_{side}', snap=True)
+        connect(torso, f'Base_{side}', shoulder, f'mount_{side}', snap=True)
         for i in range(1,8):
             body = source.find(f'.//body[@name="Arm_{side}{i}_Link"]')
             name = body.get('name')
@@ -211,7 +238,10 @@ def generate(source_root, destination, sdk_root):
         'wrist_coupling':'not calibrated; only rectangular joint limits'}, sort_keys=False))
     (destination/'config/joint_limits.yaml').write_text(yaml.safe_dump(joint_limits,sort_keys=False))
     (destination/'config/hands.yaml').write_text(yaml.safe_dump(hands,sort_keys=False))
+    (destination/'config/body.yaml').write_text(yaml.safe_dump(
+        {'base':'fixed at source MJCF ground placement', 'joints':body_joints},sort_keys=False))
     report = {'source': 'mjcf/luna_m6_robot.xml', 'units':'metres', 'arm_dof':14, 'hand_dof':22,
+              'body_dof':8, 'total_dof':44, 'base_mode':'fixed',
               'assets':manifest, 'nominalized_arm_rotation_errors_rad':corrections,
               'mesh_count':sum(v['status']=='mesh' for v in manifest.values()),
               'empty_mesh_count':sum(v['status']=='empty' for v in manifest.values())}

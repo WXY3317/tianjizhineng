@@ -3,7 +3,7 @@ from setuptools import setup
 
 data = [('share/ament_index/resource_index/packages', ['resource/marvin_mesh_sim']),
         ('share/marvin_mesh_sim', ['package.xml', 'README.md'])]
-for directory in ('launch', 'urdf', 'config', 'meshes'):
+for directory in ('launch', 'urdf', 'config', 'meshes', 'rviz'):
     for folder in sorted({p.parent for p in Path(directory).rglob('*') if p.is_file()}):
         data.append((f'share/marvin_mesh_sim/{folder}',
                      [str(p) for p in sorted(folder.iterdir()) if p.is_file()]))

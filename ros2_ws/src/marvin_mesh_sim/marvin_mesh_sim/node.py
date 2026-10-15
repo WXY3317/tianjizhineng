@@ -8,6 +8,7 @@ from std_msgs.msg import String
 from marvin_sim.node import Simulation,Bridge
 from .hands import Hands
 from .kinematics import MeshKinematics
+from .body import Body
 
 
 class MeshSimulation(Simulation):
@@ -15,6 +16,11 @@ class MeshSimulation(Simulation):
         super().__init__(kine_factory=MeshKinematics)
         model=Path(self.get_parameter('description_root').value)
         self.hands=Hands(model,self.controller.address)
+        self.body=Body(model)
+        self.body_state=self.create_publisher(JointState,'/marvin_mesh_sim/body_states',10)
+        self.body_status=self.create_publisher(String,'/marvin_mesh_sim/body_status',10)
+        self.create_subscription(JointState,'/marvin_mesh_sim/body_targets',self.body_goal,10)
+        self.create_timer(.01,self.body.tick)
         self.hand_state=self.create_publisher(JointState,'/marvin_mesh_sim/hand_states',10)
         self.hand_status=self.create_publisher(String,'/marvin_mesh_sim/hand_status',10)
         self.create_subscription(JointState,'/marvin_mesh_sim/hand_targets',self.hand_goal,10)
@@ -44,6 +50,15 @@ class MeshSimulation(Simulation):
         except (ValueError,TypeError) as exc:
             self.hand_status.publish(String(data=json.dumps({'ok':False,'error':str(exc)})))
 
+    def body_goal(self,msg):
+        try:
+            if msg.velocity or msg.effort:
+                raise ValueError('Torso/head commands accept position only')
+            self.body.set_target(msg.name,msg.position)
+            self.body_status.publish(String(data=json.dumps({'ok':True})))
+        except (ValueError,TypeError) as exc:
+            self.body_status.publish(String(data=json.dumps({'ok':False,'error':str(exc)})))
+
     def publish(self):
         # Core publisher remains authoritative for arm poses and feedback.
         # Publish one combined JointState so TF never loses either arm or hand.
@@ -55,10 +70,14 @@ class MeshSimulation(Simulation):
         msg.name=JOINT_NAMES.copy();msg.position=self.controller.q.tolist()
         for side in ('L','R'):
             msg.name.extend(self.hands.names[side]);msg.position.extend(self.hands.q[side].tolist())
+        msg.name.extend(self.body.names);msg.position.extend(self.body.q.tolist())
         self.joints.publish(msg)
         hand=JointState();hand.header.stamp=stamp
-        hand.name=msg.name[14:];hand.position=msg.position[14:]
+        hand.name=msg.name[14:36];hand.position=msg.position[14:36]
         self.hand_state.publish(hand)
+        body=JointState();body.header.stamp=stamp
+        body.name=self.body.names;body.position=self.body.q.tolist()
+        self.body_state.publish(body)
         for arm,pub in enumerate(self.poses):
             pub.publish(make_pose(self.kine.fk(arm,self.controller.q[7*arm:7*arm+7]),
                                   ('Base_L','Base_R')[arm],stamp))

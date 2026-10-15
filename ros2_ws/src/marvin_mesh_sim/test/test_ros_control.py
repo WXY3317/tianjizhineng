@@ -39,6 +39,7 @@ def test_ros_combined_model_sdk_arm_and_fingers(tmp_path):
             node.create_subscription(String,'/marvin_sim/status',lambda m:statuses.append(json.loads(m.data)),10)
             target=node.create_publisher(JointState,'/marvin_sim/target_joints',10)
             fingers=node.create_publisher(JointState,'/marvin_mesh_sim/hand_targets',10)
+            body_pub=node.create_publisher(JointState,'/marvin_mesh_sim/body_targets',10)
             def wait_for(condition,timeout=12):
                 end=time.monotonic()+timeout
                 while time.monotonic()<end:
@@ -47,7 +48,7 @@ def test_ros_combined_model_sdk_arm_and_fingers(tmp_path):
                     if condition():return
                 raise AssertionError(log_path.read_text())
             wait_for(lambda:model and arms and statuses and target.get_subscription_count() and fingers.get_subscription_count())
-            assert len(model[-1])==36
+            assert len(model[-1])==44
             goal=arms[-1].copy();goal[0]+=.035;goal[7]-=.035
             msg=JointState();msg.name=JOINT_NAMES;msg.position=goal.tolist();target.publish(msg)
             config=yaml.safe_load((PACKAGE/'config/hands.yaml').read_text())
@@ -58,6 +59,13 @@ def test_ros_combined_model_sdk_arm_and_fingers(tmp_path):
             for side in ('L','R'):
                 assert f'{side}_thumb_j1' in model[-1]
             assert all(abs(model[-1][j['name']])<1e-10 for j in config['R']['joints'])
+            wait_for(lambda:body_pub.get_subscription_count())
+            body=JointState()
+            body.name=['Gento_Luna_Leg_J2_Joint','Head_J1_joint'];body.position=[.1,.15]
+            body_pub.publish(body)
+            wait_for(lambda:abs(model[-1][body.name[0]]-.1)<1e-6
+                     and abs(model[-1][body.name[1]]-.15)<1e-6)
+            assert np.max(np.abs(arms[-1]-goal))<1e-6
         finally:
             if process is not None and process.poll() is None:
                 os.killpg(process.pid,signal.SIGINT)

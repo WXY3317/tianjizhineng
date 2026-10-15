@@ -11,11 +11,10 @@ from launch_ros.actions import Node
 
 def start(context):
     model=Path(get_package_share_directory('marvin_mesh_sim'))
-    core=Path(get_package_share_directory('marvin_sim'))
     params={'sdk_root':LaunchConfiguration('sdk_root').perform(context),
             'description_root':str(model),'sim_ip':LaunchConfiguration('sim_ip').perform(context)}
     return [
-        Node(package='rviz2',executable='rviz2',arguments=['-d',str(core/'rviz/simulation.rviz')],
+        Node(package='rviz2',executable='rviz2',arguments=['-d',str(model/'rviz/whole_robot.rviz')],
              condition=IfCondition(LaunchConfiguration('rviz')),output='screen'),
         Node(package='marvin_mesh_sim',executable='panel',parameters=[params],
              condition=IfCondition(LaunchConfiguration('panel')),output='screen'),

@@ -12,7 +12,6 @@ from launch_ros.actions import Node
 
 def start(context):
     model=Path(get_package_share_directory('marvin_mesh_sim'))
-    core=Path(get_package_share_directory('marvin_sim'))
     params={'sdk_root':LaunchConfiguration('sdk_root').perform(context),
             'description_root':str(model),'sim_ip':LaunchConfiguration('sim_ip').perform(context)}
     server=Node(package='marvin_mesh_sim',executable='controller',parameters=[params],output='screen')
@@ -22,7 +21,7 @@ def start(context):
         Node(package='robot_state_publisher',executable='robot_state_publisher',
              parameters=[{'robot_description':(model/'urdf/marvin_mesh_hands.urdf').read_text()}],output='screen'),
         TimerAction(period=1.,actions=[bridge]),
-        Node(package='rviz2',executable='rviz2',arguments=['-d',str(core/'rviz/simulation.rviz')],
+        Node(package='rviz2',executable='rviz2',arguments=['-d',str(model/'rviz/whole_robot.rviz')],
              condition=IfCondition(LaunchConfiguration('rviz')),output='screen'),
         TimerAction(period=2.,actions=[Node(package='marvin_mesh_sim',executable='panel',
              parameters=[params],condition=IfCondition(LaunchConfiguration('panel')),output='screen')])]

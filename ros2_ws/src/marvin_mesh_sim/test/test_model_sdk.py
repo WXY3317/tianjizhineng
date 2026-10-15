@@ -56,10 +56,10 @@ def test_model_tree_assets_and_joint_counts():
     children={v.find('child').get('link') for v in root.findall('joint')}
     assert links-children=={'world'}
     moving=[j for j in root.findall('joint') if j.get('type')=='revolute']
-    assert len(moving)==36
+    assert len(moving)==44
     assert len([j for j in moving if j.get('name').startswith('Joint')])==14
     report=json.loads((PACKAGE/'config/asset_report.json').read_text())
-    assert report['mesh_count']+report['empty_mesh_count']==38
+    assert report['mesh_count']+report['empty_mesh_count']==47
     referenced=root.findall('.//geometry/mesh')
     assert len(referenced)==report['mesh_count']
     for asset,entry in report['assets'].items():
@@ -71,6 +71,52 @@ def test_model_tree_assets_and_joint_counts():
             assert 'MJCF collision box' in entry['fallback']
     for j in moving:
         urdf_fk(root,'world',j.find('child').get('link'),{})
+
+
+def test_body_assembly_matches_source_and_moves_both_shoulders():
+    from marvin_mesh_sim.generate import rotation
+    root=ET.parse(PACKAGE/'urdf/marvin_mesh_hands.urdf').getroot()
+    source=ET.parse(ROOT/'mjcf/luna_m6_robot.xml').getroot()
+    source_bodies={b.get('name'):b for b in source.findall('.//body')}
+    source_parents={child:parent for parent in source.iter() for child in parent}
+
+    def source_fk(name):
+        chain=[];body=source_bodies[name]
+        while body.tag=='body':
+            chain.append(body);body=source_parents[body]
+        result=np.eye(4)
+        for b in reversed(chain):
+            t=np.eye(4);t[:3,:3]=rotation(b)
+            t[:3,3]=list(map(float,b.get('pos','0 0 0').split()))
+            result=result@t
+        return result
+
+    for original in ['Underpan_Base_link',*[f'Gento Luna_Leg_J{i}_Link' for i in range(1,7)],
+                     'Head_J1_Link','Head_J2_Link']:
+        name='base_link' if original=='Underpan_Base_link' else original.replace(' ','_')
+        assert np.allclose(urdf_fk(root,'world',name,{}),source_fk(original),atol=1e-9)
+    for side in ('L','R'):
+        dp,dr=pose_error(urdf_fk(root,'world',f'Base_{side}',{}),source_fk(f'Arm_{side}1_Link'))
+        assert dp<1e-9 and dr<1e-5
+        before=urdf_fk(root,'world',f'Base_{side}',{})
+        after=urdf_fk(root,'world',f'Base_{side}',{'Gento_Luna_Leg_J2_Joint':.1})
+        assert np.linalg.norm(before[:3,3]-after[:3,3])>.02
+    assert root.find("joint[@name='world_to_fixture']") is None
+
+
+def test_body_interpolation_rejects_invalid_targets():
+    from marvin_mesh_sim.body import Body
+    clock=[0.];body=Body(PACKAGE,now=lambda:clock[0])
+    assert len(body.names)==8
+    body.set_target(['Gento_Luna_Leg_J2_Joint','Head_J1_joint'],[.1,.15])
+    clock[0]=2.;body.tick()
+    assert abs(body.q[1]-.1)<1e-12 and abs(body.q[6]-.15)<1e-12
+    before=body.q.copy()
+    for names,positions in [(['bad'],[0]),(['Head_J1_joint'],[999]),
+                             (['Head_J1_joint'],[float('nan')]),
+                             (['Head_J1_joint','Head_J1_joint'],[0,0])]:
+        with pytest.raises(ValueError):body.set_target(names,positions)
+        assert np.array_equal(body.q,before)
 
 
 @pytest.mark.parametrize('arm,side',[(0,'L'),(1,'R')])

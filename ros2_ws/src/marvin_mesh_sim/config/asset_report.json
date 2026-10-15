@@ -3,7 +3,172 @@
   "units": "metres",
   "arm_dof": 14,
   "hand_dof": 22,
+  "body_dof": 8,
+  "total_dof": 44,
+  "base_mode": "fixed",
   "assets": {
+    "assets/meshes/base/Underpan_Base_link.STL": {
+      "status": "mesh",
+      "bytes": 1647684,
+      "triangles": 32952,
+      "bounds_m": [
+        [
+          -0.4320625364780426,
+          -0.2738531827926636,
+          -0.05992858111858368
+        ],
+        [
+          0.2373175323009491,
+          0.2750791609287262,
+          0.32072126865386963
+        ]
+      ],
+      "sha256": "f038e27398eebab0f46c6d5eafb113e8aad4214992a9111023e3102ba3d2babb"
+    },
+    "assets/meshes/other/Gento_Luna_Leg_J1_Link.STL": {
+      "status": "mesh",
+      "bytes": 1578384,
+      "triangles": 31566,
+      "bounds_m": [
+        [
+          -0.07800000160932541,
+          -0.08749999850988388,
+          -0.08699999749660492
+        ],
+        [
+          0.07800000160932541,
+          0.24300000071525574,
+          0.08699999749660492
+        ]
+      ],
+      "sha256": "d1fcc3d776957305ecd6e2745cf91657ccaaf9d2998a434bb9fda0b5fa18552d"
+    },
+    "assets/meshes/other/Gento_Luna_Leg_J2_Link.STL": {
+      "status": "mesh",
+      "bytes": 1250584,
+      "triangles": 25010,
+      "bounds_m": [
+        [
+          -0.07800000160932541,
+          -0.07799839973449707,
+          -0.09624894708395004
+        ],
+        [
+          0.07800000160932541,
+          0.37799596786499023,
+          0.09624894708395004
+        ]
+      ],
+      "sha256": "5971b7c956ff06ef93685b11707a219afadb4c13dfb575af470eed1b28e5cea2"
+    },
+    "assets/meshes/other/Gento_Luna_Leg_J3_Link.STL": {
+      "status": "mesh",
+      "bytes": 1469784,
+      "triangles": 29394,
+      "bounds_m": [
+        [
+          -0.07800000160932541,
+          -0.07800000160932541,
+          -0.10195054113864899
+        ],
+        [
+          0.07800000160932541,
+          0.3779999911785126,
+          0.10195054113864899
+        ]
+      ],
+      "sha256": "25914336d282224b84d8b1ab4ce2f04d0f15e499a81a14a17051c8b219e063f2"
+    },
+    "assets/meshes/other/Gento_Luna_Leg_J4_Link.STL": {
+      "status": "mesh",
+      "bytes": 846584,
+      "triangles": 16930,
+      "bounds_m": [
+        [
+          -0.07900000363588333,
+          -0.07099764794111252,
+          -0.05350000038743019
+        ],
+        [
+          0.07400000095367432,
+          0.07100000232458115,
+          0.05350000038743019
+        ]
+      ],
+      "sha256": "8898bbeffe7c4e439ff982e7974016406bafd4d6faf768dfe03cf25e556edbf6"
+    },
+    "assets/meshes/other/Gento_Luna_Leg_J5_Link.STL": {
+      "status": "mesh",
+      "bytes": 1776684,
+      "triangles": 35532,
+      "bounds_m": [
+        [
+          -0.08749894797801971,
+          -0.06499999761581421,
+          -0.1841837614774704
+        ],
+        [
+          0.08749894797801971,
+          0.18050000071525574,
+          0.10805762559175491
+        ]
+      ],
+      "sha256": "6adb91d160a7e9b3adb06da3a7736e41c657a170b7ecd6e372d6358316ca4742"
+    },
+    "assets/meshes/other/Gento_Luna_Leg_J6_Link.STL": {
+      "status": "mesh",
+      "bytes": 1103334,
+      "triangles": 22065,
+      "bounds_m": [
+        [
+          -0.13351236283779144,
+          -0.12528496980667114,
+          0.18199963867664337
+        ],
+        [
+          0.1334676891565323,
+          0.12527450919151306,
+          0.548662006855011
+        ]
+      ],
+      "sha256": "3b4c5aec09509437f42d8c58cf1154f4d6e9c90b882a92d04c178b7a1ba0a9c0"
+    },
+    "assets/meshes/other/Head_J1_Link.STL": {
+      "status": "mesh",
+      "bytes": 610884,
+      "triangles": 12216,
+      "bounds_m": [
+        [
+          -0.04349999874830246,
+          -0.04349999874830246,
+          -0.048500001430511475
+        ],
+        [
+          0.04349999874830246,
+          0.07500000298023224,
+          0.048500001430511475
+        ]
+      ],
+      "sha256": "ab6223b6925c3e6e40b774c571502eb22daa23bd283b8afb444c26fef6adafc7"
+    },
+    "assets/meshes/other/Head_J2_Link.STL": {
+      "status": "mesh",
+      "bytes": 1656984,
+      "triangles": 33138,
+      "bounds_m": [
+        [
+          -0.05463053286075592,
+          -0.07392977923154831,
+          0.06258882582187653
+        ],
+        [
+          0.1123383417725563,
+          0.07431212067604065,
+          0.27496781945228577
+        ]
+      ],
+      "sha256": "fa255f99574b6f7b7e920cd728dbf7081d2b1d74e64a7a4e12fd64ab7699109e"
+    },
     "assets/meshes/left_arm/Arm_L1_Link.STL": {
       "status": "mesh",
       "bytes": 658384,
@@ -703,6 +868,6 @@
     "Arm_R6_Link": 5.19574238946045e-06,
     "Arm_R7_Link": 5.19574238946045e-06
   },
-  "mesh_count": 38,
+  "mesh_count": 47,
   "empty_mesh_count": 0
 }

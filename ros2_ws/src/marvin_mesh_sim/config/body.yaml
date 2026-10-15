@@ -1,0 +1,50 @@
+base: fixed at source MJCF ground placement
+joints:
+- name: Gento_Luna_Leg_J1_Joint
+  range:
+  - -0.191986218
+  - 0.191986218
+  group: torso
+  initial: 0.0
+- name: Gento_Luna_Leg_J2_Joint
+  range:
+  - -1.57079633
+  - 1.57079633
+  group: torso
+  initial: 0.0
+- name: Gento_Luna_Leg_J3_Joint
+  range:
+  - -2.44346095
+  - 1.04719755
+  group: torso
+  initial: 0.0
+- name: Gento_Luna_Leg_J4_Joint
+  range:
+  - -0.959931089
+  - 1.91986218
+  group: torso
+  initial: 0.0
+- name: Gento_Luna_Leg_J5_Joint
+  range:
+  - -0.523598776
+  - 0.523598776
+  group: torso
+  initial: 0.0
+- name: Gento_Luna_Leg_J6_Joint
+  range:
+  - -2.96705973
+  - 2.96705973
+  group: torso
+  initial: 0.0
+- name: Head_J1_joint
+  range:
+  - -0.523595776
+  - 0.523595776
+  group: head
+  initial: 0.0
+- name: Head_J2_Joint
+  range:
+  - -1.57079633
+  - 1.57079633
+  group: head
+  initial: 0.0

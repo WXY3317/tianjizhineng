@@ -8,7 +8,7 @@
 | `tianji-robot-SDK` | Gento SDK 与示例 |
 | `marvin_description` | Marvin CCS M6 ROS 2 模型 |
 | `mjcf` | 原始 MJCF 与 STL/OBJ 资源 |
-| `ros2_ws/src/marvin_mesh_sim` | STL 双臂及灵巧手仿真，接通原版 SDK 正逆解与控制 |
+| `ros2_ws/src/marvin_mesh_sim` | STL 整机仿真，接通双臂原版 SDK 正逆解与控制 |
 | `ros2_ws/src/marvin_sim` | 原版 SDK 的本机虚拟控制器及运动学仿真基础 |
 | `ros2_ws/src/gento_dual_arm` | Gento 双臂 ROS 2 接口 |
 | `real_test` | 真机控制脚本 |
@@ -36,7 +36,8 @@ cd ros2_ws
 ./run_marvin_mesh_sim.sh
 ```
 
-支持 14 个机械臂关节与 22 个手指关节，使用真实 STL 外形。
+包含底盘、腰腿/躯干、头部、双臂和双手，共 47 个真实 STL，
+支持 14 个机械臂关节、22 个手指关节和 8 个本体/头部关节。
 机械臂位置控制通过原版 `libMarvinSDK.so`，正逆解调用 `libKine.so`，
 手指控制通过仿真扩展接口。重复启动会复用后台并重新打开界面。
 本版是运动学仿真，不含接触动力学或自动避碰。

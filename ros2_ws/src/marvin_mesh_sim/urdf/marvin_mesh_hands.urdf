@@ -1,25 +1,268 @@
 <?xml version='1.0' encoding='utf-8'?>
-<robot name="marvin_mesh_dual_arm_hands">
+<robot name="marvin_whole_robot">
   <link name="world" />
   <link name="base_link">
+    <inertial>
+      <origin xyz="-0.057032 -2.1661e-05 0.069035" rpy="0 -0 0" />
+      <mass value="90.8" />
+      <inertia ixx="0.030091" iyy="0.027232" izz="0.021579" ixy="1.852e-07" ixz="0.0008246" iyz="-5.9854e-07" />
+    </inertial>
     <visual>
-      <origin xyz="0 0 -0.35" />
+      <origin xyz="0 0 0" rpy="0 -0 0" />
       <geometry>
-        <cylinder radius=".11" length=".7" />
+        <mesh filename="package://marvin_mesh_sim/meshes/base/Underpan_Base_link.STL" />
       </geometry>
-      <material name="fixture">
-        <color rgba=".22 .25 .3 1" />
+      <material name="mat_base_link">
+        <color rgba=".6 .62 .66 1" />
       </material>
     </visual>
+    <collision>
+      <origin xyz="-0.0972791314 6.27338886e-06 0.130290739" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.669569076 0.547638148 0.380585744" />
+      </geometry>
+    </collision>
   </link>
-  <joint name="world_to_fixture" type="fixed">
+  <joint name="world_to_base" type="fixed">
     <parent link="world" />
     <child link="base_link" />
-    <origin xyz="0 0 .7" rpy="0 0 0" />
+    <origin xyz="0 0 0.0610021333" rpy="0 -0 0" />
+  </joint>
+  <link name="Gento_Luna_Leg_J1_Link">
+    <inertial>
+      <origin xyz="-0.00305605 0.11879615 0.00090574" rpy="0 -0 0" />
+      <mass value="6.042" />
+      <inertia ixx="0.13541951" iyy="0.011899" izz="0.13138323" ixy="-0.00304381" ixz="2.039e-05" iyz="0.00029731" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/other/Gento_Luna_Leg_J1_Link.STL" />
+      </geometry>
+      <material name="mat_Gento_Luna_Leg_J1_Link">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.0777500011 0" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1560000032 0.3305 0.173999995" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Gento_Luna_Leg_J1_Joint" type="revolute">
+    <parent link="base_link" />
+    <child link="Gento_Luna_Leg_J1_Link" />
+    <origin xyz="0 0 0.1" rpy="1.57080000079 -6.749156789e-12 1.57080000079" />
+    <axis xyz="0 0 1" />
+    <limit lower="-0.191986218" upper="0.191986218" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="Gento_Luna_Leg_J2_Link">
+    <inertial>
+      <origin xyz="-0.00305605 0.11879615 0.00090574" rpy="0 -0 0" />
+      <mass value="6.04185968" />
+      <inertia ixx="0.43952038" iyy="0.02664581" izz="0.43711033" ixy="0.00264772" ixz="3.002e-05" iyz="0.01501651" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/other/Gento_Luna_Leg_J2_Link.STL" />
+      </geometry>
+      <material name="mat_Gento_Luna_Leg_J2_Link">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.149998784 0" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1560000032 0.455994368 0.1924978942" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Gento_Luna_Leg_J2_Joint" type="revolute">
+    <parent link="Gento_Luna_Leg_J1_Link" />
+    <child link="Gento_Luna_Leg_J2_Link" />
+    <origin xyz="0 0.165 0" rpy="3.14159265359 -1.57079265408 3.14159265359" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.57079633" upper="1.57079633" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="Gento_Luna_Leg_J3_Link">
+    <inertial>
+      <origin xyz="-0.00357006 0.14573557 -0.00024996" rpy="0 -0 0" />
+      <mass value="4.67121672" />
+      <inertia ixx="0.01093259" iyy="0.03862616" izz="0.03693718" ixy="3.321e-05" ixz="-7.126e-05" iyz="-6.16e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/other/Gento_Luna_Leg_J3_Link.STL" />
+      </geometry>
+      <material name="mat_Gento_Luna_Leg_J3_Link">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.149999995 0" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1560000032 0.455999992 0.203901082" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Gento_Luna_Leg_J3_Joint" type="revolute">
+    <parent link="Gento_Luna_Leg_J2_Link" />
+    <child link="Gento_Luna_Leg_J3_Link" />
+    <origin xyz="0 0.3 0" rpy="0 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.44346095" upper="1.04719755" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="Gento_Luna_Leg_J4_Link">
+    <inertial>
+      <origin xyz="-0.0369066 -7.427e-05 0.30101986" rpy="0 -0 0" />
+      <mass value="5.90046349" />
+      <inertia ixx="0.01093259" iyy="0.03862616" izz="0.03693718" ixy="3.321e-05" ixz="-7.126e-05" iyz="-6.16e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/other/Gento_Luna_Leg_J4_Link.STL" />
+      </geometry>
+      <material name="mat_Gento_Luna_Leg_J4_Link">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.00250000134 1.17719173e-06 0" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1530000046 0.1419976502 0.1070000008" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Gento_Luna_Leg_J4_Joint" type="revolute">
+    <parent link="Gento_Luna_Leg_J3_Link" />
+    <child link="Gento_Luna_Leg_J4_Link" />
+    <origin xyz="0 0.3 0" rpy="0 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-0.959931089" upper="1.91986218" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="Gento_Luna_Leg_J5_Link">
+    <inertial>
+      <origin xyz="-0.00154757 0.12766899 -0.01565105" rpy="0 -0 0" />
+      <mass value="3.76177572" />
+      <inertia ixx="0.09652163" iyy="0.02155599" izz="0.08166085" ixy="-0.00089293" ixz="-4.906e-05" iyz="-0.003795" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/other/Gento_Luna_Leg_J5_Link.STL" />
+      </geometry>
+      <material name="mat_Gento_Luna_Leg_J5_Link">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.0577500015 -0.0380630679" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.174997896 0.245499998 0.292241388" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Gento_Luna_Leg_J5_Joint" type="revolute">
+    <parent link="Gento_Luna_Leg_J4_Link" />
+    <child link="Gento_Luna_Leg_J5_Link" />
+    <origin xyz="0 0 0" rpy="3.14159265359 1.57079265408 3.14159265359" />
+    <axis xyz="0 0 1" />
+    <limit lower="-0.523598776" upper="0.523598776" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="Gento_Luna_Leg_J6_Link">
+    <inertial>
+      <origin xyz="-0.00252318 0.00023889 0.35352016" rpy="0 -0 0" />
+      <mass value="7.69392497" />
+      <inertia ixx="1.05947349" iyy="1.04629026" izz="0.06683072" ixy="0.00039762" ixz="-0.00299102" iyz="0.0005628" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/other/Gento_Luna_Leg_J6_Link.STL" />
+      </geometry>
+      <material name="mat_Gento_Luna_Leg_J6_Link">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-8.29994678e-06 -1.78813934e-07 0.365225978" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.2670964 0.250500142 0.366451964" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Gento_Luna_Leg_J6_Joint" type="revolute">
+    <parent link="Gento_Luna_Leg_J5_Link" />
+    <child link="Gento_Luna_Leg_J6_Link" />
+    <origin xyz="0 0 0" rpy="1.57079448988 -1.57079265279 3.14159081658" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.96705973" upper="2.96705973" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="Head_J1_Link">
+    <inertial>
+      <origin xyz="9.4918e-07 0.017441 -0.0043026" rpy="0 -0 0" />
+      <mass value="0.7216" />
+      <inertia ixx="0.0011491" iyy="0.00077345" izz="0.0011134" ixy="-2.3245e-08" ixz="-1.802e-09" iyz="-5.6833e-05" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/other/Head_J1_Link.STL" />
+      </geometry>
+      <material name="mat_Head_J1_Link">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.0157500021 0" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0869999974 0.1185000018 0.0970000028" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Head_J1_joint" type="revolute">
+    <parent link="Gento_Luna_Leg_J6_Link" />
+    <child link="Head_J1_Link" />
+    <origin xyz="-0.013496 0 0.49898" rpy="1.57079999951 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-0.523595776" upper="0.523595776" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="Head_J2_Link">
+    <inertial>
+      <origin xyz="0.052332 0.00010809 0.15733" rpy="0 -0 0" />
+      <mass value="2.3905" />
+      <inertia ixx="0.0083456" iyy="0.010445" izz="0.0071811" ixy="-9.1023e-06" ixz="-0.0012055" iyz="-3.2339e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/other/Head_J2_Link.STL" />
+      </geometry>
+      <material name="mat_Head_J2_Link">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0288539045 0.000191170722 0.168778323" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1669688746 0.1482419 0.212378994" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Head_J2_Joint" type="revolute">
+    <parent link="Head_J1_Link" />
+    <child link="Head_J2_Link" />
+    <origin xyz="0 0 0" rpy="-1.57079999951 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.57079633" upper="1.57079633" velocity="2.0" effort="2.0" />
   </joint>
   <link name="Base_L" />
   <joint name="mount_L" type="fixed">
-    <parent link="base_link" />
+    <parent link="Gento_Luna_Leg_J6_Link" />
     <child link="Base_L" />
     <origin xyz="0 0.2146 0.3915" rpy="-1.57079632679 0 0" />
   </joint>
@@ -580,7 +823,7 @@
   </joint>
   <link name="Base_R" />
   <joint name="mount_R" type="fixed">
-    <parent link="base_link" />
+    <parent link="Gento_Luna_Leg_J6_Link" />
     <child link="Base_R" />
     <origin xyz="0 -0.2146 0.3915" rpy="1.57079632679 -0 0" />
   </joint>
