@@ -1,0 +1,42 @@
+# IDE / 编辑器（所有子目录）
+.vscode/
+**/.vscode/
+.idea/
+**/.idea/
+*.swp
+*.swo
+
+# ROS2 编译产物
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# SDK 内的编译日志
+tianji-robot-SDK/log/
+tianji_armSDK/log/
+
+# Python
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# 仿真运行状态和验证日志
+.marvin_mesh_sim*.lock
+ros2_ws/artifacts/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 平台可执行文件
+*.exe
+*.dll
+*.so
+
+# SDK 随附的运行库（保留以便直接运行仿真）
+!tianji_armSDK/SDK_PYTHON/*.so
+!tianji_armSDK/SDK_PYTHON/*.dll
+!tianji-robot-SDK/PYTHON_SDK/*.so
+!tianji-robot-SDK/PYTHON_SDK/*.dll

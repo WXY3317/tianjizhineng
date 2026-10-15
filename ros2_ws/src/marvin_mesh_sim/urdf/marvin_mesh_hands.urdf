@@ -1,0 +1,1142 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="marvin_mesh_dual_arm_hands">
+  <link name="world" />
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 -0.35" />
+      <geometry>
+        <cylinder radius=".11" length=".7" />
+      </geometry>
+      <material name="fixture">
+        <color rgba=".22 .25 .3 1" />
+      </material>
+    </visual>
+  </link>
+  <joint name="world_to_fixture" type="fixed">
+    <parent link="world" />
+    <child link="base_link" />
+    <origin xyz="0 0 .7" rpy="0 0 0" />
+  </joint>
+  <link name="Base_L" />
+  <joint name="mount_L" type="fixed">
+    <parent link="base_link" />
+    <child link="Base_L" />
+    <origin xyz="0 0.2146 0.3915" rpy="-1.57079632679 0 0" />
+  </joint>
+  <link name="Arm_L1_Link">
+    <inertial>
+      <origin xyz="-0.00033175 -0.00426687 -0.03522466" rpy="0 -0 0" />
+      <mass value="1.537551" />
+      <inertia ixx="0.00366914" iyy="0.00394529" izz="0.00131774" ixy="1.77e-06" ixz="1.342e-05" iyz="-0.00023437" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/left_arm/Arm_L1_Link.STL" />
+      </geometry>
+      <material name="mat_Arm_L1_Link">
+        <color rgba=".65 .70 .76 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -7.51391053e-06 -0.0285794493" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1016963348 0.0987930596 0.158841107" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Joint1_L" type="revolute">
+    <parent link="Base_L" />
+    <child link="Arm_L1_Link" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.0194" upper="3.0194" velocity="3.141592653589793" effort="108.0" />
+  </joint>
+  <link name="Arm_L2_Link">
+    <inertial>
+      <origin xyz="-0.00016285 0.04983697 -0.00833367" rpy="0 -0 0" />
+      <mass value="1.540624" />
+      <inertia ixx="0.00598937" iyy="0.00183242" izz="0.00564358" ixy="1.663e-05" ixz="8.58e-06" iyz="0.00064328" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/left_arm/Arm_L2_Link.STL" />
+      </geometry>
+      <material name="mat_Arm_L2_Link">
+        <color rgba=".65 .70 .76 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="5.58793545e-09 -0.0389397759 3.7252903e-09" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1042375528 0.1821204684 0.1111499966" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Joint2_L" type="revolute">
+    <parent link="Arm_L1_Link" />
+    <child link="Arm_L2_Link" />
+    <origin xyz="0 0 0" rpy="-1.57079632679 -0 -3.14159265359" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.0595" upper="2.0595" velocity="3.141592653589793" effort="108.0" />
+  </joint>
+  <link name="Arm_L3_Link">
+    <inertial>
+      <origin xyz="0.0082949 -0.00411162 -0.04916618" rpy="0 -0 0" />
+      <mass value="1.361743" />
+      <inertia ixx="0.00467364" iyy="0.00498053" izz="0.00119672" ixy="-5.704e-05" ixz="0.00058882" iyz="-0.00027207" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/left_arm/Arm_L3_Link.STL" />
+      </geometry>
+      <material name="mat_Arm_L3_Link">
+        <color rgba=".65 .70 .76 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.011742264 7.0836395e-06 -0.0455300827" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1084427386 0.0849439614 0.186939802" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Joint3_L" type="revolute">
+    <parent link="Arm_L2_Link" />
+    <child link="Arm_L3_Link" />
+    <origin xyz="0 -0.264 0" rpy="-1.57079632679 0 3.14159265359" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.0194" upper="3.0194" velocity="3.141592653589793" effort="108.0" />
+  </joint>
+  <link name="Arm_L4_Link">
+    <inertial>
+      <origin xyz="0.00852387 -0.03857074 -0.00801541" rpy="0 -0 0" />
+      <mass value="1.034295" />
+      <inertia ixx="0.00303957" iyy="0.00118553" izz="0.00288173" ixy="-0.00037917" ixz="6.787e-05" iyz="-0.00031048" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/left_arm/Arm_L4_Link.STL" />
+      </geometry>
+      <material name="mat_Arm_L4_Link">
+        <color rgba=".65 .70 .76 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.00503638387 -0.0262898337 -3.7252903e-09" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1050081552 0.1474203504 0.1047716886" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Joint4_L" type="revolute">
+    <parent link="Arm_L3_Link" />
+    <child link="Arm_L4_Link" />
+    <origin xyz="0.018 0 0" rpy="-1.57079632679 -0 -3.14159265359" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.5307" upper="0.7854" velocity="3.141592653589793" effort="108.0" />
+  </joint>
+  <link name="Arm_L5_Link">
+    <inertial>
+      <origin xyz="-0.0005008 0.00223923 -0.09253416" rpy="0 -0 0" />
+      <mass value="1.000479" />
+      <inertia ixx="0.00217057" iyy="0.00195131" izz="0.00084222" ixy="-1.142e-05" ixz="-6.68e-06" iyz="3.059e-05" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/left_arm/Arm_L5_Link.STL" />
+      </geometry>
+      <material name="mat_Arm_L5_Link">
+        <color rgba=".65 .70 .76 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="1.5925616e-06 -4.54485416e-07 -0.0742668584" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0795333124 0.0981412232 0.1894662828" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Joint5_L" type="revolute">
+    <parent link="Arm_L4_Link" />
+    <child link="Arm_L5_Link" />
+    <origin xyz="0.018 -0.264 0" rpy="-1.57079632679 0 3.14159265359" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.0194" upper="3.0194" velocity="3.141592653589793" effort="108.0" />
+  </joint>
+  <link name="Arm_L6_Link">
+    <inertial>
+      <origin xyz="0.00018634 0.00023824 -0.0005829" rpy="0 -0 0" />
+      <mass value="0.3906229" />
+      <inertia ixx="0.00019943" iyy="0.00017163" izz="0.00018567" ixy="1.18e-06" ixz="-3e-07" iyz="-3.53e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/left_arm/Arm_L6_Link.STL" />
+      </geometry>
+      <material name="mat_Arm_L6_Link">
+        <color rgba=".65 .70 .76 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="1.58324838e-08 0.00449999981 0" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.059980901 0.0639999994 0.0700000002" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Joint6_L" type="revolute">
+    <parent link="Arm_L5_Link" />
+    <child link="Arm_L6_Link" />
+    <origin xyz="0 0 0" rpy="0 -1.57079632679 1.57079632679" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.0472" upper="1.0472" velocity="3.141592653589793" effort="108.0" />
+  </joint>
+  <link name="Arm_L7_Link">
+    <inertial>
+      <origin xyz="-0.00052431 -0.03976234 0.00727342" rpy="0 -0 0" />
+      <mass value="0.37939" />
+      <inertia ixx="0.00070308" iyy="0.00030365" izz="0.00058833" ixy="5.97e-06" ixz="7.3e-07" iyz="0.00012769" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/left_arm/Arm_L7_Link.STL" />
+      </geometry>
+      <material name="mat_Arm_L7_Link">
+        <color rgba=".65 .70 .76 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.000749999657 -0.0286234636 -0.000748569146" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.069500003 0.1167530678 0.0923028626" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Joint7_L" type="revolute">
+    <parent link="Arm_L6_Link" />
+    <child link="Arm_L7_Link" />
+    <origin xyz="0 0 0" rpy="0 -1.57079632679 1.57079632679" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.5708" upper="1.5708" velocity="3.141592653589793" effort="108.0" />
+  </joint>
+  <link name="flange_L" />
+  <joint name="flange_joint_L" type="fixed">
+    <parent link="Arm_L7_Link" />
+    <child link="flange_L" />
+    <origin xyz="0 -0.087 0" rpy="0 -0 0" />
+  </joint>
+  <link name="L_hand_base">
+    <inertial>
+      <origin xyz="-0.0041481 -0.021938 0.067528" rpy="0 -0 0" />
+      <mass value="0.373" />
+      <inertia ixx="0.00018466" iyy="0.00026432" izz="0.00014072" ixy="-1.0056e-06" ixz="-9.0897e-06" iyz="6.9047e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_base_link.STL" />
+      </geometry>
+      <material name="mat_L_hand_base">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-6.64759427e-05 -0.0166790672 0.0625857864" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1014273352 0.0863580332 0.1251715712" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="flange_L_to_L_hand_base" type="fixed">
+    <parent link="flange_L" />
+    <child link="L_hand_base" />
+    <origin xyz="0 0 0" rpy="0 1.57079632679 -1.57079632679" />
+  </joint>
+  <link name="L_thumb_link1">
+    <inertial>
+      <origin xyz="-0.012037 -0.00088697 0.01722" rpy="0 -0 0" />
+      <mass value="0.020283" />
+      <inertia ixx="1.5364e-06" iyy="1.5999e-06" izz="1.5673e-06" ixy="2.736e-07" ixz="3.2696e-07" iyz="-1.6394e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_thumb_link1.STL" />
+      </geometry>
+      <material name="mat_L_thumb_link1">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.011996516 0.00159999961 0.0158096273" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0439930316 0.0278000002 0.0316192544" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="L_thumb_j1" type="revolute">
+    <parent link="L_hand_base" />
+    <child link="L_thumb_link1" />
+    <origin xyz="-0.031492 -0.031853 0.0384" rpy="0 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="0.0" upper="2.182" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="L_thumb_link2">
+    <inertial>
+      <origin xyz="-0.013248 0.021201 0.014859" rpy="0 -0 0" />
+      <mass value="0.11925" />
+      <inertia ixx="9.5915e-06" iyy="8.0189e-06" izz="9.2199e-06" ixy="1.6122e-06" ixz="3.767e-11" iyz="2.3525e-11" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_thumb_link2.STL" />
+      </geometry>
+      <material name="mat_L_thumb_link2">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0132479807 0.0212012031 0.0154999997" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0464943516 0.062402415 0.0289999992" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="L_thumb_j2" type="revolute">
+    <parent link="L_thumb_link1" />
+    <child link="L_thumb_link2" />
+    <origin xyz="-0.024 0.0155 0.0176" rpy="1.57079999951 -0 0" />
+    <axis xyz="0 0 -1" />
+    <limit lower="-2.62" upper="0.0" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="L_thumb_link3">
+    <inertial>
+      <origin xyz="-0.0090616 0.017566 0.015458" rpy="0 -0 0" />
+      <mass value="0.032862" />
+      <inertia ixx="3.2743e-06" iyy="2.0788e-06" izz="3.3116e-06" ixy="4.4324e-07" ixz="8.893e-08" iyz="-1.112e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_thumb_link3.STL" />
+      </geometry>
+      <material name="mat_L_thumb_link3">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.0101907155 0.0208812682 0.0143765079" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0402874658 0.061751077 0.0287530166" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="L_thumb_j3" type="revolute">
+    <parent link="L_thumb_link2" />
+    <child link="L_thumb_link3" />
+    <origin xyz="-0.026496 0.042402 0.001" rpy="0 -0 0" />
+    <axis xyz="0 0 -1" />
+    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="L_index_link1">
+    <inertial>
+      <origin xyz="-0.00054283 0.014975 0.019498" rpy="0 -0 0" />
+      <mass value="0.025394" />
+      <inertia ixx="2.7079e-06" iyy="2.1436e-06" izz="2.667e-06" ixy="-2.5018e-07" ixz="-3.8693e-07" iyz="-6.2218e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_index_link1.STL" />
+      </geometry>
+      <material name="mat_L_index_link1">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.00159999961 0.0128392326 0.0190488306" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0278000002 0.0456154328 0.0380976608" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="L_index_j1" type="revolute">
+    <parent link="L_hand_base" />
+    <child link="L_index_link1" />
+    <origin xyz="-0.0315 -0.020758 0.086" rpy="1.57079999951 -0 0" />
+    <axis xyz="0 0 -1" />
+    <limit lower="-1.57" upper="0.0" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="L_index_link2">
+    <inertial>
+      <origin xyz="-3.5328e-08 0.025 -0.014859" rpy="0 -0 0" />
+      <mass value="0.11925" />
+      <inertia ixx="1.0599e-05" iyy="7.0115e-06" izz="9.22e-06" ixy="-7.9138e-12" ixz="-4.5358e-11" iyz="-2.7198e-16" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_index_link2.STL" />
+      </geometry>
+      <material name="mat_L_index_link2">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.0249997778 -0.0154999997" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0259896312 0.0699995552 0.0289999992" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="L_index_j2" type="revolute">
+    <parent link="L_index_link1" />
+    <child link="L_index_link2" />
+    <origin xyz="0.0155 0.024 0.0281" rpy="3.14159265359 1.57079265408 3.14159265359" />
+    <axis xyz="0 0 1" />
+    <limit lower="0.0" upper="2.18" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="L_index_link3">
+    <inertial>
+      <origin xyz="-0.0016236 0.019698 -0.015458" rpy="0 -0 0" />
+      <mass value="0.032861" />
+      <inertia ixx="3.3369e-06" iyy="2.0161e-06" izz="3.3115e-06" ixy="3.4291e-07" ixz="1.6492e-08" iyz="1.4144e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_index_link3.STL" />
+      </geometry>
+      <material name="mat_L_index_link3">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000360116363 0.0232494329 -0.0143765079" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0267166012 0.0664134016 0.0287530166" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="L_index_j3" type="revolute">
+    <parent link="L_index_link2" />
+    <child link="L_index_link3" />
+    <origin xyz="0 0.05 -0.001" rpy="0 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="L_middle_link1">
+    <inertial>
+      <origin xyz="-3.5355e-08 0.025 -0.014859" rpy="0 -0 0" />
+      <mass value="0.11925" />
+      <inertia ixx="1.0599e-05" iyy="7.0115e-06" izz="9.22e-06" ixy="-7.9707e-12" ixz="-4.5242e-11" iyz="9.622e-14" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_middle_link1.STL" />
+      </geometry>
+      <material name="mat_L_middle_link1">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.0249997778 -0.0154999997" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0259896312 0.0699995552 0.0289999992" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="L_middle_j1" type="revolute">
+    <parent link="L_hand_base" />
+    <child link="L_middle_link1" />
+    <origin xyz="0.018 -0.048858 0.1135" rpy="1.57080000079 -6.749156789e-12 1.57080000079" />
+    <axis xyz="0 0 1" />
+    <limit lower="0.0" upper="2.18" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="L_middle_link2">
+    <inertial>
+      <origin xyz="-0.0016236 0.019698 -0.015458" rpy="0 -0 0" />
+      <mass value="0.032861" />
+      <inertia ixx="3.3369e-06" iyy="2.0161e-06" izz="3.3115e-06" ixy="3.4292e-07" ixz="1.6493e-08" iyz="1.4144e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_middle_link2.STL" />
+      </geometry>
+      <material name="mat_L_middle_link2">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000360116363 0.0232494329 -0.0143765079" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0267166012 0.0664134016 0.0287530166" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="L_middle_j2" type="revolute">
+    <parent link="L_middle_link1" />
+    <child link="L_middle_link2" />
+    <origin xyz="0 0.05 -0.001" rpy="0 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="L_little_link1">
+    <inertial>
+      <origin xyz="0.0033432 0.015178 0.019587" rpy="0 -0 0" />
+      <mass value="0.025089" />
+      <inertia ixx="2.6147e-06" iyy="2.147e-06" izz="2.6391e-06" ixy="-2.9798e-07" ixz="-4.0466e-07" iyz="-5.8866e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_little_link1.STL" />
+      </geometry>
+      <material name="mat_L_little_link1">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.00525511289 0.0128520671 0.0190391094" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0304897754 0.0455897636 0.0380782186" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="L_little_j1" type="revolute">
+    <parent link="L_hand_base" />
+    <child link="L_little_link1" />
+    <origin xyz="0.0315 -0.020758 0.08" rpy="1.57079999951 -0 0" />
+    <axis xyz="0 0 -1" />
+    <limit lower="0.0" upper="3.14" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="L_little_link2">
+    <inertial>
+      <origin xyz="-3.5376e-08 0.025 -0.014859" rpy="0 -0 0" />
+      <mass value="0.11925" />
+      <inertia ixx="1.0599e-05" iyy="7.0115e-06" izz="9.22e-06" ixy="-7.9138e-12" ixz="-4.5169e-11" iyz="2.067e-13" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_little_link2.STL" />
+      </geometry>
+      <material name="mat_L_little_link2">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.0249997778 -0.0154999997" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0259896312 0.0699995552 0.0289999992" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="L_little_j2" type="revolute">
+    <parent link="L_little_link1" />
+    <child link="L_little_link2" />
+    <origin xyz="0.0205 0.024 0.0281" rpy="3.14159265359 1.57079265408 3.14159265359" />
+    <axis xyz="0 0 1" />
+    <limit lower="0.0" upper="2.18" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="L_little_link3">
+    <inertial>
+      <origin xyz="-0.0016236 0.019698 -0.015458" rpy="0 -0 0" />
+      <mass value="0.032861" />
+      <inertia ixx="3.3369e-06" iyy="2.0161e-06" izz="3.3115e-06" ixy="3.4292e-07" ixz="1.6493e-08" iyz="1.4144e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_little_link3.STL" />
+      </geometry>
+      <material name="mat_L_little_link3">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000360116363 0.0232494329 -0.0143765079" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0267166012 0.0664134016 0.0287530166" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="L_little_j3" type="revolute">
+    <parent link="L_little_link2" />
+    <child link="L_little_link3" />
+    <origin xyz="0 0.05 -0.001" rpy="0 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="Base_R" />
+  <joint name="mount_R" type="fixed">
+    <parent link="base_link" />
+    <child link="Base_R" />
+    <origin xyz="0 -0.2146 0.3915" rpy="1.57079632679 -0 0" />
+  </joint>
+  <link name="Arm_R1_Link">
+    <inertial>
+      <origin xyz="-0.00033175 -0.00426687 -0.03522466" rpy="0 -0 0" />
+      <mass value="1.537551" />
+      <inertia ixx="0.00366914" iyy="0.00394529" izz="0.00131774" ixy="1.77e-06" ixz="1.342e-05" iyz="-0.00023437" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/right_arm/Arm_R1_Link.STL" />
+      </geometry>
+      <material name="mat_Arm_R1_Link">
+        <color rgba=".65 .70 .76 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 -7.51391053e-06 -0.0285794493" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1016963348 0.0987930596 0.158841107" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Joint1_R" type="revolute">
+    <parent link="Base_R" />
+    <child link="Arm_R1_Link" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.0194" upper="3.0194" velocity="3.141592653589793" effort="108.0" />
+  </joint>
+  <link name="Arm_R2_Link">
+    <inertial>
+      <origin xyz="-0.00016285 0.04983697 -0.00833367" rpy="0 -0 0" />
+      <mass value="1.540624" />
+      <inertia ixx="0.00598937" iyy="0.00183242" izz="0.00564358" ixy="1.663e-05" ixz="8.58e-06" iyz="0.00064328" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/right_arm/Arm_R2_Link.STL" />
+      </geometry>
+      <material name="mat_Arm_R2_Link">
+        <color rgba=".65 .70 .76 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-5.58793545e-09 0.0389397759 3.7252903e-09" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1042375528 0.1821204684 0.1111499966" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Joint2_R" type="revolute">
+    <parent link="Arm_R1_Link" />
+    <child link="Arm_R2_Link" />
+    <origin xyz="0 0 0" rpy="1.57079632679 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.0595" upper="2.0595" velocity="3.141592653589793" effort="108.0" />
+  </joint>
+  <link name="Arm_R3_Link">
+    <inertial>
+      <origin xyz="0.0082949 -0.00411162 -0.04916618" rpy="0 -0 0" />
+      <mass value="1.361743" />
+      <inertia ixx="0.00467364" iyy="0.00498053" izz="0.00119672" ixy="-5.704e-05" ixz="0.00058882" iyz="-0.00027207" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/right_arm/Arm_R3_Link.STL" />
+      </geometry>
+      <material name="mat_Arm_R3_Link">
+        <color rgba=".65 .70 .76 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.011742264 7.0836395e-06 -0.0455300827" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1084427386 0.0849439614 0.186939802" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Joint3_R" type="revolute">
+    <parent link="Arm_R2_Link" />
+    <child link="Arm_R3_Link" />
+    <origin xyz="0 0.264 0" rpy="-1.57079632679 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.0194" upper="3.0194" velocity="3.141592653589793" effort="108.0" />
+  </joint>
+  <link name="Arm_R4_Link">
+    <inertial>
+      <origin xyz="0.00852387 -0.03857074 -0.00801541" rpy="0 -0 0" />
+      <mass value="1.034295" />
+      <inertia ixx="0.00303957" iyy="0.00118553" izz="0.00288173" ixy="-0.00037917" ixz="6.787e-05" iyz="-0.00031048" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/right_arm/Arm_R4_Link.STL" />
+      </geometry>
+      <material name="mat_Arm_R4_Link">
+        <color rgba=".65 .70 .76 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.00503638387 -0.0262898337 -3.7252903e-09" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1050081552 0.1474203504 0.1047716886" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Joint4_R" type="revolute">
+    <parent link="Arm_R3_Link" />
+    <child link="Arm_R4_Link" />
+    <origin xyz="0.018 0 0" rpy="-1.57079632679 0 3.14159265359" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.5307" upper="0.7854" velocity="3.141592653589793" effort="108.0" />
+  </joint>
+  <link name="Arm_R5_Link">
+    <inertial>
+      <origin xyz="0.0005008 -0.00223923 -0.09253416" rpy="0 -0 0" />
+      <mass value="1.000479" />
+      <inertia ixx="0.00217057" iyy="0.00195131" izz="0.00084222" ixy="-1.142e-05" ixz="6.68e-06" iyz="-3.059e-05" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/right_arm/Arm_R5_Link.STL" />
+      </geometry>
+      <material name="mat_Arm_R5_Link">
+        <color rgba=".65 .70 .76 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-1.5925616e-06 -2.29105353e-07 -0.0742668584" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0795333124 0.0981425904 0.1894662828" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Joint5_R" type="revolute">
+    <parent link="Arm_R4_Link" />
+    <child link="Arm_R5_Link" />
+    <origin xyz="0.018 -0.264 0" rpy="-1.57079632679 -0 -3.14159265359" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.0194" upper="3.0194" velocity="3.141592653589793" effort="108.0" />
+  </joint>
+  <link name="Arm_R6_Link">
+    <inertial>
+      <origin xyz="-0.00018634 0.00023824 0.0005829" rpy="0 -0 0" />
+      <mass value="0.3906229" />
+      <inertia ixx="0.00019943" iyy="0.00017163" izz="0.00018567" ixy="-1.18e-06" ixz="-3e-07" iyz="3.53e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/right_arm/Arm_R6_Link.STL" />
+      </geometry>
+      <material name="mat_Arm_R6_Link">
+        <color rgba=".65 .70 .76 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="1.58324838e-08 -0.00449999981 0" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.059980901 0.0639999994 0.0700000002" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Joint6_R" type="revolute">
+    <parent link="Arm_R5_Link" />
+    <child link="Arm_R6_Link" />
+    <origin xyz="0 0 0" rpy="0 -1.57079632679 1.57079632679" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.0472" upper="1.0472" velocity="3.141592653589793" effort="108.0" />
+  </joint>
+  <link name="Arm_R7_Link">
+    <inertial>
+      <origin xyz="-0.00052431 -0.03976234 0.00727342" rpy="0 -0 0" />
+      <mass value="0.37939" />
+      <inertia ixx="0.00070308" iyy="0.00030365" izz="0.00058833" ixy="5.97e-06" ixz="7.3e-07" iyz="0.00012769" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/right_arm/Arm_R7_Link.STL" />
+      </geometry>
+      <material name="mat_Arm_R7_Link">
+        <color rgba=".65 .70 .76 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.000749999657 -0.0286234636 0.000748569146" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.069500003 0.1167530678 0.0923028626" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="Joint7_R" type="revolute">
+    <parent link="Arm_R6_Link" />
+    <child link="Arm_R7_Link" />
+    <origin xyz="0 0 0" rpy="0 -1.57079632679 1.57079632679" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.5708" upper="1.5708" velocity="3.141592653589793" effort="108.0" />
+  </joint>
+  <link name="flange_R" />
+  <joint name="flange_joint_R" type="fixed">
+    <parent link="Arm_R7_Link" />
+    <child link="flange_R" />
+    <origin xyz="0 -0.087 0" rpy="0 -0 0" />
+  </joint>
+  <link name="R_hand_base">
+    <inertial>
+      <origin xyz="0.0039726 -0.021926 0.067524" rpy="0 -0 0" />
+      <mass value="0.373" />
+      <inertia ixx="0.00018484" iyy="0.00026468" izz="0.00014092" ixy="-5.1099e-06" ixz="-1.1319e-06" iyz="6.9239e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_base_link.STL" />
+      </geometry>
+      <material name="mat_R_hand_base">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="6.66882843e-05 -0.0166790672 0.0625857864" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.1014273352 0.0863580332 0.1251715712" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="flange_R_to_R_hand_base" type="fixed">
+    <parent link="flange_R" />
+    <child link="R_hand_base" />
+    <origin xyz="0 0 0" rpy="0 -1.57079632679 1.57079632679" />
+  </joint>
+  <link name="R_thumb_link1">
+    <inertial>
+      <origin xyz="0.012043 -0.00088035 0.017161" rpy="0 -0 0" />
+      <mass value="0.020436" />
+      <inertia ixx="1.54152866e-06" iyy="1.60587134e-06" izz="1.5682e-06" ixy="-2.73498912e-07" ixz="3.27250685e-07" iyz="1.63419011e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 3.14" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_thumb_link1.STL" />
+      </geometry>
+      <material name="mat_R_thumb_link1">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.011996516 0.00159999961 0.0158096273" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0439930316 0.0278000002 0.0316192544" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="R_thumb_j1" type="revolute">
+    <parent link="R_hand_base" />
+    <child link="R_thumb_link1" />
+    <origin xyz="0.0315 -0.031858 0.0384" rpy="0 -0 0" />
+    <axis xyz="0 0 -1" />
+    <limit lower="0.0" upper="2.182" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="R_thumb_link2">
+    <inertial>
+      <origin xyz="0.013248 0.021201 0.014859" rpy="0 -0 0" />
+      <mass value="0.11925" />
+      <inertia ixx="9.5915e-06" iyy="8.0189e-06" izz="9.2199e-06" ixy="-1.6122e-06" ixz="-3.7798e-11" iyz="2.3497e-11" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_thumb_link2.STL" />
+      </geometry>
+      <material name="mat_R_thumb_link2">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0132479812 0.0212012031 0.0154999997" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0464943508 0.0624023928 0.0289999992" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="R_thumb_j2" type="revolute">
+    <parent link="R_thumb_link1" />
+    <child link="R_thumb_link2" />
+    <origin xyz="0.024 0.0155 0.0176" rpy="1.57079999951 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.618" upper="0.0" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="R_thumb_link3">
+    <inertial>
+      <origin xyz="0.0090614 0.017566 0.015387" rpy="0 -0 0" />
+      <mass value="0.03286" />
+      <inertia ixx="3.2742e-06" iyy="2.0786e-06" izz="3.3115e-06" ixy="-4.4325e-07" ixz="-9.7288e-08" iyz="-1.1677e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_thumb_link3.STL" />
+      </geometry>
+      <material name="mat_R_thumb_link3">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0101907155 0.0208812682 0.0143765083" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0402874658 0.061751077 0.0287530158" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="R_thumb_j3" type="revolute">
+    <parent link="R_thumb_link2" />
+    <child link="R_thumb_link3" />
+    <origin xyz="0.026496 0.042402 0.001" rpy="0 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="R_index_link1">
+    <inertial>
+      <origin xyz="0.00054285 0.014975 0.019498" rpy="0 -0 0" />
+      <mass value="0.025394" />
+      <inertia ixx="2.7079e-06" iyy="2.1436e-06" izz="2.667e-06" ixy="2.5018e-07" ixz="3.8693e-07" iyz="-6.2218e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_index_link1.STL" />
+      </geometry>
+      <material name="mat_R_index_link1">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.00159999961 0.0128392326 0.0190488306" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0278000002 0.0456154328 0.0380976608" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="R_index_j1" type="revolute">
+    <parent link="R_hand_base" />
+    <child link="R_index_link1" />
+    <origin xyz="0.0315000341 -0.0207580842 0.086" rpy="1.57079632679 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.57" upper="0.0" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="R_index_link2">
+    <inertial>
+      <origin xyz="3.5277e-08 0.025 0.014859" rpy="0 -0 0" />
+      <mass value="0.11925" />
+      <inertia ixx="1.0599e-05" iyy="7.0115e-06" izz="9.22e-06" ixy="7.9117e-12" ixz="-4.5147e-11" iyz="2.0026e-13" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_index_link2.STL" />
+      </geometry>
+      <material name="mat_R_index_link2">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.0249997778 0.0154999997" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0259896312 0.0699995552 0.0289999992" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="R_index_j2" type="revolute">
+    <parent link="R_index_link1" />
+    <child link="R_index_link2" />
+    <origin xyz="-0.0155 0.024 0.0281" rpy="3.14159265359 1.57079265408 3.14159265359" />
+    <axis xyz="0 0 1" />
+    <limit lower="0.0" upper="2.18" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="R_index_link3">
+    <inertial>
+      <origin xyz="-0.001624 0.019699 0.015387" rpy="0 -0 0" />
+      <mass value="0.03286" />
+      <inertia ixx="3.3368e-06" iyy="2.0159e-06" izz="3.3115e-06" ixy="3.4294e-07" ixz="-2.0618e-08" iyz="-1.5057e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_index_link3.STL" />
+      </geometry>
+      <material name="mat_R_index_link3">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000360116363 0.0232494329 0.0143765083" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0267166012 0.0664134016 0.0287530158" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="R_index_j3" type="revolute">
+    <parent link="R_index_link2" />
+    <child link="R_index_link3" />
+    <origin xyz="0 0.05 0.001" rpy="0 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="R_middle_link1">
+    <inertial>
+      <origin xyz="3.5301e-08 0.025 0.014859" rpy="0 -0 0" />
+      <mass value="0.11925" />
+      <inertia ixx="1.0599e-05" iyy="7.0115e-06" izz="9.22e-06" ixy="7.8652e-12" ixz="-4.5242e-11" iyz="9.6764e-14" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_middle_link1.STL" />
+      </geometry>
+      <material name="mat_R_middle_link1">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.0249997778 0.0154999997" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0259896312 0.0699995552 0.0289999992" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="R_middle_j1" type="revolute">
+    <parent link="R_hand_base" />
+    <child link="R_middle_link1" />
+    <origin xyz="-0.018 -0.048858 0.1135" rpy="1.57080000079 -6.749156789e-12 1.57080000079" />
+    <axis xyz="0 0 1" />
+    <limit lower="0.0" upper="2.18" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="R_middle_link2">
+    <inertial>
+      <origin xyz="-0.001624 0.019699 0.015387" rpy="0 -0 0" />
+      <mass value="0.03286" />
+      <inertia ixx="3.3368e-06" iyy="2.0159e-06" izz="3.3115e-06" ixy="3.4294e-07" ixz="-2.0618e-08" iyz="-1.5057e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_middle_link2.STL" />
+      </geometry>
+      <material name="mat_R_middle_link2">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000360116363 0.0232494329 0.0143765083" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0267166012 0.0664134016 0.0287530158" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="R_middle_j2" type="revolute">
+    <parent link="R_middle_link1" />
+    <child link="R_middle_link2" />
+    <origin xyz="0 0.05 0.001" rpy="0 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="R_little_link1">
+    <inertial>
+      <origin xyz="-0.0033432 0.015178 0.019587" rpy="0 -0 0" />
+      <mass value="0.025089" />
+      <inertia ixx="2.6147e-06" iyy="2.147e-06" izz="2.6391e-06" ixy="2.9798e-07" ixz="4.0466e-07" iyz="-5.8866e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_little_link1.STL" />
+      </geometry>
+      <material name="mat_R_little_link1">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.00525511289 0.0128520671 0.0190391094" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0304897754 0.0455897636 0.0380782186" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="R_little_j1" type="revolute">
+    <parent link="R_hand_base" />
+    <child link="R_little_link1" />
+    <origin xyz="-0.0315 -0.020758 0.08" rpy="1.57079999951 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="0.0" upper="3.14" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="R_little_link2">
+    <inertial>
+      <origin xyz="3.5301e-08 0.025 0.014859" rpy="0 -0 0" />
+      <mass value="0.11925" />
+      <inertia ixx="1.0599e-05" iyy="7.0115e-06" izz="9.22e-06" ixy="7.8652e-12" ixz="-4.5242e-11" iyz="9.6764e-14" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_little_link2.STL" />
+      </geometry>
+      <material name="mat_R_little_link2">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0.0249997778 0.0154999997" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0259896312 0.0699995552 0.0289999992" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="R_little_j2" type="revolute">
+    <parent link="R_little_link1" />
+    <child link="R_little_link2" />
+    <origin xyz="-0.0205 0.024 0.0281" rpy="3.14159265359 1.57079265408 3.14159265359" />
+    <axis xyz="0 0 1" />
+    <limit lower="0.0" upper="2.18" velocity="2.0" effort="2.0" />
+  </joint>
+  <link name="R_little_link3">
+    <inertial>
+      <origin xyz="-0.001624 0.019699 0.015387" rpy="0 -0 0" />
+      <mass value="0.03286" />
+      <inertia ixx="3.3368e-06" iyy="2.0159e-06" izz="3.3115e-06" ixy="3.4294e-07" ixz="-2.0618e-08" iyz="-1.5057e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 -0 0" />
+      <geometry>
+        <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_little_link3.STL" />
+      </geometry>
+      <material name="mat_R_little_link3">
+        <color rgba=".6 .62 .66 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.000360116363 0.0232494329 0.0143765083" rpy="0 -0 0" />
+      <geometry>
+        <box size="0.0267166012 0.0664134016 0.0287530158" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="R_little_j3" type="revolute">
+    <parent link="R_little_link2" />
+    <child link="R_little_link3" />
+    <origin xyz="0 0.05 0.001" rpy="0 -0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+  </joint>
+</robot>

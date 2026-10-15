@@ -1,0 +1,11 @@
+.vs/
+.idea/
+.vscode/
+*.pyc
+__pycache__/
+C_EXAMPLE/*.exe
+C_SDK/libGentoSDKPY.dll
+C_SDK/libGentoSDK.dll
+my_test/
+html/
+FX_PLATFORM/dd.py

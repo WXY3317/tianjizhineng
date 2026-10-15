@@ -1,0 +1,397 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mujoco model="luna_m6_robot">
+  <compiler angle="radian" coordinate="local" />
+  <asset>
+    <mesh name="Underpan_Base_link" file="assets/meshes/base/Underpan_Base_link.obj" />
+    <mesh name="Gento_Luna_Leg_J1_Link" file="assets/meshes/other/Gento_Luna_Leg_J1_Link.STL" />
+    <mesh name="Gento_Luna_Leg_J2_Link" file="assets/meshes/other/Gento_Luna_Leg_J2_Link.STL" />
+    <mesh name="Gento_Luna_Leg_J3_Link" file="assets/meshes/other/Gento_Luna_Leg_J3_Link.STL" />
+    <mesh name="Gento_Luna_Leg_J4_Link" file="assets/meshes/other/Gento_Luna_Leg_J4_Link.STL" />
+    <mesh name="Gento_Luna_Leg_J5_Link" file="assets/meshes/other/Gento_Luna_Leg_J5_Link.STL" />
+    <mesh name="Gento_Luna_Leg_J6_Link" file="assets/meshes/other/Gento_Luna_Leg_J6_Link.obj" />
+    <mesh name="Arm_R1_Link" file="assets/meshes/right_arm/Arm_R1_Link.STL" />
+    <mesh name="Arm_R2_Link" file="assets/meshes/right_arm/Arm_R2_Link.STL" />
+    <mesh name="Arm_R3_Link" file="assets/meshes/right_arm/Arm_R3_Link.STL" />
+    <mesh name="Arm_R4_Link" file="assets/meshes/right_arm/Arm_R4_Link.STL" />
+    <mesh name="Arm_R5_Link" file="assets/meshes/right_arm/Arm_R5_Link.STL" />
+    <mesh name="Arm_R6_Link" file="assets/meshes/right_arm/Arm_R6_Link.STL" />
+    <mesh name="Arm_R7_Link" file="assets/meshes/right_arm/Arm_R7_Link.STL" />
+    <mesh name="Arm_L1_Link" file="assets/meshes/left_arm/Arm_L1_Link.STL" />
+    <mesh name="Arm_L2_Link" file="assets/meshes/left_arm/Arm_L2_Link.STL" />
+    <mesh name="Arm_L3_Link" file="assets/meshes/left_arm/Arm_L3_Link.STL" />
+    <mesh name="Arm_L4_Link" file="assets/meshes/left_arm/Arm_L4_Link.STL" />
+    <mesh name="Arm_L5_Link" file="assets/meshes/left_arm/Arm_L5_Link.STL" />
+    <mesh name="Arm_L6_Link" file="assets/meshes/left_arm/Arm_L6_Link.STL" />
+    <mesh name="Arm_L7_Link" file="assets/meshes/left_arm/Arm_L7_Link.STL" />
+    <mesh name="Head_J1_Link" file="assets/meshes/other/Head_J1_Link.STL" />
+    <mesh name="Head_J2_Link" file="assets/meshes/other/Head_J2_Link.STL" />
+    <mesh name="L_base_link" file="assets/meshes/hands/left_hand/L_base_link.STL" />
+    <mesh name="L_thumb_link1" file="assets/meshes/hands/left_hand/L_thumb_link1.STL" />
+    <mesh name="L_thumb_link2" file="assets/meshes/hands/left_hand/L_thumb_link2.STL" />
+    <mesh name="L_thumb_link3" file="assets/meshes/hands/left_hand/L_thumb_link3.STL" />
+    <mesh name="L_index_link1" file="assets/meshes/hands/left_hand/L_index_link1.STL" />
+    <mesh name="L_index_link2" file="assets/meshes/hands/left_hand/L_index_link2.STL" />
+    <mesh name="L_index_link3" file="assets/meshes/hands/left_hand/L_index_link3.STL" />
+    <mesh name="L_middle_link1" file="assets/meshes/hands/left_hand/L_middle_link1.STL" />
+    <mesh name="L_middle_link2" file="assets/meshes/hands/left_hand/L_middle_link2.STL" />
+    <mesh name="L_little_link1" file="assets/meshes/hands/left_hand/L_little_link1.STL" />
+    <mesh name="L_little_link2" file="assets/meshes/hands/left_hand/L_little_link2.STL" />
+    <mesh name="L_little_link3" file="assets/meshes/hands/left_hand/L_little_link3.STL" />
+    <mesh name="R_base_link" file="assets/meshes/hands/right_hand/R_base_link.STL" />
+    <mesh name="R_thumb_link1" file="assets/meshes/hands/right_hand/R_thumb_link1.STL" />
+    <mesh name="R_thumb_link2" file="assets/meshes/hands/right_hand/R_thumb_link2.STL" />
+    <mesh name="R_thumb_link3" file="assets/meshes/hands/right_hand/R_thumb_link3.STL" />
+    <mesh name="R_index_link1" file="assets/meshes/hands/right_hand/R_index_link1.STL" />
+    <mesh name="R_index_link2" file="assets/meshes/hands/right_hand/R_index_link2.STL" />
+    <mesh name="R_index_link3" file="assets/meshes/hands/right_hand/R_index_link3.STL" />
+    <mesh name="R_middle_link1" file="assets/meshes/hands/right_hand/R_middle_link1.STL" />
+    <mesh name="R_middle_link2" file="assets/meshes/hands/right_hand/R_middle_link2.STL" />
+    <mesh name="R_little_link1" file="assets/meshes/hands/right_hand/R_little_link1.STL" />
+    <mesh name="R_little_link2" file="assets/meshes/hands/right_hand/R_little_link2.STL" />
+    <mesh name="R_little_link3" file="assets/meshes/hands/right_hand/R_little_link3.STL" />
+  </asset>
+  <worldbody>
+    <body name="Underpan_Base_link" pos="0 0 0.0610021333" gravcomp="0">
+      <joint name="base_free_joint" type="free" damping="20" armature="1" />
+      <inertial pos="-0.057032 -2.1661e-05 0.069035" mass="90.8" fullinertia="0.030091 0.027232 0.021579 1.852e-07 0.0008246 -5.9854e-07" />
+      <geom name="visual_Underpan_Base_link" type="mesh" mesh="Underpan_Base_link" pos="0 0 0" quat="1 0 0 0" rgba="1 0 0 1" contype="0" conaffinity="0" group="1" />
+      <geom name="collision_Underpan_Base_link" type="box" pos="-0.0972791314 6.27338886e-06 0.130290739" size="0.334784538 0.273819074 0.190292872" contype="1" conaffinity="0" group="3" friction="0.05 0.02 0.01" condim="1" priority="1" />
+      <body name="Gento Luna_Leg_J1_Link" pos="0 0 0.1" quat="0.499998163 0.5 0.500001837 0.5" gravcomp="0">
+        <joint name="Gento Luna_Leg_J1_Joint" type="hinge" axis="0 0 1" range="-0.191986218 0.191986218" limited="true" armature="0.05" damping="2.5" />
+        <inertial pos="-0.00305605 0.11879615 0.00090574" mass="6.042" fullinertia="0.13541951 0.011899 0.13138323 -0.00304381 2.039e-05 0.00029731" />
+        <geom name="visual_Gento_Luna_Leg_J1_Link" type="mesh" mesh="Gento_Luna_Leg_J1_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 1 0 1" contype="0" conaffinity="0" group="1" />
+        <geom name="collision_Gento_Luna_Leg_J1_Link" type="box" pos="0 0.0777500011 0" size="0.0780000016 0.16525 0.0869999975" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+        <body name="Gento Luna_Leg_J2_Link" pos="0 0.165 0" quat="0.707105483 0 -0.70710808 0" gravcomp="0">
+          <joint name="Gento Luna_Leg_J2_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-1.57079633 1.57079633" />
+          <inertial pos="-0.00305605 0.11879615 0.00090574" mass="6.04185968" fullinertia="0.43952038 0.02664581 0.43711033 0.00264772 3.002e-05 0.01501651" />
+          <geom name="visual_Gento_Luna_Leg_J2_Link" type="mesh" mesh="Gento_Luna_Leg_J2_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 0 1 1" contype="0" conaffinity="0" group="1" />
+          <geom name="collision_Gento_Luna_Leg_J2_Link" type="box" pos="0 0.149998784 0" size="0.0780000016 0.227997184 0.0962489471" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+          <body name="Gento Luna_Leg_J3_Link" pos="0 0.3 0" quat="1 0 0 0" gravcomp="0">
+            <joint name="Gento Luna_Leg_J3_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-2.44346095 1.04719755" />
+            <inertial pos="-0.00357006 0.14573557 -0.00024996" mass="4.67121672" fullinertia="0.01093259 0.03862616 0.03693718 3.321e-05 -7.126e-05 -6.16e-06" />
+            <geom name="visual_Gento_Luna_Leg_J3_Link" type="mesh" mesh="Gento_Luna_Leg_J3_Link" pos="0 0 0" quat="1 0 0 0" rgba="1 0 0 1" contype="0" conaffinity="0" group="1" />
+            <geom name="collision_Gento_Luna_Leg_J3_Link" type="box" pos="0 0.149999995 0" size="0.0780000016 0.227999996 0.101950541" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+            <body name="Gento Luna_Leg_J4_Link" pos="0 0.3 0" quat="1 0 0 0" gravcomp="0">
+              <joint name="Gento Luna_Leg_J4_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-0.959931089 1.91986218" />
+              <inertial pos="-0.0369066 -7.427e-05 0.30101986" mass="5.90046349" fullinertia="0.01093259 0.03862616 0.03693718 3.321e-05 -7.126e-05 -6.16e-06" />
+              <geom name="visual_Gento_Luna_Leg_J4_Link" type="mesh" mesh="Gento_Luna_Leg_J4_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 1 0 1" contype="0" conaffinity="0" group="1" />
+              <geom name="collision_Gento_Luna_Leg_J4_Link" type="box" pos="-0.00250000134 1.17719173e-06 0" size="0.0765000023 0.0709988251 0.0535000004" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+              <body name="Gento Luna_Leg_J5_Link" pos="0 0 0" quat="0.707105483 0 0.70710808 0" gravcomp="0">
+                <joint name="Gento Luna_Leg_J5_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-0.523598776 0.523598776" />
+                <inertial pos="-0.00154757 0.12766899 -0.01565105" mass="3.76177572" fullinertia="0.09652163 0.02155599 0.08166085 -0.00089293 -4.906e-05 -0.003795" />
+                <geom name="visual_Gento_Luna_Leg_J5_Link" type="mesh" mesh="Gento_Luna_Leg_J5_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 0 1 1" contype="0" conaffinity="0" group="1" />
+                <geom name="collision_Gento_Luna_Leg_J5_Link" type="box" pos="0 0.0577500015 -0.0380630679" size="0.087498948 0.122749999 0.146120694" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                <body name="Gento Luna_Leg_J6_Link" pos="0 0 0" quat="0.499998163 -0.5 -0.5 -0.500001837" gravcomp="0">
+                  <joint name="Gento Luna_Leg_J6_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-2.96705973 2.96705973" />
+                  <inertial pos="-0.00252318 0.00023889 0.35352016" mass="7.69392497" fullinertia="1.05947349 1.04629026 0.06683072 0.00039762 -0.00299102 0.0005628" />
+                  <camera name="rgb_camera" mode="fixed" fovy="65.0"
+      pos="0.25 0.0 0.45"
+      quat="0.57922797 -0.40557979 -0.40557979 0.57922797"/>
+<!--                  绕自身y旋转-90再绕自身z旋转90-->
+                  <geom name="visual_Gento_Luna_Leg_J6_Link" type="mesh" mesh="Gento_Luna_Leg_J6_Link" pos="0 0 0" quat="1 0 0 0" rgba="1 0 0 1" contype="0" conaffinity="0" group="1" />
+                  <geom name="collision_Gento_Luna_Leg_J6_Link" type="box" pos="-8.29994678e-06 -1.78813934e-07 0.365225978" size="0.1335482 0.125250071 0.183225982" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                  <body name="Arm_R1_Link" pos="0 -0.2146 0.3915" quat="0.707105483 0.70710808 0 0" gravcomp="0">
+                    <joint name="Arm_R1_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-3.0194 3.0194" />
+                    <inertial pos="-0.00033175 -0.00426687 -0.03522466" mass="1.537551" fullinertia="0.00366914 0.00394529 0.00131774 1.77e-06 1.342e-05 -0.00023437" />
+                    <geom name="visual_Arm_R1_Link" type="mesh" mesh="Arm_R1_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 1 0 1" contype="0" conaffinity="0" group="1" />
+                    <geom name="collision_Arm_R1_Link" type="box" pos="0 -7.51391053e-06 -0.0285794493" size="0.0508481674 0.0493965298 0.0794205535" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                    <body name="Arm_R2_Link" pos="0 0 0" quat="0.707105483 0.70710808 0 0" gravcomp="0">
+                      <joint name="Arm_R2_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-2.0595 2.0595" />
+                      <inertial pos="-0.00016285 0.04983697 -0.00833367" mass="1.540624" fullinertia="0.00598937 0.00183242 0.00564358 1.663e-05 8.58e-06 0.00064328" />
+                      <geom name="visual_Arm_R2_Link" type="mesh" mesh="Arm_R2_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 0 1 1" contype="0" conaffinity="0" group="1" />
+                      <geom name="collision_Arm_R2_Link" type="box" pos="-5.58793545e-09 0.0389397759 3.7252903e-09" size="0.0521187764 0.0910602342 0.0555749983" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                      <body name="Arm_R3_Link" pos="0 0.264 0" quat="0.707105483 -0.70710808 0 0" gravcomp="0">
+                        <joint name="Arm_R3_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-3.0194 3.0194" />
+                        <inertial pos="0.0082949 -0.00411162 -0.04916618" mass="1.361743" fullinertia="0.00467364 0.00498053 0.00119672 -5.704e-05 0.00058882 -0.00027207" />
+                        <geom name="visual_Arm_R3_Link" type="mesh" mesh="Arm_R3_Link" pos="0 0 0" quat="1 0 0 0" rgba="1 0 0 1" contype="0" conaffinity="0" group="1" />
+                        <geom name="collision_Arm_R3_Link" type="box" pos="0.011742264 7.0836395e-06 -0.0455300827" size="0.0542213693 0.0424719807 0.093469901" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                        <body name="Arm_R4_Link" pos="0.018 0 0" quat="-2.59734347e-06 2.59735301e-06 0.70710808 -0.707105483" gravcomp="0">
+                          <joint name="Arm_R4_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-2.5307 0.7854" />
+                          <inertial pos="0.00852387 -0.03857074 -0.00801541" mass="1.034295" fullinertia="0.00303957 0.00118553 0.00288173 -0.00037917 6.787e-05 -0.00031048" />
+                          <geom name="visual_Arm_R4_Link" type="mesh" mesh="Arm_R4_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 1 0 1" contype="0" conaffinity="0" group="1" />
+                          <geom name="collision_Arm_R4_Link" type="box" pos="0.00503638387 -0.0262898337 -3.7252903e-09" size="0.0525040776 0.0737101752 0.0523858443" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                          <body name="Arm_R5_Link" pos="0.018 -0.264 0" quat="-2.59734347e-06 2.59735301e-06 -0.70710808 0.707105483" gravcomp="0">
+                            <joint name="Arm_R5_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-3.0194 3.0194" />
+                            <inertial pos="0.0005008 -0.00223923 -0.09253416" mass="1.000479" fullinertia="0.00217057 0.00195131 0.00084222 -1.142e-05 6.68e-06 -3.059e-05" />
+                            <geom name="visual_Arm_R5_Link" type="mesh" mesh="Arm_R5_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 0 1 1" contype="0" conaffinity="0" group="1" />
+                            <geom name="collision_Arm_R5_Link" type="box" pos="-1.5925616e-06 -2.29105353e-07 -0.0742668584" size="0.0397666562 0.0490712952 0.0947331414" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                            <body name="Arm_R6_Link" pos="0 0 0" quat="0.499998163 0.5 -0.5 0.500001837" gravcomp="0">
+                              <joint name="Arm_R6_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-1.0472 1.0472" />
+                              <inertial pos="-0.00018634 0.00023824 0.0005829" mass="0.3906229" fullinertia="0.00019943 0.00017163 0.00018567 -1.18e-06 -3e-07 3.53e-06" />
+                              <geom name="visual_Arm_R6_Link" type="mesh" mesh="Arm_R6_Link" pos="0 0 0" quat="1 0 0 0" rgba="1 0 0 1" contype="0" conaffinity="0" group="1" />
+                              <geom name="collision_Arm_R6_Link" type="box" pos="1.58324838e-08 -0.00449999981 0" size="0.0299904505 0.0319999997 0.0350000001" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                              <body name="Arm_R7_Link" pos="0 0 0" quat="0.499998163 0.5 -0.5 0.500001837" gravcomp="0">
+                                <joint name="Arm_R7_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-1.5708 1.5708" />
+                                <inertial pos="-0.00052431 -0.03976234 0.00727342" mass="0.37939" fullinertia="0.00070308 0.00030365 0.00058833 5.97e-06 7.3e-07 0.00012769" />
+                                <geom name="visual_Arm_R7_Link" type="mesh" mesh="Arm_R7_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 1 0 1" contype="0" conaffinity="0" group="1" />
+                                <geom name="collision_Arm_R7_Link" type="box" pos="0.000749999657 -0.0286234636 0.000748569146" size="0.0347500015 0.0583765339 0.0461514313" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                <body name="r_ee" pos="0 -0.087 0">
+                                  <site name="r_ee" size="0.003" rgba="1 0 0 1" />
+                                  <body name="R_hand_base" pos="0 0 0" quat="0.5 0.5 -0.5 0.5" gravcomp="0">
+                                    <inertial pos="0.0039726 -0.021926 0.067524" mass="0.373" fullinertia="0.00018484 0.00026468 0.00014092 -5.1099e-06 -1.1319e-06 6.9239e-06" />
+                                    <geom name="visual_R_base_link" type="mesh" mesh="R_base_link" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                    <geom name="collision_R_base_link" type="box" pos="6.66882843e-05 -0.0166790672 0.0625857864" size="0.0507136676 0.0431790166 0.0625857856" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                    <body name="R_thumb_link1" pos="0.0315 -0.031858 0.0384" quat="1 0 0 0" gravcomp="0">
+                                      <joint name="R_thumb_j1" type="hinge" axis="0 0 -1" range="0 2.182" limited="true" armature="0.002" damping="0.05" />
+                                      <inertial pos="0.012043 -0.00088035 0.017161" mass="0.020436" fullinertia="1.54152866e-06 1.60587134e-06 1.5682e-06 -2.73498912e-07 3.27250685e-07 1.63419011e-07" />
+                                      <geom name="visual_R_thumb_link1" type="mesh" mesh="R_thumb_link1" pos="0 0 0" quat="0.000796326711 0 0 0.999999683" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                      <geom name="collision_R_thumb_link1" type="box" pos="-0.011996516 0.00159999961 0.0158096273" size="0.0219965158 0.0139000001 0.0158096272" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                      <body name="R_thumb_link2" pos="0.024 0.0155 0.0176" quat="0.707105483 0.70710808 0 0" gravcomp="0">
+                                        <joint name="R_thumb_j2" type="hinge" axis="0 0 1" range="-2.618 0" limited="true" armature="0.002" damping="0.05" />
+                                        <inertial pos="0.013248 0.021201 0.014859" mass="0.11925" fullinertia="9.5915e-06 8.0189e-06 9.2199e-06 -1.6122e-06 -3.7798e-11 2.3497e-11" />
+                                        <geom name="visual_R_thumb_link2" type="mesh" mesh="R_thumb_link2" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                        <geom name="collision_R_thumb_link2" type="box" pos="0.0132479812 0.0212012031 0.0154999997" size="0.0232471754 0.0312011964 0.0144999996" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                        <body name="R_thumb_link3" pos="0.026496 0.042402 0.001" quat="1 0 0 0" gravcomp="0">
+                                          <joint name="R_thumb_j3" type="hinge" axis="0 0 1" range="-1.05 1.57" limited="true" armature="0.002" damping="0.05" />
+                                          <inertial pos="0.0090614 0.017566 0.015387" mass="0.03286" fullinertia="3.2742e-06 2.0786e-06 3.3115e-06 -4.4325e-07 -9.7288e-08 -1.1677e-07" />
+                                          <geom name="visual_R_thumb_link3" type="mesh" mesh="R_thumb_link3" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                          <geom name="collision_R_thumb_link3" type="box" pos="0.0101907155 0.0208812682 0.0143765083" size="0.0201437329 0.0308755385 0.0143765079" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                        </body>
+                                      </body>
+                                    </body>
+                                    <body name="R_index_link1" pos="0.0315000341 -0.0207580842 0.086" quat="0.707106781 0.707106781 0 0" gravcomp="0">
+                                      <joint name="R_index_j1" type="hinge" axis="0 0 1" range="-1.57 0" limited="true" armature="0.002" damping="0.05" />
+                                      <inertial pos="0.00054285 0.014975 0.019498" mass="0.025394" fullinertia="2.7079e-06 2.1436e-06 2.667e-06 2.5018e-07 3.8693e-07 -6.2218e-07" />
+                                      <geom name="visual_R_index_link1" type="mesh" mesh="R_index_link1" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                      <geom name="collision_R_index_link1" type="box" pos="-0.00159999961 0.0128392326 0.0190488306" size="0.0139000001 0.0228077164 0.0190488304" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                      <body name="R_index_link2" pos="-0.0155 0.024 0.0281" quat="0.707105483 0 0.70710808 0" gravcomp="0">
+                                        <joint name="R_index_j2" type="hinge" axis="0 0 1" range="0 2.18" limited="true" armature="0.002" damping="0.05" />
+                                        <inertial pos="3.5277e-08 0.025 0.014859" mass="0.11925" fullinertia="1.0599e-05 7.0115e-06 9.22e-06 7.9117e-12 -4.5147e-11 2.0026e-13" />
+                                        <geom name="visual_R_index_link2" type="mesh" mesh="R_index_link2" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                        <geom name="collision_R_index_link2" type="box" pos="0 0.0249997778 0.0154999997" size="0.0129948156 0.0349997776 0.0144999996" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                        <body name="R_index_link3" pos="0 0.05 0.001" quat="1 0 0 0" gravcomp="0">
+                                          <joint name="R_index_j3" type="hinge" axis="0 0 1" range="-1.05 1.57" limited="true" armature="0.002" damping="0.05" />
+                                          <inertial pos="-0.001624 0.019699 0.015387" mass="0.03286" fullinertia="3.3368e-06 2.0159e-06 3.3115e-06 3.4294e-07 -2.0618e-08 -1.5057e-07" />
+                                          <geom name="visual_R_index_link3" type="mesh" mesh="R_index_link3" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                          <geom name="collision_R_index_link3" type="box" pos="-0.000360116363 0.0232494329 0.0143765083" size="0.0133583006 0.0332067008 0.0143765079" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                        </body>
+                                      </body>
+                                    </body>
+                                    <body name="R_middle_link1" pos="-0.018 -0.048858 0.1135" quat="0.499998163 0.5 0.500001837 0.5" gravcomp="0">
+                                      <joint name="R_middle_j1" type="hinge" axis="0 0 1" range="0 2.18" limited="true" armature="0.002" damping="0.05" />
+                                      <inertial pos="3.5301e-08 0.025 0.014859" mass="0.11925" fullinertia="1.0599e-05 7.0115e-06 9.22e-06 7.8652e-12 -4.5242e-11 9.6764e-14" />
+                                      <geom name="visual_R_middle_link1" type="mesh" mesh="R_middle_link1" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                      <geom name="collision_R_middle_link1" type="box" pos="0 0.0249997778 0.0154999997" size="0.0129948156 0.0349997776 0.0144999996" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                      <body name="R_middle_link2" pos="0 0.05 0.001" quat="1 0 0 0" gravcomp="0">
+                                        <joint name="R_middle_j2" type="hinge" axis="0 0 1" range="-1.05 1.57" limited="true" armature="0.002" damping="0.05" />
+                                        <inertial pos="-0.001624 0.019699 0.015387" mass="0.03286" fullinertia="3.3368e-06 2.0159e-06 3.3115e-06 3.4294e-07 -2.0618e-08 -1.5057e-07" />
+                                        <geom name="visual_R_middle_link2" type="mesh" mesh="R_middle_link2" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                        <geom name="collision_R_middle_link2" type="box" pos="-0.000360116363 0.0232494329 0.0143765083" size="0.0133583006 0.0332067008 0.0143765079" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                      </body>
+                                    </body>
+                                    <body name="R_little_link1" pos="-0.0315 -0.020758 0.08" quat="0.707105483 0.70710808 0 0" gravcomp="0">
+                                      <joint name="R_little_j1" type="hinge" axis="0 0 1" range="0 3.14" limited="true" armature="0.002" damping="0.05" />
+                                      <inertial pos="-0.0033432 0.015178 0.019587" mass="0.025089" fullinertia="2.6147e-06 2.147e-06 2.6391e-06 2.9798e-07 4.0466e-07 -5.8866e-07" />
+                                      <geom name="visual_R_little_link1" type="mesh" mesh="R_little_link1" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                      <geom name="collision_R_little_link1" type="box" pos="-0.00525511289 0.0128520671 0.0190391094" size="0.0152448877 0.0227948818 0.0190391093" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                      <body name="R_little_link2" pos="-0.0205 0.024 0.0281" quat="0.707105483 0 0.70710808 0" gravcomp="0">
+                                        <joint name="R_little_j2" type="hinge" axis="0 0 1" range="0 2.18" limited="true" armature="0.002" damping="0.05" />
+                                        <inertial pos="3.5301e-08 0.025 0.014859" mass="0.11925" fullinertia="1.0599e-05 7.0115e-06 9.22e-06 7.8652e-12 -4.5242e-11 9.6764e-14" />
+                                        <geom name="visual_R_little_link2" type="mesh" mesh="R_little_link2" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                        <geom name="collision_R_little_link2" type="box" pos="0 0.0249997778 0.0154999997" size="0.0129948156 0.0349997776 0.0144999996" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                        <body name="R_little_link3" pos="0 0.05 0.001" quat="1 0 0 0" gravcomp="0">
+                                          <joint name="R_little_j3" type="hinge" axis="0 0 1" range="-1.05 1.57" limited="true" armature="0.002" damping="0.05" />
+                                          <inertial pos="-0.001624 0.019699 0.015387" mass="0.03286" fullinertia="3.3368e-06 2.0159e-06 3.3115e-06 3.4294e-07 -2.0618e-08 -1.5057e-07" />
+                                          <geom name="visual_R_little_link3" type="mesh" mesh="R_little_link3" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                          <geom name="collision_R_little_link3" type="box" pos="-0.000360116363 0.0232494329 0.0143765083" size="0.0133583006 0.0332067008 0.0143765079" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                        </body>
+                                      </body>
+                                    </body>
+                                  </body>
+                                </body>
+                              </body>
+                            </body>
+                          </body>
+                        </body>
+                      </body>
+                    </body>
+                  </body>
+                  <body name="Arm_L1_Link" pos="0 0.2146 0.3915" quat="0.707105483 -0.70710808 0 0" gravcomp="0">
+                    <joint name="Arm_L1_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-3.0194 3.0194" />
+                    <inertial pos="-0.00033175 -0.00426687 -0.03522466" mass="1.537551" fullinertia="0.00366914 0.00394529 0.00131774 1.77e-06 1.342e-05 -0.00023437" />
+                    <geom name="visual_Arm_L1_Link" type="mesh" mesh="Arm_L1_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 1 0 1" contype="0" conaffinity="0" group="1" />
+                    <geom name="collision_Arm_L1_Link" type="box" pos="0 -7.51391053e-06 -0.0285794493" size="0.0508481674 0.0493965298 0.0794205535" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                    <body name="Arm_L2_Link" pos="0 0 0" quat="-2.59734347e-06 2.59735301e-06 -0.70710808 0.707105483" gravcomp="0">
+                      <joint name="Arm_L2_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-2.0595 2.0595" />
+                      <inertial pos="-0.00016285 0.04983697 -0.00833367" mass="1.540624" fullinertia="0.00598937 0.00183242 0.00564358 1.663e-05 8.58e-06 0.00064328" />
+                      <geom name="visual_Arm_L2_Link" type="mesh" mesh="Arm_L2_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 0 1 1" contype="0" conaffinity="0" group="1" />
+                      <geom name="collision_Arm_L2_Link" type="box" pos="5.58793545e-09 -0.0389397759 3.7252903e-09" size="0.0521187764 0.0910602342 0.0555749983" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                      <body name="Arm_L3_Link" pos="0 -0.264 0" quat="-2.59734347e-06 2.59735301e-06 0.70710808 -0.707105483" gravcomp="0">
+                        <joint name="Arm_L3_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-3.0194 3.0194" />
+                        <inertial pos="0.0082949 -0.00411162 -0.04916618" mass="1.361743" fullinertia="0.00467364 0.00498053 0.00119672 -5.704e-05 0.00058882 -0.00027207" />
+                        <geom name="visual_Arm_L3_Link" type="mesh" mesh="Arm_L3_Link" pos="0 0 0" quat="1 0 0 0" rgba="1 0 0 1" contype="0" conaffinity="0" group="1" />
+                        <geom name="collision_Arm_L3_Link" type="box" pos="0.011742264 7.0836395e-06 -0.0455300827" size="0.0542213693 0.0424719807 0.093469901" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                        <body name="Arm_L4_Link" pos="0.018 0 0" quat="-2.59734347e-06 2.59735301e-06 -0.70710808 0.707105483" gravcomp="0">
+                          <joint name="Arm_L4_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-2.5307 0.7854" />
+                          <inertial pos="0.00852387 -0.03857074 -0.00801541" mass="1.034295" fullinertia="0.00303957 0.00118553 0.00288173 -0.00037917 6.787e-05 -0.00031048" />
+                          <geom name="visual_Arm_L4_Link" type="mesh" mesh="Arm_L4_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 1 0 1" contype="0" conaffinity="0" group="1" />
+                          <geom name="collision_Arm_L4_Link" type="box" pos="0.00503638387 -0.0262898337 -3.7252903e-09" size="0.0525040776 0.0737101752 0.0523858443" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                          <body name="Arm_L5_Link" pos="0.018 -0.264 0" quat="-2.59734347e-06 2.59735301e-06 0.70710808 -0.707105483" gravcomp="0">
+                            <joint name="Arm_L5_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-3.0194 3.0194" />
+                            <inertial pos="-0.0005008 0.00223923 -0.09253416" mass="1.000479" fullinertia="0.00217057 0.00195131 0.00084222 -1.142e-05 -6.68e-06 3.059e-05" />
+                            <geom name="visual_Arm_L5_Link" type="mesh" mesh="Arm_L5_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 0 1 1" contype="0" conaffinity="0" group="1" />
+                            <geom name="collision_Arm_L5_Link" type="box" pos="1.5925616e-06 -4.54485416e-07 -0.0742668584" size="0.0397666562 0.0490706116 0.0947331414" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                            <body name="Arm_L6_Link" pos="0 0 0" quat="0.499998163 0.5 -0.5 0.500001837" gravcomp="0">
+                              <joint name="Arm_L6_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-1.0472 1.0472" />
+                              <inertial pos="0.00018634 0.00023824 -0.0005829" mass="0.3906229" fullinertia="0.00019943 0.00017163 0.00018567 1.18e-06 -3e-07 -3.53e-06" />
+                              <geom name="visual_Arm_L6_Link" type="mesh" mesh="Arm_L6_Link" pos="0 0 0" quat="1 0 0 0" rgba="1 0 0 1" contype="0" conaffinity="0" group="1" />
+                              <geom name="collision_Arm_L6_Link" type="box" pos="1.58324838e-08 0.00449999981 0" size="0.0299904505 0.0319999997 0.0350000001" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                              <body name="Arm_L7_Link" pos="0 0 0" quat="0.499998163 0.5 -0.5 0.500001837" gravcomp="0">
+                                <joint name="Arm_L7_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-1.5708 1.5708" />
+                                <inertial pos="-0.00052431 -0.03976234 0.00727342" mass="0.37939" fullinertia="0.00070308 0.00030365 0.00058833 5.97e-06 7.3e-07 0.00012769" />
+                                <geom name="visual_Arm_L7_Link" type="mesh" mesh="Arm_L7_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 1 0 1" contype="0" conaffinity="0" group="1" />
+                                <geom name="collision_Arm_L7_Link" type="box" pos="0.000749999657 -0.0286234636 -0.000748569146" size="0.0347500015 0.0583765339 0.0461514313" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                <body name="l_ee" pos="0 -0.087 0">
+                                  <site name="l_ee" size="0.003" rgba="1 0 0 1" />
+                                  <body name="L_hand_base" pos="0 0 0" quat="0.5 0.5 0.5 -0.5" gravcomp="0">
+                                    <inertial pos="-0.0041481 -0.021938 0.067528" mass="0.373" fullinertia="0.00018466 0.00026432 0.00014072 -1.0056e-06 -9.0897e-06 6.9047e-06" />
+                                    <geom name="visual_L_base_link" type="mesh" mesh="L_base_link" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                    <geom name="collision_L_base_link" type="box" pos="-6.64759427e-05 -0.0166790672 0.0625857864" size="0.0507136676 0.0431790166 0.0625857856" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                    <body name="L_thumb_link1" pos="-0.031492 -0.031853 0.0384" quat="1 0 0 0" gravcomp="0">
+                                      <joint name="L_thumb_j1" type="hinge" axis="0 0 1" range="0 2.182" limited="true" armature="0.002" damping="0.05" />
+                                      <inertial pos="-0.012037 -0.00088697 0.01722" mass="0.020283" fullinertia="1.5364e-06 1.5999e-06 1.5673e-06 2.736e-07 3.2696e-07 -1.6394e-07" />
+                                      <geom name="visual_L_thumb_link1" type="mesh" mesh="L_thumb_link1" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                      <geom name="collision_L_thumb_link1" type="box" pos="-0.011996516 0.00159999961 0.0158096273" size="0.0219965158 0.0139000001 0.0158096272" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                      <body name="L_thumb_link2" pos="-0.024 0.0155 0.0176" quat="0.707105483 0.70710808 0 0" gravcomp="0">
+                                        <joint name="L_thumb_j2" type="hinge" axis="0 0 -1" range="-2.62 0" limited="true" armature="0.002" damping="0.05" />
+                                        <inertial pos="-0.013248 0.021201 0.014859" mass="0.11925" fullinertia="9.5915e-06 8.0189e-06 9.2199e-06 1.6122e-06 3.767e-11 2.3525e-11" />
+                                        <geom name="visual_L_thumb_link2" type="mesh" mesh="L_thumb_link2" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                        <geom name="collision_L_thumb_link2" type="box" pos="-0.0132479807 0.0212012031 0.0154999997" size="0.0232471758 0.0312012075 0.0144999996" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                        <body name="L_thumb_link3" pos="-0.026496 0.042402 0.001" quat="1 0 0 0" gravcomp="0">
+                                          <joint name="L_thumb_j3" type="hinge" axis="0 0 -1" range="-1.05 1.57" limited="true" armature="0.002" damping="0.05" />
+                                          <inertial pos="-0.0090616 0.017566 0.015458" mass="0.032862" fullinertia="3.2743e-06 2.0788e-06 3.3116e-06 4.4324e-07 8.893e-08 -1.112e-07" />
+                                          <geom name="visual_L_thumb_link3" type="mesh" mesh="L_thumb_link3" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                          <geom name="collision_L_thumb_link3" type="box" pos="-0.0101907155 0.0208812682 0.0143765079" size="0.0201437329 0.0308755385 0.0143765083" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                        </body>
+                                      </body>
+                                    </body>
+                                    <body name="L_index_link1" pos="-0.0315 -0.020758 0.086" quat="0.707105483 0.70710808 0 0" gravcomp="0">
+                                      <joint name="L_index_j1" type="hinge" axis="0 0 -1" range="-1.57 0" limited="true" armature="0.002" damping="0.05" />
+                                      <inertial pos="-0.00054283 0.014975 0.019498" mass="0.025394" fullinertia="2.7079e-06 2.1436e-06 2.667e-06 -2.5018e-07 -3.8693e-07 -6.2218e-07" />
+                                      <geom name="visual_L_index_link1" type="mesh" mesh="L_index_link1" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                      <geom name="collision_L_index_link1" type="box" pos="0.00159999961 0.0128392326 0.0190488306" size="0.0139000001 0.0228077164 0.0190488304" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                      <body name="L_index_link2" pos="0.0155 0.024 0.0281" quat="0.707105483 0 0.70710808 0" gravcomp="0">
+                                        <joint name="L_index_j2" type="hinge" axis="0 0 1" range="0 2.18" limited="true" armature="0.002" damping="0.05" />
+                                        <inertial pos="-3.5328e-08 0.025 -0.014859" mass="0.11925" fullinertia="1.0599e-05 7.0115e-06 9.22e-06 -7.9138e-12 -4.5358e-11 -2.7198e-16" />
+                                        <geom name="visual_L_index_link2" type="mesh" mesh="L_index_link2" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                        <geom name="collision_L_index_link2" type="box" pos="0 0.0249997778 -0.0154999997" size="0.0129948156 0.0349997776 0.0144999996" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                        <body name="L_index_link3" pos="0 0.05 -0.001" quat="1 0 0 0" gravcomp="0">
+                                          <joint name="L_index_j3" type="hinge" axis="0 0 1" range="-1.05 1.57" limited="true" armature="0.002" damping="0.05" />
+                                          <inertial pos="-0.0016236 0.019698 -0.015458" mass="0.032861" fullinertia="3.3369e-06 2.0161e-06 3.3115e-06 3.4291e-07 1.6492e-08 1.4144e-07" />
+                                          <geom name="visual_L_index_link3" type="mesh" mesh="L_index_link3" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                          <geom name="collision_L_index_link3" type="box" pos="-0.000360116363 0.0232494329 -0.0143765079" size="0.0133583006 0.0332067008 0.0143765083" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                        </body>
+                                      </body>
+                                    </body>
+                                    <body name="L_middle_link1" pos="0.018 -0.048858 0.1135" quat="0.499998163 0.5 0.500001837 0.5" gravcomp="0">
+                                      <joint name="L_middle_j1" type="hinge" axis="0 0 1" range="0 2.18" limited="true" armature="0.002" damping="0.05" />
+                                      <inertial pos="-3.5355e-08 0.025 -0.014859" mass="0.11925" fullinertia="1.0599e-05 7.0115e-06 9.22e-06 -7.9707e-12 -4.5242e-11 9.622e-14" />
+                                      <geom name="visual_L_middle_link1" type="mesh" mesh="L_middle_link1" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                      <geom name="collision_L_middle_link1" type="box" pos="0 0.0249997778 -0.0154999997" size="0.0129948156 0.0349997776 0.0144999996" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                      <body name="L_middle_link2" pos="0 0.05 -0.001" quat="1 0 0 0" gravcomp="0">
+                                        <joint name="L_middle_j2" type="hinge" axis="0 0 1" range="-1.05 1.57" limited="true" armature="0.002" damping="0.05" />
+                                        <inertial pos="-0.0016236 0.019698 -0.015458" mass="0.032861" fullinertia="3.3369e-06 2.0161e-06 3.3115e-06 3.4292e-07 1.6493e-08 1.4144e-07" />
+                                        <geom name="visual_L_middle_link2" type="mesh" mesh="L_middle_link2" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                        <geom name="collision_L_middle_link2" type="box" pos="-0.000360116363 0.0232494329 -0.0143765079" size="0.0133583006 0.0332067008 0.0143765083" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                      </body>
+                                    </body>
+                                    <body name="L_little_link1" pos="0.0315 -0.020758 0.08" quat="0.707105483 0.70710808 0 0" gravcomp="0">
+                                      <joint name="L_little_j1" type="hinge" axis="0 0 -1" range="0 3.14" limited="true" armature="0.002" damping="0.05" />
+                                      <inertial pos="0.0033432 0.015178 0.019587" mass="0.025089" fullinertia="2.6147e-06 2.147e-06 2.6391e-06 -2.9798e-07 -4.0466e-07 -5.8866e-07" />
+                                      <geom name="visual_L_little_link1" type="mesh" mesh="L_little_link1" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                      <geom name="collision_L_little_link1" type="box" pos="0.00525511289 0.0128520671 0.0190391094" size="0.0152448877 0.0227948818 0.0190391093" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                      <body name="L_little_link2" pos="0.0205 0.024 0.0281" quat="0.707105483 0 0.70710808 0" gravcomp="0">
+                                        <joint name="L_little_j2" type="hinge" axis="0 0 1" range="0 2.18" limited="true" armature="0.002" damping="0.05" />
+                                        <inertial pos="-3.5376e-08 0.025 -0.014859" mass="0.11925" fullinertia="1.0599e-05 7.0115e-06 9.22e-06 -7.9138e-12 -4.5169e-11 2.067e-13" />
+                                        <geom name="visual_L_little_link2" type="mesh" mesh="L_little_link2" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                        <geom name="collision_L_little_link2" type="box" pos="0 0.0249997778 -0.0154999997" size="0.0129948156 0.0349997776 0.0144999996" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                        <body name="L_little_link3" pos="0 0.05 -0.001" quat="1 0 0 0" gravcomp="0">
+                                          <joint name="L_little_j3" type="hinge" axis="0 0 1" range="-1.05 1.57" limited="true" armature="0.002" damping="0.05" />
+                                          <inertial pos="-0.0016236 0.019698 -0.015458" mass="0.032861" fullinertia="3.3369e-06 2.0161e-06 3.3115e-06 3.4292e-07 1.6493e-08 1.4144e-07" />
+                                          <geom name="visual_L_little_link3" type="mesh" mesh="L_little_link3" pos="0 0 0" quat="1 0 0 0" rgba="0.75294 0.75294 0.75294 1" contype="0" conaffinity="0" group="1" />
+                                          <geom name="collision_L_little_link3" type="box" pos="-0.000360116363 0.0232494329 -0.0143765079" size="0.0133583006 0.0332067008 0.0143765083" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                                        </body>
+                                      </body>
+                                    </body>
+                                  </body>
+                                </body>
+                              </body>
+                            </body>
+                          </body>
+                        </body>
+                      </body>
+                    </body>
+                  </body>
+                  <body name="Head_J1_Link" pos="-0.013496 0 0.49898" quat="0.707105483 0.70710808 0 0" gravcomp="0">
+                    <joint name="Head_J1_joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-0.523595776 0.523595776" />
+                    <inertial pos="9.4918e-07 0.017441 -0.0043026" mass="0.7216" fullinertia="0.0011491 0.00077345 0.0011134 -2.3245e-08 -1.802e-09 -5.6833e-05" />
+                    <geom name="visual_Head_J1_Link" type="mesh" mesh="Head_J1_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 1 0 1" contype="0" conaffinity="0" group="1" />
+                    <geom name="collision_Head_J1_Link" type="box" pos="0 0.0157500021 0" size="0.0434999987 0.0592500009 0.0485000014" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                    <body name="Head_J2_Link" pos="0 0 0" quat="0.707105483 -0.70710808 0 0" gravcomp="0">
+                      <joint name="Head_J2_Joint" type="hinge" axis="0 0 1" limited="true" armature="0.05" damping="2.5" range="-1.57079633 1.57079633" />
+                      <inertial pos="0.052332 0.00010809 0.15733" mass="2.3905" fullinertia="0.0083456 0.010445 0.0071811 -9.1023e-06 -0.0012055 -3.2339e-06" />
+                      <geom name="visual_Head_J2_Link" type="mesh" mesh="Head_J2_Link" pos="0 0 0" quat="1 0 0 0" rgba="0 0 1 1" contype="0" conaffinity="0" group="1" />
+                      <geom name="collision_Head_J2_Link" type="box" pos="0.0288539045 0.000191170722 0.168778323" size="0.0834844373 0.07412095 0.106189497" contype="1" conaffinity="0" group="3" friction="0.8 0.02 0.01" />
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+
+  </worldbody>
+  <actuator>
+    <velocity name="act_base_vx" joint="base_free_joint" kv="4000" gear="1 0 0 0 0 0" ctrlrange="-2 2" />
+    <velocity name="act_base_vy" joint="base_free_joint" kv="4000" gear="0 1 0 0 0 0" ctrlrange="-2 2" />
+    <velocity name="act_base_wx" joint="base_free_joint" kv="20000" gear="0 0 0 1 0 0" ctrlrange="0 0" />
+    <velocity name="act_base_wy" joint="base_free_joint" kv="20000" gear="0 0 0 0 1 0" ctrlrange="0 0" />
+    <velocity name="act_base_wz" joint="base_free_joint" kv="2000" gear="0 0 0 0 0 1" ctrlrange="0 0" />
+    <position name="act_gento_luna_leg_j1_joint" joint="Gento Luna_Leg_J1_Joint" kp="16000" kv="1500" ctrlrange="-0.191986218 0.191986218" />
+    <position name="act_gento_luna_leg_j2_joint" joint="Gento Luna_Leg_J2_Joint" kp="30000" kv="1750" ctrlrange="-1.57079633 1.57079633" />
+    <position name="act_gento_luna_leg_j3_joint" joint="Gento Luna_Leg_J3_Joint" kp="16000" kv="1000" ctrlrange="-2.44346095 1.04719755" />
+    <position name="act_gento_luna_leg_j4_joint" joint="Gento Luna_Leg_J4_Joint" kp="12000" kv="600" ctrlrange="-0.959931089 1.91986218" />
+    <position name="act_gento_luna_leg_j5_joint" joint="Gento Luna_Leg_J5_Joint" kp="12000" kv="775" ctrlrange="-0.523598776 0.523598776" />
+    <position name="act_gento_luna_leg_j6_joint" joint="Gento Luna_Leg_J6_Joint" kp="8000" kv="360" ctrlrange="-2.96705973 2.96705973" />
+    <position name="act_arm_r1_joint" joint="Arm_R1_Joint" kp="1000" kv="60" ctrlrange="-3.0194 3.0194" />
+    <position name="act_arm_r2_joint" joint="Arm_R2_Joint" kp="1500" kv="100" ctrlrange="-2.0595 2.0595" />
+    <position name="act_arm_r3_joint" joint="Arm_R3_Joint" kp="1000" kv="60" ctrlrange="-3.0194 3.0194" />
+    <position name="act_arm_r4_joint" joint="Arm_R4_Joint" kp="1200" kv="80" ctrlrange="-2.5307 0.7854" />
+    <position name="act_arm_r5_joint" joint="Arm_R5_Joint" kp="800" kv="50" ctrlrange="-3.0194 3.0194" />
+    <position name="act_arm_r6_joint" joint="Arm_R6_Joint" kp="800" kv="50" ctrlrange="-1.0472 1.0472" />
+    <position name="act_arm_r7_joint" joint="Arm_R7_Joint" kp="800" kv="50" ctrlrange="-1.5708 1.5708" />
+    <position name="act_arm_l1_joint" joint="Arm_L1_Joint" kp="1000" kv="60" ctrlrange="-3.0194 3.0194" />
+    <position name="act_arm_l2_joint" joint="Arm_L2_Joint" kp="1500" kv="100" ctrlrange="-2.0595 2.0595" />
+    <position name="act_arm_l3_joint" joint="Arm_L3_Joint" kp="1000" kv="60" ctrlrange="-3.0194 3.0194" />
+    <position name="act_arm_l4_joint" joint="Arm_L4_Joint" kp="1200" kv="80" ctrlrange="-2.5307 0.7854" />
+    <position name="act_arm_l5_joint" joint="Arm_L5_Joint" kp="800" kv="50" ctrlrange="-3.0194 3.0194" />
+    <position name="act_arm_l6_joint" joint="Arm_L6_Joint" kp="800" kv="50" ctrlrange="-1.0472 1.0472" />
+    <position name="act_arm_l7_joint" joint="Arm_L7_Joint" kp="800" kv="50" ctrlrange="-1.5708 1.5708" />
+    <position name="act_head_j1_joint" joint="Head_J1_joint" kp="1000" kv="60" ctrlrange="-0.523595776 0.523595776" />
+    <position name="act_head_j2_joint" joint="Head_J2_Joint" kp="800" kv="50" ctrlrange="-1.57079633 1.57079633" />
+    <position name="act_l_thumb_j1" joint="L_thumb_j1" kp="300" kv="2.5" ctrlrange="0 2.182" />
+    <position name="act_l_thumb_j2" joint="L_thumb_j2" kp="250" kv="2" ctrlrange="-2.62 0" />
+    <position name="act_l_thumb_j3" joint="L_thumb_j3" kp="150" kv="1.2" ctrlrange="-1.05 1.57" />
+    <position name="act_l_index_j1" joint="L_index_j1" kp="300" kv="2.5" ctrlrange="-1.57 0" />
+    <position name="act_l_index_j2" joint="L_index_j2" kp="250" kv="2" ctrlrange="0 2.18" />
+    <position name="act_l_index_j3" joint="L_index_j3" kp="150" kv="1.2" ctrlrange="-1.05 1.57" />
+    <position name="act_l_middle_j1" joint="L_middle_j1" kp="300" kv="2.5" ctrlrange="0 2.18" />
+    <position name="act_l_middle_j2" joint="L_middle_j2" kp="150" kv="1.2" ctrlrange="-1.05 1.57" />
+    <position name="act_l_little_j1" joint="L_little_j1" kp="250" kv="2" ctrlrange="0 3.14" />
+    <position name="act_l_little_j2" joint="L_little_j2" kp="200" kv="1.6" ctrlrange="0 2.18" />
+    <position name="act_l_little_j3" joint="L_little_j3" kp="120" kv="1" ctrlrange="-1.05 1.57" />
+    <position name="act_r_thumb_j1" joint="R_thumb_j1" kp="300" kv="2.5" ctrlrange="0 2.182" />
+    <position name="act_r_thumb_j2" joint="R_thumb_j2" kp="250" kv="2" ctrlrange="-2.618 0" />
+    <position name="act_r_thumb_j3" joint="R_thumb_j3" kp="150" kv="1.2" ctrlrange="-1.05 1.57" />
+    <position name="act_r_index_j1" joint="R_index_j1" kp="300" kv="2.5" ctrlrange="-1.57 0" />
+    <position name="act_r_index_j2" joint="R_index_j2" kp="250" kv="2" ctrlrange="0 2.18" />
+    <position name="act_r_index_j3" joint="R_index_j3" kp="150" kv="1.2" ctrlrange="-1.05 1.57" />
+    <position name="act_r_middle_j1" joint="R_middle_j1" kp="300" kv="2.5" ctrlrange="0 2.18" />
+    <position name="act_r_middle_j2" joint="R_middle_j2" kp="150" kv="1.2" ctrlrange="-1.05 1.57" />
+    <position name="act_r_little_j1" joint="R_little_j1" kp="250" kv="2" ctrlrange="0 3.14" />
+    <position name="act_r_little_j2" joint="R_little_j2" kp="200" kv="1.6" ctrlrange="0 2.18" />
+    <position name="act_r_little_j3" joint="R_little_j3" kp="120" kv="1" ctrlrange="-1.05 1.57" />
+  </actuator>
+</mujoco>

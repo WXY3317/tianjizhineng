@@ -1,0 +1,92 @@
+L:
+  joints:
+  - name: L_thumb_j1
+    range:
+    - 0.0
+    - 2.182
+  - name: L_thumb_j2
+    range:
+    - -2.62
+    - 0.0
+  - name: L_thumb_j3
+    range:
+    - -1.05
+    - 1.57
+  - name: L_index_j1
+    range:
+    - -1.57
+    - 0.0
+  - name: L_index_j2
+    range:
+    - 0.0
+    - 2.18
+  - name: L_index_j3
+    range:
+    - -1.05
+    - 1.57
+  - name: L_middle_j1
+    range:
+    - 0.0
+    - 2.18
+  - name: L_middle_j2
+    range:
+    - -1.05
+    - 1.57
+  - name: L_little_j1
+    range:
+    - 0.0
+    - 3.14
+  - name: L_little_j2
+    range:
+    - 0.0
+    - 2.18
+  - name: L_little_j3
+    range:
+    - -1.05
+    - 1.57
+R:
+  joints:
+  - name: R_thumb_j1
+    range:
+    - 0.0
+    - 2.182
+  - name: R_thumb_j2
+    range:
+    - -2.618
+    - 0.0
+  - name: R_thumb_j3
+    range:
+    - -1.05
+    - 1.57
+  - name: R_index_j1
+    range:
+    - -1.57
+    - 0.0
+  - name: R_index_j2
+    range:
+    - 0.0
+    - 2.18
+  - name: R_index_j3
+    range:
+    - -1.05
+    - 1.57
+  - name: R_middle_j1
+    range:
+    - 0.0
+    - 2.18
+  - name: R_middle_j2
+    range:
+    - -1.05
+    - 1.57
+  - name: R_little_j1
+    range:
+    - 0.0
+    - 3.14
+  - name: R_little_j2
+    range:
+    - 0.0
+    - 2.18
+  - name: R_little_j3
+    range:
+    - -1.05
+    - 1.57
