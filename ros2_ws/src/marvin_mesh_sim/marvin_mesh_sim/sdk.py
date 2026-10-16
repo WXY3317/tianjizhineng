@@ -1,4 +1,4 @@
-"""Python API: original vendor arm SDK + model-specific FK/IK + hand simulator."""
+"""Python API: Gento FK/IK expressed in J4 + original SDK controls + hand simulator."""
 import json
 from pathlib import Path
 import socket
@@ -6,8 +6,9 @@ import uuid
 
 import numpy as np
 
-from marvin_sim.client import SDKClient
-from .kinematics import MeshKinematics
+from .gento_robot_client import GentoRobotClient
+from .gento_kinematics import GentoMeshKinematics
+from .frames import J4Frames,J4_FRAME
 
 
 class MeshSimulationSDK:
@@ -15,8 +16,12 @@ class MeshSimulationSDK:
         if model_root is None:
             from ament_index_python.packages import get_package_share_directory
             model_root=get_package_share_directory('marvin_mesh_sim')
-        self.kinematics=MeshKinematics(sdk_root,Path(model_root))
-        self.client=SDKClient(self.kinematics,sim_ip=sim_ip)
+        root=Path(sdk_root)
+        if not (root/'PYTHON_SDK/GentoRobot.py').exists():root=root.parent/'tianji-robot-SDK'
+        self.reference_frame=J4_FRAME
+        self.frames=J4Frames(model_root)
+        self.kinematics=GentoMeshKinematics(root,Path(model_root))
+        self.client=GentoRobotClient(self.kinematics,model_root,sim_ip=sim_ip)
         self.robot=self.client.robot
         self.hand_socket=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
         self.hand_socket.settimeout(1.)
@@ -34,12 +39,17 @@ class MeshSimulationSDK:
     def fk(self,arm,joints_deg=None):
         a=self.arm_index(arm)
         joints_deg=self.get_joint_positions(arm) if joints_deg is None else joints_deg
-        return self.kinematics.fk(a,np.radians(joints_deg))
+        self.client.read()
+        body=self.frames.body_from_rt(self.client.feedback)
+        return self.frames.fk(a,self.kinematics.fk(a,np.radians(joints_deg)),body)
 
     def ik(self,arm,pose_m,reference_deg=None):
         a=self.arm_index(arm)
         reference_deg=self.get_joint_positions(arm) if reference_deg is None else reference_deg
-        return np.degrees(self.kinematics.ik(a,pose_m,np.radians(reference_deg))).tolist()
+        self.client.read()
+        body=self.frames.body_from_rt(self.client.feedback,require_stationary=True)
+        local=self.frames.ik_target(a,pose_m,body)
+        return np.degrees(self.kinematics.ik(a,local,np.radians(reference_deg))).tolist()
 
     def move_joints(self,arm,joints_deg):
         self.client.move({self.arm_index(arm):np.radians(joints_deg)})

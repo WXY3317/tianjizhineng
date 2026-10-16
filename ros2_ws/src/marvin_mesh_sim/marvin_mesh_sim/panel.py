@@ -1,4 +1,6 @@
 import json
+import time
+import numpy as np
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk
@@ -9,19 +11,25 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 
 from marvin_sim.panel import Panel
-from .kinematics import MeshKinematics
+from .gento_kinematics import GentoMeshKinematics
 from .hands import closed_posture
+from .frames import J4Frames,J4_FRAME
 
 
 class MeshPanel(Panel):
     def __init__(self):
-        super().__init__(kine_factory=MeshKinematics)
+        self.j4_body=None;self.j4_refreshed=0.
+        super().__init__(kine_factory=lambda root,model:GentoMeshKinematics(
+            root if (Path(root)/'PYTHON_SDK/GentoRobot.py').exists() else Path(root).parent/'tianji-robot-SDK',model),
+                         sdk_label='原版 Gento SDK · 双臂正逆解统一参考躯干 J4',
+                         pose_frame=J4_FRAME,initialize_pose=False)
         self.root.title('整机仿真 · 双臂 SDK 正逆解与控制')
         self.hand_window=tk.Toplevel(self.root)
         self.hand_window.title('灵巧手 · 每侧 4 指 / 11 关节')
         self.hand_window.geometry('950x720')
         self.hand_window.protocol('WM_DELETE_WINDOW',self.hand_window.withdraw)
         model=Path(self.get_parameter('description_root').value)
+        self.frames=J4Frames(model)
         import yaml
         config=yaml.safe_load((model/'config/hands.yaml').read_text())
         report=json.loads((model/'config/asset_report.json').read_text())
@@ -31,12 +39,12 @@ class MeshPanel(Panel):
         else:
             banner=f"已读取全部 {report['mesh_count']} 个真实 STL：底盘、躯干、头部、双臂和双手，无占位外形。"
         ttk.Label(self.hand_window,text=banner,wraplength=900).pack(padx=15,pady=12)
-        ttk.Label(self.hand_window,text='手部控制是仿真扩展接口；机械臂运动使用原版厂商 SDK。').pack(pady=3)
+        ttk.Label(self.hand_window,text='SG100 原版 SDK 控制：拇指 J1–3、食指 J4–6、中指 J7–8、无名指 J9–11。').pack(pady=3)
         self.hand_pub=self.create_publisher(JointState,'/marvin_mesh_sim/hand_targets',10)
         self.create_subscription(JointState,'/marvin_mesh_sim/hand_states',self.hand_feedback,10)
         self.create_subscription(String,'/marvin_mesh_sim/hand_status',
                                  lambda m:self.hand_message.set(m.data),10)
-        self.hand_message=tk.StringVar(value='手指目标单位：rad；滑块不会自动发送运动')
+        self.hand_message=tk.StringVar(value='SG100 目标单位：度；滑块不会自动发送运动')
         ttk.Label(self.hand_window,textvariable=self.hand_message,wraplength=900).pack(pady=5)
         self.hand_names,self.hand_vars,self.hand_current,self.hand_text={},{},{},{}
         body=ttk.Frame(self.hand_window);body.pack(fill='both',expand=True,padx=10)
@@ -47,9 +55,10 @@ class MeshPanel(Panel):
             self.hand_vars[side]=[]
             for joint in config[side]['joints']:
                 row=ttk.Frame(frame);row.pack(fill='x',pady=3)
-                ttk.Label(row,text=joint['name'],width=15).pack(side='left')
+                finger={'FINGER_THUMB':'拇指','FINGER_INDEX':'食指','FINGER_MIDDLE':'中指','FINGER_RING':'无名指'}[joint['sdk_finger']]
+                ttk.Label(row,text=f"J{joint['sdk_id']} {finger}{joint['finger_joint']} (°)",width=19).pack(side='left')
                 var=tk.DoubleVar(value=0.)
-                ttk.Scale(row,from_=joint['range'][0],to=joint['range'][1],variable=var).pack(side='left',fill='x',expand=True)
+                ttk.Scale(row,from_=math.degrees(joint['range'][0]),to=math.degrees(joint['range'][1]),variable=var).pack(side='left',fill='x',expand=True)
                 ttk.Entry(row,textvariable=var,width=8).pack(side='left',padx=4)
                 self.hand_vars[side].append(var)
             row=ttk.Frame(frame);row.pack(fill='x',pady=12)
@@ -61,6 +70,17 @@ class MeshPanel(Panel):
         ttk.Button(self.root,text='显示灵巧手控制窗口',command=self.hand_window.deiconify).pack(pady=3)
         self.create_body_panel(model)
 
+    def fk_pose(self,arm,joints):
+        if self.j4_body is None or time.monotonic()-self.j4_refreshed>.5:
+            raise ValueError('等待当前躯干 SDK 反馈，无法计算 J4 下的末端位姿')
+        return self.frames.fk(arm,self.kine.fk(arm,joints),self.j4_body)
+
+    def feedback(self,msg):
+        if self.j4_body is None or time.monotonic()-self.j4_refreshed>.5:
+            self.received=False
+            return
+        return super().feedback(msg)
+
     def create_body_panel(self,model):
         import yaml
         config=yaml.safe_load((model/'config/body.yaml').read_text())
@@ -70,7 +90,7 @@ class MeshPanel(Panel):
         self.body_window.protocol('WM_DELETE_WINDOW',self.body_window.withdraw)
         ttk.Label(self.body_window,text='底盘固定于地面；本体姿态变化会带动头部、肩部和双臂。',
                   wraplength=700).pack(padx=15,pady=12)
-        ttk.Label(self.body_window,text='本窗口仅调节仿真关节，不向真实机器人发送本体指令。').pack(pady=5)
+        ttk.Label(self.body_window,text='原版 Gento SDK → 本机虚拟控制器 → 躯干/头部关节反馈。').pack(pady=5)
         self.body_pub=self.create_publisher(JointState,'/marvin_mesh_sim/body_targets',10)
         self.body_vars=[];self.body_names=[j['name'] for j in config['joints']]
         self.body_current={}
@@ -96,6 +116,9 @@ class MeshPanel(Panel):
 
     def body_feedback(self,msg):
         self.body_current=dict(zip(msg.name,msg.position))
+        if all(name in self.body_current for name in self.frames.body_names):
+            self.j4_body=np.array([self.body_current[name] for name in self.frames.body_names])
+            self.j4_refreshed=time.monotonic()
 
     def read_body(self):
         if not all(n in self.body_current for n in self.body_names):
@@ -119,17 +142,17 @@ class MeshPanel(Panel):
         for side,names in self.hand_names.items():
             if all(n in values for n in names):
                 self.hand_current[side]=[values[n] for n in names]
-                self.hand_text[side].set('当前角度 (rad)：\n'+', '.join(f'{values[n]:.2f}' for n in names))
+                self.hand_text[side].set('SDK 反馈 (°)：\n'+', '.join(f'{math.degrees(values[n]):.2f}' for n in names))
 
     def preset(self,side,closed):
         values=closed_posture(self.hand_names[side]) if closed else [0.]*11
-        for var,value in zip(self.hand_vars[side],values):var.set(value)
+        for var,value in zip(self.hand_vars[side],values):var.set(math.degrees(value))
         self.send_hand(side)
 
     def send_hand(self,side):
         try:
             msg=JointState();msg.name=self.hand_names[side]
-            msg.position=[v.get() for v in self.hand_vars[side]]
+            msg.position=[math.radians(v.get()) for v in self.hand_vars[side]]
             self.hand_pub.publish(msg)
         except tk.TclError as exc:
             self.hand_message.set(str(exc))

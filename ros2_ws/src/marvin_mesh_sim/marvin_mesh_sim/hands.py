@@ -89,7 +89,6 @@ class Hands:
 
 
 def closed_posture(names):
-    values={'thumb_j1':.4,'thumb_j2':-1.1,'thumb_j3':.5,
-            'index_j1':-.2,'index_j2':1.1,'index_j3':.7,
-            'middle_j1':1.1,'middle_j2':.7,'little_j1':.2,'little_j2':1.1,'little_j3':.7}
-    return [values[n[2:]] for n in names]
+    # SDK ID order: thumb 1-3, index 4-6, middle 7-8, ring 9-11.
+    values=[.4,-1.1,.5,-.2,1.1,.7,1.1,.7,.2,1.1,.7]
+    return [values[int(n.split('_Joint')[1])-1] for n in names]

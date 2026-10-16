@@ -43,6 +43,7 @@ Visualization Manager:
     - Class: rviz_default_plugins/Interact
     - Class: rviz_default_plugins/MoveCamera
     - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/Measure
   Value: true
   Views:
     Current:

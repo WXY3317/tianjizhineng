@@ -24,14 +24,14 @@ def make_pose(matrix, frame, stamp):
 
 
 class Simulation(Node):
-    def __init__(self, kine_factory=Kinematics):
+    def __init__(self, kine_factory=Kinematics, controller_factory=VirtualController):
         super().__init__('marvin_virtual_controller')
         self.declare_parameter('sdk_root', '')
         self.declare_parameter('description_root', '')
         self.declare_parameter('sim_ip', '')
         self.kine = kine_factory(self.get_parameter('sdk_root').value,
                                self.get_parameter('description_root').value)
-        self.controller = VirtualController(self.kine, sim_ip=self.get_parameter('sim_ip').value)
+        self.controller = controller_factory(self.kine, sim_ip=self.get_parameter('sim_ip').value)
         self.joints = self.create_publisher(JointState, '/joint_states', 10)
         self.status = self.create_publisher(String, '/marvin_sim/server_status', 10)
         self.poses = [self.create_publisher(PoseStamped, f'/marvin_sim/{side}/model_pose', 10)
@@ -39,7 +39,7 @@ class Simulation(Node):
         self.create_timer(.005, self.controller.tick)
         self.create_timer(.02, self.publish)
         self.create_timer(.2, self.publish_status)
-        self.get_logger().info(f'Virtual controller ready: {self.controller.address}:4729 (this host); SDK feedback port 4730')
+        self.get_logger().info(f'Virtual controller ready: {self.controller.address}:{self.controller.port} (this host); SDK feedback port {self.controller.feedback_port}')
 
     def publish(self):
         stamp = self.get_clock().now().to_msg()

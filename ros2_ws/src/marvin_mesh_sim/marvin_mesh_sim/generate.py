@@ -149,13 +149,17 @@ def generate(source_root, destination, sdk_root):
         return j
 
     def add_hand(body, parent, side):
-        name = body.get('name')
+        name = body.get('name').replace('_little', '_ring')
         body_link(body, name)
         j = body.find('joint')
-        joint_name = j.get('name') if j is not None else f'{parent}_to_{name}'
+        joint_name = f"{side}_Joint{len(hands[side]['joints'])+1}" if j is not None else f'{parent}_to_{name}'
         connect(parent, name, body, joint_name, j)
         if j is not None:
-            hands[side]['joints'].append({'name': joint_name, 'range': numbers(j.get('range'))})
+            hands[side]['joints'].append({'name': joint_name, 'range': numbers(j.get('range')),
+                                         'sdk_id':len(hands[side]['joints'])+1,
+                                         'sdk_finger':'FINGER_'+j.get('name').split('_')[1].replace('little','ring').upper(),
+                                         'finger_joint':int(j.get('name')[-1]),
+                                         'source_name':j.get('name')})
         for child in body.findall('body'):
             add_hand(child, name, side)
 
@@ -211,25 +215,20 @@ def generate(source_root, destination, sdk_root):
 
     # Type 1017 uses the SDK's CCS geometric lengths. The source shoulder frame
     # is at joint 1, so L1=0; source upper/lower arms are 264 mm, flange 87 mm.
-    template = (sdk_root/'CommonConfig/ccs_m6_40.MvKDCfg').read_text().splitlines()
+    # Generate the calibrated input table directly; no old arm SDK dependency.
+    dh_rows=[[0,0,0,0],[90,0,0,0],[-90,0,264,0],[90,18,0,180],
+             [90,18,264,180],[90,0,0,90],[90,0,0,90],[90,0,87,90]]
+    template=[]
     for arm in range(2):
-        offset = 13*arm
-        for row, value in ((1,0.), (3,264.), (5,264.), (8,87.)):
-            values = template[offset+row].split(',')
-            values[2] = str(value)
-            template[offset+row] = ','.join(values)
-        for i in range(7):
-            row = template[offset+1+i].split(',')
-            limits = joint_limits[f'joint{i+1}']['limit']
-            row[4:6] = [str(math.degrees(limits['lower'])),str(math.degrees(limits['upper']))]
-            # This derived vendor file is for kinematics only. Do not copy the
-            # unrelated stock model's mass/CoM/inertia into this model.
-            row[8:18] = ['0']*10
-            template[offset+1+i] = ','.join(row)
-        # No vendor wrist-collision calibration exists for these assets. Use
-        # rectangular wrist joint bounds; do not reuse unrelated fitted curves.
-        for i, bound in enumerate((90.,90.,-90.,-90.)):
-            template[offset+9+i] = f'0,0,{bound},'
+        template.append(f'1017,0.000000,{9.81 if arm==0 else -9.81:.6f},0.000000,')
+        for i,dh in enumerate(dh_rows):
+            values=[float(v) for v in dh]
+            if i<7:
+                limits=joint_limits[f'joint{i+1}']['limit']
+                values += [math.degrees(limits['lower']),math.degrees(limits['upper']),
+                           180.,450. if i<2 else 900.]+[0]*10
+            template.append(','.join(map(str,values))+',')
+        for bound in (90.,90.,-90.,-90.):template.append(f'0,0,{bound},')
     (destination/'config/mesh_arms.MvKDCfg').write_text('\n'.join(template)+'\n')
     tool = [[0,0,1,0],[-1,0,0,0],[0,-1,0,0],[0,0,0,1]]
     (destination/'config/sdk_geometry.yaml').write_text(yaml.safe_dump({
@@ -237,6 +236,15 @@ def generate(source_root, destination, sdk_root):
         'flange_tool_rotation':tool, 'arm_rotations': 'MJCF quarter-turn nominalization, <5e-5 matrix entry error',
         'wrist_coupling':'not calibrated; only rectangular joint limits'}, sort_keys=False))
     (destination/'config/joint_limits.yaml').write_text(yaml.safe_dump(joint_limits,sort_keys=False))
+    sg100_map=json.loads((sdk_root.parent/'SG100_SDK_Publish/joint_angle_map_v3.0.json').read_text())['joint_angle_map']
+    for side,hand in hands.items():
+        for joint,mapping in zip(hand['joints'],sg100_map[side]):
+            joint['source_range']=joint['range'].copy()
+            joint['range']=[max(joint['range'][0],math.radians(mapping['min_angle'])),
+                            min(joint['range'][1],math.radians(mapping['max_angle']))]
+            joint['sdk_angle_map']=mapping
+            limit=robot.find(f"joint[@name='{joint['name']}']/limit")
+            limit.set('lower',str(joint['range'][0]));limit.set('upper',str(joint['range'][1]))
     (destination/'config/hands.yaml').write_text(yaml.safe_dump(hands,sort_keys=False))
     (destination/'config/body.yaml').write_text(yaml.safe_dump(
         {'base':'fixed at source MJCF ground placement', 'joints':body_joints},sort_keys=False))

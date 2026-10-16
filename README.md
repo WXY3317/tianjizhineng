@@ -6,6 +6,7 @@
 |---|---|
 | `tianji_armSDK` | Marvin 控制、运动学和干涉检测 SDK |
 | `tianji-robot-SDK` | Gento SDK 与示例 |
+| `SG100_SDK_Publish` | SG100 灵巧手原版 SDK 与左右手角度配置 |
 | `marvin_description` | Marvin CCS M6 ROS 2 模型 |
 | `mjcf` | 原始 MJCF 与 STL/OBJ 资源 |
 | `ros2_ws/src/marvin_mesh_sim` | STL 整机仿真，接通双臂原版 SDK 正逆解与控制 |
@@ -38,8 +39,10 @@ cd ros2_ws
 
 包含底盘、腰腿/躯干、头部、双臂和双手，共 47 个真实 STL，
 支持 14 个机械臂关节、22 个手指关节和 8 个本体/头部关节。
-机械臂位置控制通过原版 `libMarvinSDK.so`，正逆解调用 `libKine.so`，
-手指控制通过仿真扩展接口。重复启动会复用后台并重新打开界面。
+双臂位置控制、正逆解以及躯干/头部控制统一通过原版 Gento SDK，
+双手通过原版 SG100 SDK。双臂对外正逆解统一参考躯干 `Gento_Luna_Leg_J4_Link`。
+手指按 SDK 的 Joint1–11 编号，第四指使用 FINGER_RING（无名指）命名。
+重复启动会复用后台并重新打开界面。
 本版是运动学仿真，不含接触动力学或自动避碰。
 
 详细用法和 Python API 见 [marvin_mesh_sim 使用说明](ros2_ws/src/marvin_mesh_sim/README.md)。

@@ -8,7 +8,8 @@ if [[ "${1:-}" == "--build" ]]; then
   PYTHONPATH="$workspace_dir/src/marvin_sim:$workspace_dir/src/marvin_mesh_sim:${PYTHONPATH:-}" \
     python3 -c 'from marvin_mesh_sim.generate import main; main()' \
     --source-root "$project_dir/mjcf" --destination "$workspace_dir/src/marvin_mesh_sim" \
-    --sdk-root "$project_dir/tianji_armSDK"
+    --sdk-root "$project_dir/tianji-robot-SDK"
+  "$workspace_dir/build_sg100_sdk.sh"
   colcon build --base-paths src "$project_dir/marvin_description" \
     --packages-select marvin_description marvin_sim marvin_mesh_sim --symlink-install \
     --cmake-args -DBUILD_TESTING=OFF
@@ -19,6 +20,21 @@ if [[ ! -f install/marvin_mesh_sim/share/marvin_mesh_sim/package.xml ]]; then
   exit 1
 fi
 source install/setup.bash
+gento_sdk_root="$project_dir/tianji-robot-SDK"
+for argument in "$@"; do
+  case "$argument" in gento_sdk_root:=*) gento_sdk_root="${argument#gento_sdk_root:=}" ;; esac
+done
+if [[ ! -f "$gento_sdk_root/PYTHON_SDK/libGentoSDKPY.so" ]]; then
+  "$workspace_dir/build_gento_sdk.sh" "$gento_sdk_root"
+fi
+
+sg100_sdk_root="$project_dir/SG100_SDK_Publish"
+for argument in "$@"; do
+  case "$argument" in sg100_sdk_root:=*) sg100_sdk_root="${argument#sg100_sdk_root:=}" ;; esac
+done
+if [[ ! -f "$workspace_dir/src/marvin_mesh_sim/native/lib/libsg100_sim_bridge.so" ]]; then
+  "$workspace_dir/build_sg100_sdk.sh" "$sg100_sdk_root"
+fi
 
 # A closed RViz window does not terminate the SDK controller. Reuse that
 # controller on subsequent starts instead of binding its fixed UDP ports again.
@@ -36,10 +52,16 @@ if ! flock -n 9; then
       panel:=*) want_panel="${argument#panel:=}" ;;
     esac
   done
-  if [[ "${want_rviz,,}" =~ ^(false|0)$ && "${want_panel,,}" =~ ^(false|0)$ ]]; then
+  model_health="$(python3 -c 'from marvin_mesh_sim.display_health import main; main()')"
+  publish_model=false
+  if [[ "$model_health" == missing ]]; then
+    echo "检测到模型描述发布节点缺失，正在恢复 robot_state_publisher。"
+    publish_model=true
+  fi
+  if [[ "$publish_model" == false && "${want_rviz,,}" =~ ^(false|0)$ && "${want_panel,,}" =~ ^(false|0)$ ]]; then
     exit 0
   fi
-  exec ros2 launch marvin_mesh_sim view.launch.py sdk_root:="$project_dir/tianji_armSDK" "$@"
+  exec ros2 launch marvin_mesh_sim view.launch.py sdk_root:="$gento_sdk_root" publish_model:="$publish_model" "$@"
 fi
 
 sim_ip=""
@@ -52,7 +74,9 @@ import sys
 from marvin_sim.local_address import local_address
 
 address = local_address(sys.argv[1])
-for host, port in ((address, 4729), ('0.0.0.0', 4730), (address, 4741)):
+ports=[(address,4741),(address,4742)]
+ports.extend(('0.0.0.0',p) for p in range(3720,3725))
+for host, port in ports:
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         try:
             sock.bind((host, port))
@@ -61,4 +85,4 @@ for host, port in ((address, 4729), ('0.0.0.0', 4730), (address, 4741)):
             print('请结束旧仿真的启动终端后重试；仅关闭 RViz 不会停止后台。', file=sys.stderr)
             sys.exit(1)
 PY
-exec ros2 launch marvin_mesh_sim simulation.launch.py sdk_root:="$project_dir/tianji_armSDK" "$@"
+exec ros2 launch marvin_mesh_sim simulation.launch.py sdk_root:="$gento_sdk_root" "$@"

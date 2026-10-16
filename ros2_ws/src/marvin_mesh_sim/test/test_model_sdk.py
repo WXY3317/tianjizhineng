@@ -9,9 +9,8 @@ import numpy as np
 import pytest
 
 from marvin_sim.kinematics import INITIAL_DEG,pose_error
-from marvin_sim.controller import VirtualController
 from marvin_sim.local_address import local_address
-from marvin_mesh_sim.kinematics import MeshKinematics
+from marvin_mesh_sim.gento_kinematics import GentoMeshKinematics
 from marvin_mesh_sim.hands import Hands,closed_posture
 from marvin_mesh_sim.sdk import MeshSimulationSDK
 
@@ -22,7 +21,7 @@ PACKAGE=ROOT/'ros2_ws/src/marvin_mesh_sim'
 
 @pytest.fixture(scope='module')
 def kine():
-    return MeshKinematics(ROOT/'tianji_armSDK',PACKAGE)
+    return GentoMeshKinematics(ROOT/'tianji-robot-SDK',PACKAGE)
 
 
 def urdf_fk(root,base,tip,values):
@@ -157,16 +156,22 @@ def test_hand_limits_atomicity_and_interpolation():
 
 
 def test_original_sdk_arm_and_hand_api_end_to_end(kine):
-    controller=VirtualController(kine)
-    hands=Hands(PACKAGE,controller.address)
+    from marvin_mesh_sim.gento_arms import GentoArms
+    from marvin_mesh_sim.gento_protocol import GentoController
+    from marvin_mesh_sim.body import Body
+    controller=GentoArms(kine)
+    body=Body(PACKAGE)
+    wire=GentoController(body,ROOT/'tianji-robot-SDK',controller.address,arms=controller)
+    from marvin_mesh_sim.sg100_hands import SG100Hands
+    hands=SG100Hands(PACKAGE,controller.address,ROOT/'SG100_SDK_Publish')
     stop=threading.Event();errors=[]
     def run():
         try:
-            while not stop.wait(.002):controller.tick();hands.tick()
+            while not stop.wait(.002):controller.tick();body.tick();wire.tick();hands.tick()
         except BaseException as exc:errors.append(exc)
     thread=threading.Thread(target=run);thread.start()
     try:
-        with MeshSimulationSDK(ROOT/'tianji_armSDK',PACKAGE) as sdk:
+        with MeshSimulationSDK(ROOT/'tianji-robot-SDK',PACKAGE) as sdk:
             goals={}
             for arm in ('A','B'):
                 q=sdk.get_joint_positions(arm);q[0]+=2
@@ -181,11 +186,13 @@ def test_original_sdk_arm_and_hand_api_end_to_end(kine):
                 if error<1e-3 and not state['L']['moving']:break
                 time.sleep(.02)
             else:pytest.fail('SDK arm/hand feedback timeout')
-            assert np.max(np.abs(np.array(state['L']['positions_rad'])-target_hand))<1e-8
+            assert np.max(np.abs(np.array(state['L']['positions_rad'])-target_hand))<1e-6
             with pytest.raises(ValueError):sdk.set_hand_joints('R',[999.]*11)
             sdk.stop()
+            deadline=time.monotonic()+2
+            while time.monotonic()<deadline and any(h['moving'] for h in sdk.get_hand_state().values()):time.sleep(.02)
             assert all(not h['moving'] for h in sdk.get_hand_state().values())
-            assert sdk.robot.SDK_version()>0
+            assert sdk.robot.get_sdk_version()=='00040402'
     finally:
-        stop.set();thread.join(timeout=2);controller.close();hands.close()
+        stop.set();thread.join(timeout=2);wire.close();controller.close();hands.close()
     assert not errors

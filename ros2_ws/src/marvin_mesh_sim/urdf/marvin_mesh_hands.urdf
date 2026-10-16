@@ -524,12 +524,12 @@
       </geometry>
     </collision>
   </link>
-  <joint name="L_thumb_j1" type="revolute">
+  <joint name="L_Joint1" type="revolute">
     <parent link="L_hand_base" />
     <child link="L_thumb_link1" />
     <origin xyz="-0.031492 -0.031853 0.0384" rpy="0 -0 0" />
     <axis xyz="0 0 1" />
-    <limit lower="0.0" upper="2.182" velocity="2.0" effort="2.0" />
+    <limit lower="0.0" upper="2.181661564992912" velocity="2.0" effort="2.0" />
   </joint>
   <link name="L_thumb_link2">
     <inertial>
@@ -553,12 +553,12 @@
       </geometry>
     </collision>
   </link>
-  <joint name="L_thumb_j2" type="revolute">
+  <joint name="L_Joint2" type="revolute">
     <parent link="L_thumb_link1" />
     <child link="L_thumb_link2" />
     <origin xyz="-0.024 0.0155 0.0176" rpy="1.57079999951 -0 0" />
     <axis xyz="0 0 -1" />
-    <limit lower="-2.62" upper="0.0" velocity="2.0" effort="2.0" />
+    <limit lower="-2.6179938779914944" upper="0.0" velocity="2.0" effort="2.0" />
   </joint>
   <link name="L_thumb_link3">
     <inertial>
@@ -582,12 +582,12 @@
       </geometry>
     </collision>
   </link>
-  <joint name="L_thumb_j3" type="revolute">
+  <joint name="L_Joint3" type="revolute">
     <parent link="L_thumb_link2" />
     <child link="L_thumb_link3" />
     <origin xyz="-0.026496 0.042402 0.001" rpy="0 -0 0" />
     <axis xyz="0 0 -1" />
-    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+    <limit lower="-1.0471975511965976" upper="1.57" velocity="2.0" effort="2.0" />
   </joint>
   <link name="L_index_link1">
     <inertial>
@@ -611,7 +611,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="L_index_j1" type="revolute">
+  <joint name="L_Joint4" type="revolute">
     <parent link="L_hand_base" />
     <child link="L_index_link1" />
     <origin xyz="-0.0315 -0.020758 0.086" rpy="1.57079999951 -0 0" />
@@ -640,7 +640,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="L_index_j2" type="revolute">
+  <joint name="L_Joint5" type="revolute">
     <parent link="L_index_link1" />
     <child link="L_index_link2" />
     <origin xyz="0.0155 0.024 0.0281" rpy="3.14159265359 1.57079265408 3.14159265359" />
@@ -669,12 +669,12 @@
       </geometry>
     </collision>
   </link>
-  <joint name="L_index_j3" type="revolute">
+  <joint name="L_Joint6" type="revolute">
     <parent link="L_index_link2" />
     <child link="L_index_link3" />
     <origin xyz="0 0.05 -0.001" rpy="0 -0 0" />
     <axis xyz="0 0 1" />
-    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+    <limit lower="-1.0471975511965976" upper="1.57" velocity="2.0" effort="2.0" />
   </joint>
   <link name="L_middle_link1">
     <inertial>
@@ -698,7 +698,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="L_middle_j1" type="revolute">
+  <joint name="L_Joint7" type="revolute">
     <parent link="L_hand_base" />
     <child link="L_middle_link1" />
     <origin xyz="0.018 -0.048858 0.1135" rpy="1.57080000079 -6.749156789e-12 1.57080000079" />
@@ -727,14 +727,14 @@
       </geometry>
     </collision>
   </link>
-  <joint name="L_middle_j2" type="revolute">
+  <joint name="L_Joint8" type="revolute">
     <parent link="L_middle_link1" />
     <child link="L_middle_link2" />
     <origin xyz="0 0.05 -0.001" rpy="0 -0 0" />
     <axis xyz="0 0 1" />
-    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+    <limit lower="-1.0471975511965976" upper="1.57" velocity="2.0" effort="2.0" />
   </joint>
-  <link name="L_little_link1">
+  <link name="L_ring_link1">
     <inertial>
       <origin xyz="0.0033432 0.015178 0.019587" rpy="0 -0 0" />
       <mass value="0.025089" />
@@ -745,7 +745,7 @@
       <geometry>
         <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_little_link1.STL" />
       </geometry>
-      <material name="mat_L_little_link1">
+      <material name="mat_L_ring_link1">
         <color rgba=".6 .62 .66 1" />
       </material>
     </visual>
@@ -756,14 +756,14 @@
       </geometry>
     </collision>
   </link>
-  <joint name="L_little_j1" type="revolute">
+  <joint name="L_Joint9" type="revolute">
     <parent link="L_hand_base" />
-    <child link="L_little_link1" />
+    <child link="L_ring_link1" />
     <origin xyz="0.0315 -0.020758 0.08" rpy="1.57079999951 -0 0" />
     <axis xyz="0 0 -1" />
     <limit lower="0.0" upper="3.14" velocity="2.0" effort="2.0" />
   </joint>
-  <link name="L_little_link2">
+  <link name="L_ring_link2">
     <inertial>
       <origin xyz="-3.5376e-08 0.025 -0.014859" rpy="0 -0 0" />
       <mass value="0.11925" />
@@ -774,7 +774,7 @@
       <geometry>
         <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_little_link2.STL" />
       </geometry>
-      <material name="mat_L_little_link2">
+      <material name="mat_L_ring_link2">
         <color rgba=".6 .62 .66 1" />
       </material>
     </visual>
@@ -785,14 +785,14 @@
       </geometry>
     </collision>
   </link>
-  <joint name="L_little_j2" type="revolute">
-    <parent link="L_little_link1" />
-    <child link="L_little_link2" />
+  <joint name="L_Joint10" type="revolute">
+    <parent link="L_ring_link1" />
+    <child link="L_ring_link2" />
     <origin xyz="0.0205 0.024 0.0281" rpy="3.14159265359 1.57079265408 3.14159265359" />
     <axis xyz="0 0 1" />
     <limit lower="0.0" upper="2.18" velocity="2.0" effort="2.0" />
   </joint>
-  <link name="L_little_link3">
+  <link name="L_ring_link3">
     <inertial>
       <origin xyz="-0.0016236 0.019698 -0.015458" rpy="0 -0 0" />
       <mass value="0.032861" />
@@ -803,7 +803,7 @@
       <geometry>
         <mesh filename="package://marvin_mesh_sim/meshes/hands/left_hand/L_little_link3.STL" />
       </geometry>
-      <material name="mat_L_little_link3">
+      <material name="mat_L_ring_link3">
         <color rgba=".6 .62 .66 1" />
       </material>
     </visual>
@@ -814,12 +814,12 @@
       </geometry>
     </collision>
   </link>
-  <joint name="L_little_j3" type="revolute">
-    <parent link="L_little_link2" />
-    <child link="L_little_link3" />
+  <joint name="L_Joint11" type="revolute">
+    <parent link="L_ring_link2" />
+    <child link="L_ring_link3" />
     <origin xyz="0 0.05 -0.001" rpy="0 -0 0" />
     <axis xyz="0 0 1" />
-    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+    <limit lower="-1.0471975511965976" upper="1.57" velocity="2.0" effort="2.0" />
   </joint>
   <link name="Base_R" />
   <joint name="mount_R" type="fixed">
@@ -1085,12 +1085,12 @@
       </geometry>
     </collision>
   </link>
-  <joint name="R_thumb_j1" type="revolute">
+  <joint name="R_Joint1" type="revolute">
     <parent link="R_hand_base" />
     <child link="R_thumb_link1" />
     <origin xyz="0.0315 -0.031858 0.0384" rpy="0 -0 0" />
     <axis xyz="0 0 -1" />
-    <limit lower="0.0" upper="2.182" velocity="2.0" effort="2.0" />
+    <limit lower="0.0" upper="2.181661564992912" velocity="2.0" effort="2.0" />
   </joint>
   <link name="R_thumb_link2">
     <inertial>
@@ -1114,12 +1114,12 @@
       </geometry>
     </collision>
   </link>
-  <joint name="R_thumb_j2" type="revolute">
+  <joint name="R_Joint2" type="revolute">
     <parent link="R_thumb_link1" />
     <child link="R_thumb_link2" />
     <origin xyz="0.024 0.0155 0.0176" rpy="1.57079999951 -0 0" />
     <axis xyz="0 0 1" />
-    <limit lower="-2.618" upper="0.0" velocity="2.0" effort="2.0" />
+    <limit lower="-2.6179938779914944" upper="0.0" velocity="2.0" effort="2.0" />
   </joint>
   <link name="R_thumb_link3">
     <inertial>
@@ -1143,12 +1143,12 @@
       </geometry>
     </collision>
   </link>
-  <joint name="R_thumb_j3" type="revolute">
+  <joint name="R_Joint3" type="revolute">
     <parent link="R_thumb_link2" />
     <child link="R_thumb_link3" />
     <origin xyz="0.026496 0.042402 0.001" rpy="0 -0 0" />
     <axis xyz="0 0 1" />
-    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+    <limit lower="-1.0471975511965976" upper="1.57" velocity="2.0" effort="2.0" />
   </joint>
   <link name="R_index_link1">
     <inertial>
@@ -1172,7 +1172,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="R_index_j1" type="revolute">
+  <joint name="R_Joint4" type="revolute">
     <parent link="R_hand_base" />
     <child link="R_index_link1" />
     <origin xyz="0.0315000341 -0.0207580842 0.086" rpy="1.57079632679 -0 0" />
@@ -1201,7 +1201,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="R_index_j2" type="revolute">
+  <joint name="R_Joint5" type="revolute">
     <parent link="R_index_link1" />
     <child link="R_index_link2" />
     <origin xyz="-0.0155 0.024 0.0281" rpy="3.14159265359 1.57079265408 3.14159265359" />
@@ -1230,12 +1230,12 @@
       </geometry>
     </collision>
   </link>
-  <joint name="R_index_j3" type="revolute">
+  <joint name="R_Joint6" type="revolute">
     <parent link="R_index_link2" />
     <child link="R_index_link3" />
     <origin xyz="0 0.05 0.001" rpy="0 -0 0" />
     <axis xyz="0 0 1" />
-    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+    <limit lower="-1.0471975511965976" upper="1.57" velocity="2.0" effort="2.0" />
   </joint>
   <link name="R_middle_link1">
     <inertial>
@@ -1259,7 +1259,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="R_middle_j1" type="revolute">
+  <joint name="R_Joint7" type="revolute">
     <parent link="R_hand_base" />
     <child link="R_middle_link1" />
     <origin xyz="-0.018 -0.048858 0.1135" rpy="1.57080000079 -6.749156789e-12 1.57080000079" />
@@ -1288,14 +1288,14 @@
       </geometry>
     </collision>
   </link>
-  <joint name="R_middle_j2" type="revolute">
+  <joint name="R_Joint8" type="revolute">
     <parent link="R_middle_link1" />
     <child link="R_middle_link2" />
     <origin xyz="0 0.05 0.001" rpy="0 -0 0" />
     <axis xyz="0 0 1" />
-    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+    <limit lower="-1.0471975511965976" upper="1.57" velocity="2.0" effort="2.0" />
   </joint>
-  <link name="R_little_link1">
+  <link name="R_ring_link1">
     <inertial>
       <origin xyz="-0.0033432 0.015178 0.019587" rpy="0 -0 0" />
       <mass value="0.025089" />
@@ -1306,7 +1306,7 @@
       <geometry>
         <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_little_link1.STL" />
       </geometry>
-      <material name="mat_R_little_link1">
+      <material name="mat_R_ring_link1">
         <color rgba=".6 .62 .66 1" />
       </material>
     </visual>
@@ -1317,14 +1317,14 @@
       </geometry>
     </collision>
   </link>
-  <joint name="R_little_j1" type="revolute">
+  <joint name="R_Joint9" type="revolute">
     <parent link="R_hand_base" />
-    <child link="R_little_link1" />
+    <child link="R_ring_link1" />
     <origin xyz="-0.0315 -0.020758 0.08" rpy="1.57079999951 -0 0" />
     <axis xyz="0 0 1" />
     <limit lower="0.0" upper="3.14" velocity="2.0" effort="2.0" />
   </joint>
-  <link name="R_little_link2">
+  <link name="R_ring_link2">
     <inertial>
       <origin xyz="3.5301e-08 0.025 0.014859" rpy="0 -0 0" />
       <mass value="0.11925" />
@@ -1335,7 +1335,7 @@
       <geometry>
         <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_little_link2.STL" />
       </geometry>
-      <material name="mat_R_little_link2">
+      <material name="mat_R_ring_link2">
         <color rgba=".6 .62 .66 1" />
       </material>
     </visual>
@@ -1346,14 +1346,14 @@
       </geometry>
     </collision>
   </link>
-  <joint name="R_little_j2" type="revolute">
-    <parent link="R_little_link1" />
-    <child link="R_little_link2" />
+  <joint name="R_Joint10" type="revolute">
+    <parent link="R_ring_link1" />
+    <child link="R_ring_link2" />
     <origin xyz="-0.0205 0.024 0.0281" rpy="3.14159265359 1.57079265408 3.14159265359" />
     <axis xyz="0 0 1" />
     <limit lower="0.0" upper="2.18" velocity="2.0" effort="2.0" />
   </joint>
-  <link name="R_little_link3">
+  <link name="R_ring_link3">
     <inertial>
       <origin xyz="-0.001624 0.019699 0.015387" rpy="0 -0 0" />
       <mass value="0.03286" />
@@ -1364,7 +1364,7 @@
       <geometry>
         <mesh filename="package://marvin_mesh_sim/meshes/hands/right_hand/R_little_link3.STL" />
       </geometry>
-      <material name="mat_R_little_link3">
+      <material name="mat_R_ring_link3">
         <color rgba=".6 .62 .66 1" />
       </material>
     </visual>
@@ -1375,11 +1375,11 @@
       </geometry>
     </collision>
   </link>
-  <joint name="R_little_j3" type="revolute">
-    <parent link="R_little_link2" />
-    <child link="R_little_link3" />
+  <joint name="R_Joint11" type="revolute">
+    <parent link="R_ring_link2" />
+    <child link="R_ring_link3" />
     <origin xyz="0 0.05 0.001" rpy="0 -0 0" />
     <axis xyz="0 0 1" />
-    <limit lower="-1.05" upper="1.57" velocity="2.0" effort="2.0" />
+    <limit lower="-1.0471975511965976" upper="1.57" velocity="2.0" effort="2.0" />
   </joint>
 </robot>

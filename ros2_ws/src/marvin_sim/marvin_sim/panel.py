@@ -32,12 +32,14 @@ def matrix_rpy(matrix):
 
 
 class Panel(Node):
-    def __init__(self, kine_factory=Kinematics):
+    def __init__(self, kine_factory=Kinematics, sdk_label='原版 libMarvinSDK.so → 本机虚拟控制器 → URDF / RViz',
+                 pose_frame=None,initialize_pose=True):
         super().__init__('marvin_sim_panel')
         self.declare_parameter('sdk_root', '')
         self.declare_parameter('description_root', '')
         self.kine = kine_factory(self.get_parameter('sdk_root').value,
                                self.get_parameter('description_root').value)
+        self.pose_frame=pose_frame
         self.root = tk.Tk()
         self.root.title('Marvin M6 · SDK 正逆解与双臂仿真')
         self.root.geometry('1080x790')
@@ -52,7 +54,7 @@ class Panel(Node):
         self.create_subscription(JointState, '/marvin_sim/sdk_joint_states', self.feedback, 10)
         self.create_subscription(String, '/marvin_sim/status', self.status, 10)
         self.message = tk.StringVar(value='等待 SDK 反馈…')
-        ttk.Label(self.root, text='原版 libMarvinSDK.so → 本机虚拟控制器 → URDF / RViz',
+        ttk.Label(self.root, text=sdk_label,
                   font=('', 14)).pack(pady=10)
         toolbar = ttk.Frame(self.root)
         toolbar.pack(fill='x', padx=18)
@@ -63,7 +65,7 @@ class Panel(Node):
         body = ttk.Frame(self.root)
         body.pack(fill='both', expand=True, padx=12)
         self.entries, self.pose_entries, self.feedback_text = [], [], []
-        for arm, title in enumerate(('左臂 A · Base_L', '右臂 B · Base_R')):
+        for arm, title in enumerate((f"左臂 A · {pose_frame or 'Base_L'}", f"右臂 B · {pose_frame or 'Base_R'}")):
             box = ttk.LabelFrame(body, text=title, padding=10)
             box.pack(side='left', fill='both', expand=True, padx=5)
             variables = []
@@ -83,7 +85,7 @@ class Panel(Node):
             ttk.Button(actions, text='SDK 正解预览', command=lambda a=arm: self.preview_fk(a)).pack(side='left', padx=4)
             ttk.Button(actions, text='执行关节目标', command=lambda a=arm: self.send_joint(a)).pack(side='left')
             ttk.Separator(box).pack(fill='x', pady=8)
-            ttk.Label(box, text='末端目标（相对本臂基座，原生法兰，无工具）').pack(anchor='w')
+            ttk.Label(box, text=f"末端法兰目标（相对 {pose_frame or '本臂基座'}）").pack(anchor='w')
             pose_vars = []
             for name in ('X (mm)', 'Y (mm)', 'Z (mm)', 'Roll (°)', 'Pitch (°)', 'Yaw (°)'):
                 row = ttk.Frame(box)
@@ -100,13 +102,22 @@ class Panel(Node):
             text = tk.StringVar(value='等待反馈')
             ttk.Label(box, textvariable=text, wraplength=475).pack(anchor='w', pady=8)
             self.feedback_text.append(text)
-            self.set_pose_fields(arm, self.kine.fk(arm, self.q[7*arm:7*arm+7]))
+            if initialize_pose:self.set_pose_fields(arm, self.fk_pose(arm, self.q[7*arm:7*arm+7]))
         ttk.Label(self.root, text='关节目标采用平滑关节插值；末端目标通过 SDK IK 求解后执行关节运动。此版本不模拟接触力或自动避碰。',
                   wraplength=1040).pack(padx=20, pady=12)
 
+    def fk_pose(self,arm,joints):
+        return self.kine.fk(arm,joints)
+
     def status(self, msg):
         data = json.loads(msg.data)
-        self.message.set(f"状态：{data.get('state')}  {data.get('error', '')}")
+        if data.get('accepted') is False:
+            self.message.set(f"目标未执行：{data.get('error', '')}")
+            return
+        info=data.get('ik_info',{})
+        extra=(f" SDK 已换参考角求得有效解；最大关节变化 {info['max_joint_change_deg']:.1f}°"
+               if info.get('fallback') and 'max_joint_change_deg' in info else '')
+        self.message.set(f"状态：{data.get('state')}  {data.get('error', '')}{extra}")
 
     def feedback(self, msg):
         mapping = dict(zip(msg.name, msg.position))
@@ -117,7 +128,7 @@ class Panel(Node):
         self.received = True
         for arm in range(2):
             q = self.q[7*arm:7*arm+7]
-            matrix = self.kine.fk(arm, q)
+            matrix = self.fk_pose(arm, q)
             self.feedback_text[arm].set('SDK 反馈关节 (°)：\n' + ', '.join(f'{x:.2f}' for x in np.degrees(q))
                                         + '\nSDK 正解 XYZ (mm)：' + ', '.join(f'{x:.2f}' for x in matrix[:3,3]*1000))
             if first:
@@ -133,14 +144,14 @@ class Panel(Node):
             v.set(round(float(value), 5))
 
     def fill_pose(self, arm):
-        self.set_pose_fields(arm, self.kine.fk(arm, self.q[7*arm:7*arm+7]))
+        self.set_pose_fields(arm, self.fk_pose(arm, self.q[7*arm:7*arm+7]))
 
     def selected_joints(self, arm):
         return self.kine.validate_joints(arm, np.radians([v.get() for v in self.entries[arm]]))
 
     def preview_fk(self, arm):
         try:
-            self.set_pose_fields(arm, self.kine.fk(arm, self.selected_joints(arm)))
+            self.set_pose_fields(arm, self.fk_pose(arm, self.selected_joints(arm)))
             self.message.set('SDK 正解完成，结果已填入末端目标栏；尚未发送运动')
         except (ValueError, tk.TclError) as exc:
             self.message.set(str(exc))
@@ -170,7 +181,7 @@ class Panel(Node):
             if not np.isfinite(values).all():
                 raise ValueError('末端目标必须为有限数值')
             msg = PoseStamped()
-            msg.header.frame_id = ('Base_L', 'Base_R')[arm]
+            msg.header.frame_id = self.pose_frame or ('Base_L', 'Base_R')[arm]
             msg.header.stamp = self.get_clock().now().to_msg()
             msg.pose.position.x, msg.pose.position.y, msg.pose.position.z = (values[:3]/1000).tolist()
             q = matrix_quaternion(rpy_matrix(values[3:]))
