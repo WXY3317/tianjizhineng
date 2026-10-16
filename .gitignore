@@ -40,3 +40,7 @@ Thumbs.db
 !tianji_armSDK/SDK_PYTHON/*.dll
 !tianji-robot-SDK/PYTHON_SDK/*.so
 !tianji-robot-SDK/PYTHON_SDK/*.dll
+
+# SG100 SDK 发布包的运行库
+!SG100_SDK_Publish/lib/*/*.so
+!SG100_SDK_Publish/lib/*/*.dll

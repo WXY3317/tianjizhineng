@@ -1,0 +1,19 @@
+{
+  "can": {
+    "interface": "can0",
+    "tx_start_id": 512,
+    "rx_filter_min_id": 512,
+    "rx_filter_max_id": 767,
+    "use_extended_id": false,
+    "recv_timeout_ms": 20,
+    "tx_poll_interval_ms": 2
+  },
+  "control": {
+    "mode": "MODE_JOINT_POSITION",
+    "kp": 0.1,
+    "ki": 0.0,
+    "kd": 0.0,
+    "output_limit": 0.5,
+    "default_position_rad": 0.0
+  }
+}
