@@ -22,12 +22,10 @@ class MeshPanel(Panel):
         super().__init__(kine_factory=lambda root,model:GentoMeshKinematics(
             root if (Path(root)/'PYTHON_SDK/GentoRobot.py').exists() else Path(root).parent/'tianji-robot-SDK',model),
                          sdk_label='原版 Gento SDK · 双臂正逆解统一参考躯干 J4',
-                         pose_frame=J4_FRAME,initialize_pose=False)
-        self.root.title('整机仿真 · 双臂 SDK 正逆解与控制')
-        self.hand_window=tk.Toplevel(self.root)
-        self.hand_window.title('灵巧手 · 每侧 4 指 / 11 关节')
-        self.hand_window.geometry('950x720')
-        self.hand_window.protocol('WM_DELETE_WINDOW',self.hand_window.withdraw)
+                         pose_frame=J4_FRAME,initialize_pose=False,
+                         content_factory=self.create_tabs)
+        self.root.title('整机仿真 · 双臂、灵巧手与本体控制')
+        self.root.geometry('1120x850')
         model=Path(self.get_parameter('description_root').value)
         self.frames=J4Frames(model)
         import yaml
@@ -38,16 +36,16 @@ class MeshPanel(Panel):
                     '暂用原 MJCF 碰撞盒显示（橙色），控制关节保留。')
         else:
             banner=f"已读取全部 {report['mesh_count']} 个真实 STL：底盘、躯干、头部、双臂和双手，无占位外形。"
-        ttk.Label(self.hand_window,text=banner,wraplength=900).pack(padx=15,pady=12)
-        ttk.Label(self.hand_window,text='SG100 原版 SDK 控制：拇指 J1–3、食指 J4–6、中指 J7–8、无名指 J9–11。').pack(pady=3)
+        ttk.Label(self.hand_tab,text=banner,wraplength=1000).pack(padx=15,pady=12)
+        ttk.Label(self.hand_tab,text='SG100 原版 SDK 控制：拇指 J1–3、食指 J4–6、中指 J7–8、无名指 J9–11。').pack(pady=3)
         self.hand_pub=self.create_publisher(JointState,'/marvin_mesh_sim/hand_targets',10)
         self.create_subscription(JointState,'/marvin_mesh_sim/hand_states',self.hand_feedback,10)
         self.create_subscription(String,'/marvin_mesh_sim/hand_status',
                                  lambda m:self.hand_message.set(m.data),10)
         self.hand_message=tk.StringVar(value='SG100 目标单位：度；滑块不会自动发送运动')
-        ttk.Label(self.hand_window,textvariable=self.hand_message,wraplength=900).pack(pady=5)
+        ttk.Label(self.hand_tab,textvariable=self.hand_message,wraplength=1000).pack(pady=5)
         self.hand_names,self.hand_vars,self.hand_current,self.hand_text={},{},{},{}
-        body=ttk.Frame(self.hand_window);body.pack(fill='both',expand=True,padx=10)
+        body=ttk.Frame(self.hand_tab);body.pack(fill='both',expand=True,padx=10)
         for side,title in (('L','左手'),('R','右手')):
             frame=ttk.LabelFrame(body,text=title,padding=8)
             frame.pack(side='left',fill='both',expand=True,padx=5)
@@ -67,8 +65,18 @@ class MeshPanel(Panel):
             ttk.Button(row,text='发送目标',command=lambda s=side:self.send_hand(s)).pack(side='left',padx=3)
             value=tk.StringVar(value='等待手部反馈');self.hand_text[side]=value
             ttk.Label(frame,textvariable=value,wraplength=400).pack(fill='x',pady=8)
-        ttk.Button(self.root,text='显示灵巧手控制窗口',command=self.hand_window.deiconify).pack(pady=3)
         self.create_body_panel(model)
+
+    def create_tabs(self,root):
+        self.notebook=ttk.Notebook(root)
+        self.notebook.pack(fill='both',expand=True,padx=8,pady=8)
+        self.arm_tab=ttk.Frame(self.notebook)
+        self.hand_tab=ttk.Frame(self.notebook)
+        self.body_tab=ttk.Frame(self.notebook)
+        self.notebook.add(self.arm_tab,text='双臂控制')
+        self.notebook.add(self.hand_tab,text='灵巧手控制')
+        self.notebook.add(self.body_tab,text='本体与头部')
+        return self.arm_tab
 
     def fk_pose(self,arm,joints):
         if self.j4_body is None or time.monotonic()-self.j4_refreshed>.5:
@@ -84,18 +92,14 @@ class MeshPanel(Panel):
     def create_body_panel(self,model):
         import yaml
         config=yaml.safe_load((model/'config/body.yaml').read_text())
-        self.body_window=tk.Toplevel(self.root)
-        self.body_window.title('整机本体 · 躯干与头部姿态')
-        self.body_window.geometry('760x600')
-        self.body_window.protocol('WM_DELETE_WINDOW',self.body_window.withdraw)
-        ttk.Label(self.body_window,text='底盘固定于地面；本体姿态变化会带动头部、肩部和双臂。',
-                  wraplength=700).pack(padx=15,pady=12)
-        ttk.Label(self.body_window,text='原版 Gento SDK → 本机虚拟控制器 → 躯干/头部关节反馈。').pack(pady=5)
+        ttk.Label(self.body_tab,text='底盘固定于地面；本体姿态变化会带动头部、肩部和双臂。',
+                  wraplength=1000).pack(padx=15,pady=12)
+        ttk.Label(self.body_tab,text='原版 Gento SDK → 本机虚拟控制器 → 躯干/头部关节反馈。').pack(pady=5)
         self.body_pub=self.create_publisher(JointState,'/marvin_mesh_sim/body_targets',10)
         self.body_vars=[];self.body_names=[j['name'] for j in config['joints']]
         self.body_current={}
         for index,joint in enumerate(config['joints']):
-            row=ttk.Frame(self.body_window);row.pack(fill='x',padx=15,pady=6)
+            row=ttk.Frame(self.body_tab);row.pack(fill='x',padx=80,pady=6)
             label=f'躯干 J{index+1}' if joint['group']=='torso' else f'头部 J{index-5}'
             ttk.Label(row,text=label+' (°)',width=16).pack(side='left')
             var=tk.DoubleVar(value=0.)
@@ -103,16 +107,15 @@ class MeshPanel(Panel):
                       to=math.degrees(joint['range'][1]),variable=var).pack(side='left',fill='x',expand=True)
             ttk.Entry(row,textvariable=var,width=12).pack(side='left',padx=6)
             self.body_vars.append(var)
-        actions=ttk.Frame(self.body_window);actions.pack(pady=10)
+        actions=ttk.Frame(self.body_tab);actions.pack(pady=10)
         ttk.Button(actions,text='读取当前姿态',command=self.read_body).pack(side='left',padx=6)
         ttk.Button(actions,text='发送本体目标',command=self.send_body).pack(side='left',padx=6)
         ttk.Button(actions,text='恢复初始姿态',command=self.reset_body).pack(side='left',padx=6)
         self.body_message=tk.StringVar(value='目标单位：度；滑块不会自动发送运动')
-        ttk.Label(self.body_window,textvariable=self.body_message,wraplength=700).pack(padx=15,pady=8)
+        ttk.Label(self.body_tab,textvariable=self.body_message,wraplength=1000).pack(padx=15,pady=8)
         self.create_subscription(JointState,'/marvin_mesh_sim/body_states',self.body_feedback,10)
         self.create_subscription(String,'/marvin_mesh_sim/body_status',
                                  lambda m:self.body_message.set(m.data),10)
-        ttk.Button(self.hand_window,text='显示本体/头部控制窗口',command=self.body_window.deiconify).pack(pady=5)
 
     def body_feedback(self,msg):
         self.body_current=dict(zip(msg.name,msg.position))

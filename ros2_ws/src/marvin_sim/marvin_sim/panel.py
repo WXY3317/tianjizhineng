@@ -33,7 +33,7 @@ def matrix_rpy(matrix):
 
 class Panel(Node):
     def __init__(self, kine_factory=Kinematics, sdk_label='原版 libMarvinSDK.so → 本机虚拟控制器 → URDF / RViz',
-                 pose_frame=None,initialize_pose=True):
+                 pose_frame=None,initialize_pose=True,content_factory=None):
         super().__init__('marvin_sim_panel')
         self.declare_parameter('sdk_root', '')
         self.declare_parameter('description_root', '')
@@ -44,6 +44,7 @@ class Panel(Node):
         self.root.title('Marvin M6 · SDK 正逆解与双臂仿真')
         self.root.geometry('1080x790')
         self.root.protocol('WM_DELETE_WINDOW', self.root.quit)
+        content = content_factory(self.root) if content_factory else self.root
         self.q = np.radians(INITIAL_DEG).ravel()
         self.received = False
         self.joint_pub = self.create_publisher(JointState, '/marvin_sim/target_joints', 10)
@@ -54,15 +55,15 @@ class Panel(Node):
         self.create_subscription(JointState, '/marvin_sim/sdk_joint_states', self.feedback, 10)
         self.create_subscription(String, '/marvin_sim/status', self.status, 10)
         self.message = tk.StringVar(value='等待 SDK 反馈…')
-        ttk.Label(self.root, text=sdk_label,
+        ttk.Label(content, text=sdk_label,
                   font=('', 14)).pack(pady=10)
-        toolbar = ttk.Frame(self.root)
+        toolbar = ttk.Frame(content)
         toolbar.pack(fill='x', padx=18)
         ttk.Button(toolbar, text='停止双臂', command=lambda: self.service(self.stop_client)).pack(side='left', padx=5)
         ttk.Button(toolbar, text='启用位置模式', command=lambda: self.service(self.enable_client)).pack(side='left', padx=5)
         ttk.Button(toolbar, text='同时发送双臂关节目标', command=self.send_both).pack(side='left', padx=5)
-        ttk.Label(self.root, textvariable=self.message, wraplength=1020).pack(fill='x', padx=20, pady=8)
-        body = ttk.Frame(self.root)
+        ttk.Label(content, textvariable=self.message, wraplength=1020).pack(fill='x', padx=20, pady=8)
+        body = ttk.Frame(content)
         body.pack(fill='both', expand=True, padx=12)
         self.entries, self.pose_entries, self.feedback_text = [], [], []
         for arm, title in enumerate((f"左臂 A · {pose_frame or 'Base_L'}", f"右臂 B · {pose_frame or 'Base_R'}")):
@@ -103,7 +104,7 @@ class Panel(Node):
             ttk.Label(box, textvariable=text, wraplength=475).pack(anchor='w', pady=8)
             self.feedback_text.append(text)
             if initialize_pose:self.set_pose_fields(arm, self.fk_pose(arm, self.q[7*arm:7*arm+7]))
-        ttk.Label(self.root, text='关节目标采用平滑关节插值；末端目标通过 SDK IK 求解后执行关节运动。此版本不模拟接触力或自动避碰。',
+        ttk.Label(content, text='关节目标采用平滑关节插值；末端目标通过 SDK IK 求解后执行关节运动。此版本不模拟接触力或自动避碰。',
                   wraplength=1040).pack(padx=20, pady=12)
 
     def fk_pose(self,arm,joints):

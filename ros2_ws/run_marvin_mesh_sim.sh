@@ -2,7 +2,10 @@
 set -e
 workspace_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(dirname -- "$workspace_dir")"
-source /opt/ros/humble/setup.bash
+# ROS Debian packages use the system Python. Keep build tools and launched
+# nodes on the same interpreter as the installed ROS Jazzy distribution.
+export PATH="/usr/bin:$PATH"
+source /opt/ros/jazzy/setup.bash
 cd "$workspace_dir"
 if [[ "${1:-}" == "--build" ]]; then
   PYTHONPATH="$workspace_dir/src/marvin_sim:$workspace_dir/src/marvin_mesh_sim:${PYTHONPATH:-}" \
@@ -12,7 +15,8 @@ if [[ "${1:-}" == "--build" ]]; then
   "$workspace_dir/build_sg100_sdk.sh"
   colcon build --base-paths src "$project_dir/marvin_description" \
     --packages-select marvin_description marvin_sim marvin_mesh_sim --symlink-install \
-    --cmake-args -DBUILD_TESTING=OFF
+    --cmake-args -DBUILD_TESTING=OFF \
+    -DPython3_EXECUTABLE=/usr/bin/python3
   shift
 fi
 if [[ ! -f install/marvin_mesh_sim/share/marvin_mesh_sim/package.xml ]]; then
@@ -61,7 +65,8 @@ if ! flock -n 9; then
   if [[ "$publish_model" == false && "${want_rviz,,}" =~ ^(false|0)$ && "${want_panel,,}" =~ ^(false|0)$ ]]; then
     exit 0
   fi
-  exec ros2 launch marvin_mesh_sim view.launch.py sdk_root:="$gento_sdk_root" publish_model:="$publish_model" "$@"
+  exec ros2 launch marvin_mesh_sim view.launch.py sdk_root:="$gento_sdk_root" \
+    publish_model:="$publish_model" "$@"
 fi
 
 sim_ip=""
