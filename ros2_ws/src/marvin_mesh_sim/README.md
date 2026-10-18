@@ -30,8 +30,120 @@ cd /home/wxy/code/tianji/ros2_ws
 
 桌面显示整机 RViz、双臂 FK/IK 面板、灵巧手面板以及本体/头部面板。
 机械臂面板使用度/mm，手指面板使用度，本体/头部面板使用度。
+合并后的控制窗口提供“角度 (°)”和“弧度 (rad)”按钮，会同步切换双臂关节、末端 RPY、
+灵巧手及本体/头部的输入、滑块范围和反馈显示；ROS 话题始终使用 rad。
 支持单指调节、手部张开/弯曲、双臂关节运动、末端 IK 运动和本体/头部姿态调节。
 本体/头部面板通过原版 Gento SDK 的位置控制 API 向本机虚拟控制器发送目标；反馈也由原版 SDK 接收。
+
+## 使用 ROS 2 话题控制
+
+控制面板和外部 ROS 2 节点使用同一组话题，可以同时运行。以下命令需要在新终端中加载环境：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+cd /home/wxy/code/tianjizhineng/ros2_ws
+source install/setup.bash
+```
+
+所有关节目标都是**绝对关节角**，单位为 **rad**，不是相对增量。末端位置单位为 **m**，
+姿态使用四元数 `x, y, z, w`。建议先查看反馈，再基于当前值生成目标：
+
+```bash
+ros2 topic echo /marvin_sim/sdk_joint_states       # 双臂反馈
+ros2 topic echo /marvin_mesh_sim/body_states       # 躯干和头部反馈
+ros2 topic echo /marvin_mesh_sim/hand_states       # 双手反馈
+ros2 topic echo /marvin_sim/status                 # 双臂命令执行状态
+```
+
+### 1. 机械臂关节控制
+
+`/marvin_sim/target_joints` 每次必须包含完整的左臂 7 关节、右臂 7 关节，或者双臂
+14 关节。关节顺序可以改变，控制器按名称匹配。以下示例发送一个完整左臂目标：
+
+```bash
+ros2 topic pub --once /marvin_sim/target_joints sensor_msgs/msg/JointState \
+  "{name: [Joint1_L, Joint2_L, Joint3_L, Joint4_L, Joint5_L, Joint6_L, Joint7_L], \
+    position: [0.17453, -0.34907, 0.52360, -0.69813, 0.34907, 0.26180, -0.17453]}"
+```
+
+右臂使用 `Joint1_R` 至 `Joint7_R`。不要只发送单个机械臂关节，底层 SDK 桥会拒绝
+不完整的单臂目标。
+
+### 2. 机械臂末端位姿控制
+
+先读取当前末端位姿：
+
+```bash
+ros2 topic echo --once /marvin_sim/left/tcp_pose
+ros2 topic echo --once /marvin_sim/right/tcp_pose
+```
+
+将读取结果复制为目标，再修改所需的位置或姿态。目标坐标系必须是
+`Gento_Luna_Leg_J4_Link`。例如发布左臂目标的消息格式如下：
+
+```bash
+ros2 topic pub --once /marvin_sim/left/target_pose geometry_msgs/msg/PoseStamped \
+  "{header: {frame_id: Gento_Luna_Leg_J4_Link}, \
+    pose: {position: {x: 0.30, y: 0.25, z: 0.35}, \
+           orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
+```
+
+右臂目标话题是 `/marvin_sim/right/target_pose`。上面的数值仅展示消息格式；目标必须
+位于对应机械臂的可达空间内，并满足关节限位。控制器通过 SDK IK 求解后执行关节运动，
+不保证末端沿直线移动。执行末端目标期间应保持躯干 J5/J6 不动。
+
+也可以直接用 RPY 发布末端目标，无需手动计算四元数。消息类型为
+`std_msgs/msg/Float64MultiArray`，`data` 必须严格按
+`[x, y, z, roll, pitch, yaw]` 排列；XYZ 单位为 m，RPY 单位为 rad。旋转采用固定轴
+Roll-X、Pitch-Y、Yaw-Z，组合顺序为 `Rz(yaw) * Ry(pitch) * Rx(roll)`，坐标系固定为
+`Gento_Luna_Leg_J4_Link`：
+
+```bash
+ros2 topic pub --once /marvin_sim/left/target_rpy std_msgs/msg/Float64MultiArray \
+  "{data: [0.30, 0.25, 0.35, 0.0, 0.0, 1.5708]}"
+
+ros2 topic pub --once /marvin_sim/right/target_rpy std_msgs/msg/Float64MultiArray \
+  "{data: [0.30, -0.25, 0.35, 0.0, 0.0, -1.5708]}"
+```
+
+RPY 接口内部会转换为四元数，然后进入与 `target_pose` 完全相同的 SDK IK、限位和
+FK 回代检查。示例数值只用于说明格式，实际使用前应根据当前 TCP 位姿确认目标可达。
+
+### 3. 躯干和头部控制
+
+`/marvin_mesh_sim/body_targets` 可以发送一个或多个本体/头部关节。以下示例同时控制
+躯干 J2 和头部 J1：
+
+```bash
+ros2 topic pub --once /marvin_mesh_sim/body_targets sensor_msgs/msg/JointState \
+  "{name: [Gento_Luna_Leg_J2_Joint, Head_J1_joint], position: [0.10, -0.15]}"
+```
+
+完整名称与限位见 `config/body.yaml`。
+
+### 4. 灵巧手控制
+
+`/marvin_mesh_sim/hand_targets` 每次必须包含完整的一只手 11 个关节。以下示例将左手
+发送到全零姿态：
+
+```bash
+ros2 topic pub --once /marvin_mesh_sim/hand_targets sensor_msgs/msg/JointState \
+  "{name: [L_Joint1, L_Joint2, L_Joint3, L_Joint4, L_Joint5, L_Joint6, \
+          L_Joint7, L_Joint8, L_Joint9, L_Joint10, L_Joint11], \
+    position: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
+```
+
+右手将名称改为 `R_Joint1` 至 `R_Joint11`。各关节允许范围见 `config/hands.yaml`。
+
+### 5. 停止和重新启用双臂
+
+```bash
+ros2 service call /marvin_sim/stop std_srvs/srv/Trigger '{}'
+ros2 service call /marvin_sim/enable std_srvs/srv/Trigger '{}'
+```
+
+同时使用控制面板和外部话题时，同一目标话题上最后到达的有效命令生效。不要让多个节点
+持续向同一目标话题发送互相冲突的命令。
 
 ## SDK 调用
 
@@ -176,6 +288,7 @@ SDK 库为预编译发布文件，当前 Linux x86_64 环境已经验证；其�
 
 - `/marvin_sim/target_joints`：完整单臂或双臂 JointState，rad。
 - `/marvin_sim/{left,right}/target_pose`：PoseStamped，m + xyzw；frame 必须是 `Gento_Luna_Leg_J4_Link`。
+- `/marvin_sim/{left,right}/target_rpy`：Float64MultiArray，`[x,y,z,roll,pitch,yaw]`，m + rad；frame 固定为 `Gento_Luna_Leg_J4_Link`。
 - `/marvin_sim/sdk_joint_states`：原版 SDK 收到的双臂反馈。
 - `/marvin_sim/{left,right}/tcp_pose`：Gento SDK FK 经转换得到的 J4 下法兰位姿。
 - `/marvin_sim/stop`、`/marvin_sim/enable`：双臂停止/启用服务。

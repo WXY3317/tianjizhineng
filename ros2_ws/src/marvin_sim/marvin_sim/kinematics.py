@@ -115,9 +115,12 @@ class Kinematics:
         if q.shape != (7,) or not np.isfinite(q).all():
             raise ValueError('Expected seven finite joint angles in radians')
         s = slice(7*arm, 7*arm+7)
-        if np.any(q < self.lower[s]-1e-8) or np.any(q > self.upper[s]+1e-8):
+        # Native SDK feedback uses float32 degrees. Converting a value exactly
+        # on a configured limit back to radians can differ by a few 1e-8 rad.
+        # Accept that representation noise, but still reject real violations.
+        if np.any(q < self.lower[s]-1e-6) or np.any(q > self.upper[s]+1e-6):
             raise ValueError('Joint target exceeds SDK/model limits')
-        return q
+        return np.clip(q,self.lower[s],self.upper[s])
 
     def fk(self, arm, joints):
         q = self.validate_joints(arm, joints)

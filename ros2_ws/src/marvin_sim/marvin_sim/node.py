@@ -1,4 +1,5 @@
 import json
+import math
 import time
 
 import numpy as np
@@ -6,7 +7,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import String
+from std_msgs.msg import Float64MultiArray,String
 from std_srvs.srv import Trigger
 
 from .client import SDKClient
@@ -21,6 +22,20 @@ def make_pose(matrix, frame, stamp):
     q = matrix_quaternion(matrix[:3, :3])
     msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w = q
     return msg
+
+
+def make_rpy_pose(message,frame,stamp):
+    """Convert [x,y,z,roll,pitch,yaw] (m/rad) to a PoseStamped."""
+    if len(message.data)!=6 or not all(math.isfinite(value) for value in message.data):
+        raise ValueError('RPY target must contain six finite values: x y z roll pitch yaw')
+    x,y,z,roll,pitch,yaw=message.data
+    cr,sr=math.cos(roll),math.sin(roll);cp,sp=math.cos(pitch),math.sin(pitch)
+    cy,sy=math.cos(yaw),math.sin(yaw)
+    matrix=np.eye(4);matrix[:3,3]=[x,y,z]
+    matrix[:3,:3]=[[cy*cp,cy*sp*sr-sy*cr,cy*sp*cr+sy*sr],
+                   [sy*cp,sy*sp*sr+cy*cr,sy*sp*cr-cy*sr],
+                   [-sp,cp*sr,cp*cr]]
+    return make_pose(matrix,frame,stamp)
 
 
 class Simulation(Node):
@@ -86,6 +101,8 @@ class Bridge(Node):
         for arm, side in enumerate(('left', 'right')):
             self.create_subscription(PoseStamped, f'/marvin_sim/{side}/target_pose',
                                      lambda msg, a=arm: self.pose_goal(a, msg), 10)
+            self.create_subscription(Float64MultiArray,f'/marvin_sim/{side}/target_rpy',
+                lambda msg,a=arm,f=('Base_L','Base_R')[arm]:self.rpy_goal(a,msg,f),10)
         self.create_service(Trigger, '/marvin_sim/stop', self.stop)
         self.create_service(Trigger, '/marvin_sim/enable', self.enable)
         self.create_timer(.02, self.publish)
@@ -150,6 +167,10 @@ class Bridge(Node):
                         solution_rad=result.tolist(), target_matrix_m=target.tolist())
         except (ValueError, RuntimeError) as exc:
             self.report('fault' if isinstance(exc, RuntimeError) else self.state, error=str(exc))
+
+    def rpy_goal(self,arm,msg,frame):
+        try:self.pose_goal(arm,make_rpy_pose(msg,frame,self.get_clock().now().to_msg()))
+        except ValueError as exc:self.report(self.state,accepted=False,command='sdk_ik_rpy',error=str(exc))
 
     def stop(self, request, response):
         try:

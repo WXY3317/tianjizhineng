@@ -6,7 +6,7 @@ from pathlib import Path
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import String
+from std_msgs.msg import Float64MultiArray,String
 from std_srvs.srv import Trigger
 
 from marvin_sim.node import Bridge,make_pose
@@ -40,6 +40,8 @@ class GentoBridge(Bridge):
         self.create_subscription(JointState,'/marvin_sim/target_joints',self.joint_goal,10)
         for arm,side in enumerate(('left','right')):
             self.create_subscription(PoseStamped,f'/marvin_sim/{side}/target_pose',lambda msg,a=arm:self.pose_goal(a,msg),10)
+            self.create_subscription(Float64MultiArray,f'/marvin_sim/{side}/target_rpy',
+                                     lambda msg,a=arm:self.rpy_goal(a,msg,J4_FRAME),10)
         self.create_service(Trigger,'/marvin_sim/stop',self.stop)
         self.create_service(Trigger,'/marvin_sim/enable',self.enable)
         self.last_status=String(data=json.dumps({'state':'ready','backend':'original_gento_sdk','reference_frame':J4_FRAME,'sdk_ip':self.client.address}))

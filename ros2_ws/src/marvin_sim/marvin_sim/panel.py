@@ -44,6 +44,7 @@ class Panel(Node):
         self.root.title('Marvin M6 · SDK 正逆解与双臂仿真')
         self.root.geometry('1080x790')
         self.root.protocol('WM_DELETE_WINDOW', self.root.quit)
+        self.angle_unit='deg';self.angle_controls=[]
         content = content_factory(self.root) if content_factory else self.root
         self.q = np.radians(INITIAL_DEG).ravel()
         self.received = False
@@ -62,6 +63,9 @@ class Panel(Node):
         ttk.Button(toolbar, text='停止双臂', command=lambda: self.service(self.stop_client)).pack(side='left', padx=5)
         ttk.Button(toolbar, text='启用位置模式', command=lambda: self.service(self.enable_client)).pack(side='left', padx=5)
         ttk.Button(toolbar, text='同时发送双臂关节目标', command=self.send_both).pack(side='left', padx=5)
+        ttk.Button(toolbar, text='回到初始位置', command=self.move_initial).pack(side='left', padx=5)
+        ttk.Button(toolbar, text='回到全零位置', command=self.move_zero).pack(side='left', padx=5)
+        self.add_unit_selector(toolbar)
         ttk.Label(content, textvariable=self.message, wraplength=1020).pack(fill='x', padx=20, pady=8)
         body = ttk.Frame(content)
         body.pack(fill='both', expand=True, padx=12)
@@ -73,11 +77,15 @@ class Panel(Node):
             for j in range(7):
                 row = ttk.Frame(box)
                 row.pack(fill='x', pady=3)
-                ttk.Label(row, text=f'J{j+1} (°)', width=7).pack(side='left')
+                label=tk.StringVar(value=f'J{j+1} (°)')
+                ttk.Label(row, textvariable=label, width=9).pack(side='left')
                 v = tk.DoubleVar(value=INITIAL_DEG[arm][j])
-                ttk.Scale(row, from_=math.degrees(self.kine.lower[7*arm+j]),
-                          to=math.degrees(self.kine.upper[7*arm+j]), variable=v).pack(side='left', fill='x', expand=True)
+                scale=ttk.Scale(row, from_=math.degrees(self.kine.lower[7*arm+j]),
+                                to=math.degrees(self.kine.upper[7*arm+j]), variable=v)
+                scale.pack(side='left', fill='x', expand=True)
                 ttk.Entry(row, textvariable=v, width=10).pack(side='left', padx=5)
+                self.register_angle(v,label,f'J{j+1}',scale,
+                                    self.kine.lower[7*arm+j],self.kine.upper[7*arm+j])
                 variables.append(v)
             self.entries.append(variables)
             actions = ttk.Frame(box)
@@ -88,12 +96,14 @@ class Panel(Node):
             ttk.Separator(box).pack(fill='x', pady=8)
             ttk.Label(box, text=f"末端法兰目标（相对 {pose_frame or '本臂基座'}）").pack(anchor='w')
             pose_vars = []
-            for name in ('X (mm)', 'Y (mm)', 'Z (mm)', 'Roll (°)', 'Pitch (°)', 'Yaw (°)'):
+            for index,name in enumerate(('X (mm)', 'Y (mm)', 'Z (mm)', 'Roll', 'Pitch', 'Yaw')):
                 row = ttk.Frame(box)
                 row.pack(fill='x', pady=2)
-                ttk.Label(row, text=name, width=13).pack(side='left')
+                label=tk.StringVar(value=name if index<3 else f'{name} (°)')
+                ttk.Label(row, textvariable=label, width=13).pack(side='left')
                 v = tk.StringVar(value='0')
                 ttk.Entry(row, textvariable=v).pack(side='left', fill='x', expand=True)
+                if index>=3:self.register_angle(v,label,name)
                 pose_vars.append(v)
             self.pose_entries.append(pose_vars)
             actions = ttk.Frame(box)
@@ -107,6 +117,52 @@ class Panel(Node):
         ttk.Label(content, text='关节目标采用平滑关节插值；末端目标通过 SDK IK 求解后执行关节运动。此版本不模拟接触力或自动避碰。',
                   wraplength=1040).pack(padx=20, pady=12)
 
+    def add_unit_selector(self,parent):
+        frame=ttk.Frame(parent);frame.pack(side='right',padx=8)
+        ttk.Label(frame,text='角度单位：').pack(side='left')
+        ttk.Button(frame,text='角度 (°)',command=lambda:self.set_angle_unit('deg')).pack(side='left',padx=2)
+        ttk.Button(frame,text='弧度 (rad)',command=lambda:self.set_angle_unit('rad')).pack(side='left',padx=2)
+
+    def register_angle(self,var,label,name,scale=None,lower=None,upper=None):
+        self.angle_controls.append((var,label,name,scale,lower,upper))
+
+    def angle_values(self,values):
+        values=np.asarray(values,dtype=float)
+        return np.degrees(values) if self.angle_unit=='deg' else values
+
+    def radians(self,values):
+        values=np.asarray(values,dtype=float)
+        return np.radians(values) if self.angle_unit=='deg' else values
+
+    def angle_suffix(self):
+        return '°' if self.angle_unit=='deg' else 'rad'
+
+    def set_angle_unit(self,unit):
+        if unit==self.angle_unit:return
+        old=self.angle_unit
+        converted=[]
+        for var,*_ in self.angle_controls:
+            try:
+                value=float(var.get())
+                converted.append(math.radians(value) if old=='deg' else math.degrees(value))
+            except (ValueError,tk.TclError):converted.append(None)
+        self.angle_unit=unit;suffix=self.angle_suffix()
+        for control,value in zip(self.angle_controls,converted):
+            var,label,name,scale,lower,upper=control
+            label.set(f'{name} ({suffix})')
+            if scale is not None:
+                bounds=self.angle_values([lower,upper])
+                scale.configure(from_=bounds[0],to=bounds[1])
+            if value is not None:var.set(round(value,6))
+        self.refresh_angle_displays()
+
+    def refresh_angle_displays(self):
+        if self.received:
+            try:
+                for arm in range(2):self.update_arm_feedback(arm)
+            except ValueError as exc:
+                self.received=False;self.message.set(str(exc))
+
     def fk_pose(self,arm,joints):
         return self.kine.fk(arm,joints)
 
@@ -116,8 +172,10 @@ class Panel(Node):
             self.message.set(f"目标未执行：{data.get('error', '')}")
             return
         info=data.get('ik_info',{})
-        extra=(f" SDK 已换参考角求得有效解；最大关节变化 {info['max_joint_change_deg']:.1f}°"
-               if info.get('fallback') and 'max_joint_change_deg' in info else '')
+        change=info.get('max_joint_change_deg')
+        if change is not None and self.angle_unit=='rad':change=math.radians(change)
+        extra=(f" SDK 已换参考角求得有效解；最大关节变化 {change:.4f}{self.angle_suffix()}"
+               if info.get('fallback') and change is not None else '')
         self.message.set(f"状态：{data.get('state')}  {data.get('error', '')}{extra}")
 
     def feedback(self, msg):
@@ -128,27 +186,33 @@ class Panel(Node):
         first = not self.received
         self.received = True
         for arm in range(2):
-            q = self.q[7*arm:7*arm+7]
-            matrix = self.fk_pose(arm, q)
-            self.feedback_text[arm].set('SDK 反馈关节 (°)：\n' + ', '.join(f'{x:.2f}' for x in np.degrees(q))
-                                        + '\nSDK 正解 XYZ (mm)：' + ', '.join(f'{x:.2f}' for x in matrix[:3,3]*1000))
+            matrix=self.update_arm_feedback(arm)
             if first:
                 self.fill_joints(arm)
                 self.set_pose_fields(arm, matrix)
 
+    def update_arm_feedback(self,arm):
+        q=self.q[7*arm:7*arm+7];matrix=self.fk_pose(arm,q)
+        self.feedback_text[arm].set(f'SDK 反馈关节 ({self.angle_suffix()})：\n'
+            +', '.join(f'{x:.4f}' for x in self.angle_values(q))
+            +'\nSDK 正解 XYZ (mm)：'+', '.join(f'{x:.2f}' for x in matrix[:3,3]*1000))
+        return matrix
+
     def set_pose_fields(self, arm, matrix):
-        for v, value in zip(self.pose_entries[arm], [*(matrix[:3,3]*1000), *matrix_rpy(matrix)]):
+        rpy=self.angle_values(np.radians(matrix_rpy(matrix)))
+        for v, value in zip(self.pose_entries[arm], [*(matrix[:3,3]*1000), *rpy]):
             v.set(f'{value:.6f}')
 
     def fill_joints(self, arm):
-        for v, value in zip(self.entries[arm], np.degrees(self.q[7*arm:7*arm+7])):
+        for v, value in zip(self.entries[arm], self.angle_values(self.q[7*arm:7*arm+7])):
             v.set(round(float(value), 5))
 
     def fill_pose(self, arm):
-        self.set_pose_fields(arm, self.fk_pose(arm, self.q[7*arm:7*arm+7]))
+        try:self.set_pose_fields(arm,self.fk_pose(arm,self.q[7*arm:7*arm+7]))
+        except ValueError as exc:self.message.set(str(exc))
 
     def selected_joints(self, arm):
-        return self.kine.validate_joints(arm, np.radians([v.get() for v in self.entries[arm]]))
+        return self.kine.validate_joints(arm, self.radians([v.get() for v in self.entries[arm]]))
 
     def preview_fk(self, arm):
         try:
@@ -159,6 +223,19 @@ class Panel(Node):
 
     def send_both(self):
         self.send_joint(None)
+
+    def move_preset(self,joints):
+        shown=self.angle_values(joints)
+        for arm in range(2):
+            for var,value in zip(self.entries[arm],shown[7*arm:7*arm+7]):
+                var.set(round(float(value),6))
+        self.send_both()
+
+    def move_initial(self):
+        self.move_preset(np.radians(INITIAL_DEG).ravel())
+
+    def move_zero(self):
+        self.move_preset(np.zeros(14))
 
     def send_joint(self, arm):
         try:
@@ -185,7 +262,7 @@ class Panel(Node):
             msg.header.frame_id = self.pose_frame or ('Base_L', 'Base_R')[arm]
             msg.header.stamp = self.get_clock().now().to_msg()
             msg.pose.position.x, msg.pose.position.y, msg.pose.position.z = (values[:3]/1000).tolist()
-            q = matrix_quaternion(rpy_matrix(values[3:]))
+            q = matrix_quaternion(rpy_matrix(np.degrees(self.radians(values[3:]))))
             msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w = q
             self.pose_pubs[arm].publish(msg)
         except ValueError as exc:
