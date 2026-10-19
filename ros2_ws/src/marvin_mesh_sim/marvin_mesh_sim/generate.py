@@ -91,6 +91,10 @@ def generate(source_root, destination, sdk_root):
     ET.SubElement(robot, 'link', name='world')
     manifest, hands, joint_limits, corrections = {}, {}, {}, {}
     body_joints = []
+    palm_path=destination/'config/palm_tcp.yaml'
+    palm_config=yaml.safe_load(palm_path.read_text()) if palm_path.exists() else {
+        'definition':'fixed palm mesh bounding-box center; axes follow hand base',
+        'units':'metres and radians'}
 
     def body_link(body, name):
         link = ET.SubElement(robot, 'link', name=name)
@@ -212,6 +216,25 @@ def generate(source_root, destination, sdk_root):
         connect(f'Arm_{side}7_Link', f'flange_{side}', ee, f'flange_joint_{side}')
         hands[side] = {'joints': []}
         add_hand(source.find(f'.//body[@name="{side}_hand_base"]'), f'flange_{side}', side)
+        hand_body=source.find(f'.//body[@name="{side}_hand_base"]')
+        geom=next(g for g in hand_body.findall('geom') if g.get('type')=='mesh')
+        asset=asset_paths[geom.get('mesh')]
+        if side not in palm_config:
+            bounds=np.array(manifest[asset]['bounds_m'])
+            center=rotation(geom)@np.mean(bounds,axis=0)+np.array(numbers(geom.get('pos','0 0 0')))
+            palm_config[side]={'xyz_m':center.tolist(),'rpy_rad':[0.,0.,0.],
+                               'source_mesh':asset,'source_bounds_m':bounds.tolist()}
+        pose=palm_config[side]
+        xyz=np.array(pose['xyz_m'],dtype=float);rpy=np.array(pose['rpy_rad'],dtype=float)
+        if xyz.shape!=(3,) or rpy.shape!=(3,) or not np.isfinite(np.r_[xyz,rpy]).all():
+            raise ValueError('Palm TCP requires finite xyz_m and rpy_rad vectors')
+        ET.SubElement(robot,'link',name=f'palm_center_{side}')
+        fixed=ET.SubElement(robot,'joint',name=f'{side}_hand_base_to_palm_center',type='fixed')
+        ET.SubElement(fixed,'parent',link=f'{side}_hand_base')
+        ET.SubElement(fixed,'child',link=f'palm_center_{side}')
+        ET.SubElement(fixed,'origin',xyz=text(xyz),rpy=text(rpy))
+    palm_path.write_text(yaml.safe_dump(palm_config,sort_keys=False))
+
 
     # Type 1017 uses the SDK's CCS geometric lengths. The source shoulder frame
     # is at joint 1, so L1=0; source upper/lower arms are 264 mm, flange 87 mm.

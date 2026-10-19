@@ -22,7 +22,7 @@ class MeshPanel(Panel):
         super().__init__(kine_factory=lambda root,model:GentoMeshKinematics(
             root if (Path(root)/'PYTHON_SDK/GentoRobot.py').exists() else Path(root).parent/'tianji-robot-SDK',model),
                          sdk_label='原版 Gento SDK · 双臂正逆解统一参考躯干 J4',
-                         pose_frame=J4_FRAME,initialize_pose=False,
+                         pose_frame=J4_FRAME,initialize_pose=False,endpoint_label='手掌中心 TCP',
                          content_factory=self.create_tabs)
         self.root.title('整机仿真 · 双臂、灵巧手与本体控制')
         self.root.geometry('1120x850')

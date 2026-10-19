@@ -11,7 +11,7 @@ from std_srvs.srv import Trigger
 
 from marvin_sim.node import Bridge,make_pose
 from marvin_sim.kinematics import JOINT_NAMES,quaternion_matrix
-from .frames import J4Frames,J4_FRAME
+from .frames import J4Frames,J4_FRAME,TCP_FRAMES
 import numpy as np
 from .gento_kinematics import GentoMeshKinematics
 from .gento_robot_client import GentoRobotClient
@@ -50,7 +50,7 @@ class GentoBridge(Bridge):
         self.get_logger().info('Original libGentoSDKPY.so connected: ARM0/ARM1 + BODY/HEAD; native Gento FK/IK')
 
     def report(self,state,**details):
-        return super().report(state,backend='original_gento_sdk',reference_frame=J4_FRAME,**details)
+        return super().report(state,backend='original_gento_sdk',reference_frame=J4_FRAME,tcp_frames=list(TCP_FRAMES),**details)
 
     def refresh(self):
         self.q=self.client.read()

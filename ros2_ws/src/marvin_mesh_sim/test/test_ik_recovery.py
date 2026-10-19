@@ -22,7 +22,7 @@ def screenshot_target():
 
 def test_recorded_right_j4_target_recovers_from_reference_joint_limit():
     kine=GentoMeshKinematics(ROOT/'tianji-robot-SDK',MODEL)
-    frames=J4Frames(MODEL);body=np.zeros(8);target=screenshot_target()
+    frames=J4Frames(MODEL);body=np.zeros(8);target=screenshot_target()@frames.tools[1]
     result=kine.ik(1,frames.ik_target(1,target,body),np.radians(REFERENCE_DEG))
     actual=frames.fk(1,kine.fk(1,result),body)
     dp,dr=pose_error(actual,target)

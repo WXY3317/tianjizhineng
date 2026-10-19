@@ -177,7 +177,7 @@ from marvin_mesh_sim.sdk import MeshSimulationSDK
 with MeshSimulationSDK('/home/wxy/code/tianji/tianji-robot-SDK') as sdk:
     q = sdk.get_joint_positions('A')
     q[0] += 3
-    pose = sdk.fk('A', q)         # Gento SDK 正解 + 坐标转换，J4 → flange_L
+    pose = sdk.fk('A', q)         # Gento SDK 正解 + 坐标转换，J4 → palm_center_L
     solution = sdk.ik('A', pose)  # 输入 J4 下的目标，转换到肩部后调用 SDK IK
     sdk.move_joints('A', solution)
     # 也可以 sdk.move_pose('A', pose)
@@ -290,7 +290,7 @@ SDK 库为预编译发布文件，当前 Linux x86_64 环境已经验证；其�
 - `/marvin_sim/{left,right}/target_pose`：PoseStamped，m + xyzw；frame 必须是 `Gento_Luna_Leg_J4_Link`。
 - `/marvin_sim/{left,right}/target_rpy`：Float64MultiArray，`[x,y,z,roll,pitch,yaw]`，m + rad；frame 固定为 `Gento_Luna_Leg_J4_Link`。
 - `/marvin_sim/sdk_joint_states`：原版 SDK 收到的双臂反馈。
-- `/marvin_sim/{left,right}/tcp_pose`：Gento SDK FK 经转换得到的 J4 下法兰位姿。
+- `/marvin_sim/{left,right}/tcp_pose`：Gento SDK FK 经转换得到的 J4 下手掌中心 TCP 位姿。
 - `/marvin_sim/stop`、`/marvin_sim/enable`：双臂停止/启用服务。
 - `/joint_states`：全部 44 个关节，用于整机 TF。
 
@@ -311,12 +311,21 @@ SDK 库为预编译发布文件，当前 Linux x86_64 环境已经验证；其�
 底盘在原 MJCF 的地面位置固定，`world → base_link → 六段腰腿/躯干`；
 头部与左右肩挂在第六段躯干上，躯干运动通过 TF 自然带动两臂。
 本包的面板、`MeshSimulationSDK.fk()/ik()/move_pose()` 和 ROS 末端位姿接口
-统一以 `Gento_Luna_Leg_J4_Link` 为参考系，末端仍为 `flange_L/flange_R`。
+统一以 `Gento_Luna_Leg_J4_Link` 为参考系，末端改为 `palm_center_L/palm_center_R`，法兰 `flange_L/flange_R` 保留用于对照。
+手掌中心采用固定掌座 STL 的包围盒几何中心，不是质量中心、掌面接触中心或指尖。
+TCP 的坐标轴沿用 `L_hand_base/R_hand_base`，所以相对旧法兰，位置和姿态都有固定变换。
+默认掌座内坐标（mm）：左约 `[-0.06648, -16.67907, 62.58579]`，右约 `[0.06669, -16.67907, 62.58579]`。
+这些是模型几何定义，尚未经真机工具标定；手指开合不改变 TCP。
+
+`config/palm_tcp.yaml` 中 `xyz_m`、`rpy_rad` 可用于后续标定；编辑后重新 `--build` 并重启后台。
+模型生成会保留已有配置，不覆盖手工标定值。所有末端 Pose/RPY 话题、面板和 Python FK/IK
+均改为掌心 TCP，旧法兰目标数值不能直接作为掌心目标复用。
+
 `frames.py` 根据生成 URDF 和当前躯干 SDK 反馈计算 J4 到左右肩的变换：
 
 ```text
-正解：T_J4_flange = T_J4_Base × SDK_FK(q)
-逆解：SDK_IK(inverse(T_J4_Base) × T_J4_target)
+正解：T_J4_palm = T_J4_Base × SDK_FK_flange(q) × T_flange_palm
+逆解：SDK_IK(inverse(T_J4_Base) × T_J4_palm_target × inverse(T_flange_palm))
 ```
 
 单个参考关节角导致 SDK 返回超限，不代表目标没有可行解。适配层优先使用当前参考角；
@@ -334,8 +343,8 @@ J5/J6 尚未到达目标时拒绝新的 IK 目标；本版为单次 IK 求解，
 可与 TF 对照：
 
 ```bash
-ros2 run tf2_ros tf2_echo Gento_Luna_Leg_J4_Link flange_L
-ros2 run tf2_ros tf2_echo Gento_Luna_Leg_J4_Link flange_R
+ros2 run tf2_ros tf2_echo Gento_Luna_Leg_J4_Link palm_center_L
+ros2 run tf2_ros tf2_echo Gento_Luna_Leg_J4_Link palm_center_R
 ```
 
 机械臂名称为 Joint1_L..Joint7_L / Joint1_R..Joint7_R；手指名称和顺序

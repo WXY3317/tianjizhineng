@@ -99,9 +99,9 @@ def test_ros_combined_model_sdk_arm_and_fingers(tmp_path):
             wait_for(lambda:all(poses) and all(p.get_subscription_count() for p in pose_pubs))
             for arm,side in enumerate('LR'):
                 assert poses[arm][-1].header.frame_id==J4_FRAME
-                wait_for(lambda:tf_buffer.can_transform(J4_FRAME,f'flange_{side}',rclpy.time.Time()))
+                wait_for(lambda:tf_buffer.can_transform(J4_FRAME,f'palm_center_{side}',rclpy.time.Time()))
                 def agrees_with_tf():
-                    t=tf_buffer.lookup_transform(J4_FRAME,f'flange_{side}',rclpy.time.Time()).transform
+                    t=tf_buffer.lookup_transform(J4_FRAME,f'palm_center_{side}',rclpy.time.Time()).transform
                     expected=np.eye(4);expected[:3,3]=[t.translation.x,t.translation.y,t.translation.z]
                     expected[:3,:3]=quaternion_matrix([t.rotation.x,t.rotation.y,t.rotation.z,t.rotation.w])
                     return max(pose_error(matrix(poses[arm][-1].pose),expected))<1e-5
@@ -124,7 +124,7 @@ def test_ros_combined_model_sdk_arm_and_fingers(tmp_path):
             arm_goal=JointState();arm_goal.name=JOINT_NAMES[7:];arm_goal.position=reference.tolist()
             target.publish(arm_goal)
             wait_for(lambda:np.max(np.abs(arms[-1][7:]-reference))<1e-6)
-            previous=len(statuses);desired=screenshot_target()
+            previous=len(statuses);desired=screenshot_target()@frames.tools[1]
             pose_pubs[1].publish(make_pose(desired,J4_FRAME,node.get_clock().now().to_msg()))
             wait_for(lambda:any(s.get('ik_info',{}).get('fallback') and s.get('accepted')
                                 for s in statuses[previous:]))

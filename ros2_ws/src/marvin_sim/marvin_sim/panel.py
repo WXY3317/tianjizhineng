@@ -33,7 +33,7 @@ def matrix_rpy(matrix):
 
 class Panel(Node):
     def __init__(self, kine_factory=Kinematics, sdk_label='原版 libMarvinSDK.so → 本机虚拟控制器 → URDF / RViz',
-                 pose_frame=None,initialize_pose=True,content_factory=None):
+                 pose_frame=None,initialize_pose=True,content_factory=None,endpoint_label='末端法兰'):
         super().__init__('marvin_sim_panel')
         self.declare_parameter('sdk_root', '')
         self.declare_parameter('description_root', '')
@@ -94,7 +94,7 @@ class Panel(Node):
             ttk.Button(actions, text='SDK 正解预览', command=lambda a=arm: self.preview_fk(a)).pack(side='left', padx=4)
             ttk.Button(actions, text='执行关节目标', command=lambda a=arm: self.send_joint(a)).pack(side='left')
             ttk.Separator(box).pack(fill='x', pady=8)
-            ttk.Label(box, text=f"末端法兰目标（相对 {pose_frame or '本臂基座'}）").pack(anchor='w')
+            ttk.Label(box, text=f"{endpoint_label}目标（相对 {pose_frame or '本臂基座'}）").pack(anchor='w')
             pose_vars = []
             for index,name in enumerate(('X (mm)', 'Y (mm)', 'Z (mm)', 'Roll', 'Pitch', 'Yaw')):
                 row = ttk.Frame(box)

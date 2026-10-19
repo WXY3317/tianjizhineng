@@ -18,7 +18,7 @@ def test_j4_fk_ik_both_arms_matches_urdf_after_torso_motion():
             q=np.radians(INITIAL_DEG[arm])
             values=dict(zip(frames.body_names,body))
             values.update(dict(zip([f'Joint{i}_{side}' for i in range(1,8)],q)))
-            expected=urdf_fk(root,J4_FRAME,f'flange_{side}',values)
+            expected=urdf_fk(root,J4_FRAME,f'palm_center_{side}',values)
             actual=frames.fk(arm,kine.fk(arm,q),body)
             assert np.allclose(actual,expected,atol=1e-9)
             local=frames.ik_target(arm,actual,body)

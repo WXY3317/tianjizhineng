@@ -8,7 +8,7 @@ import numpy as np
 
 from .gento_robot_client import GentoRobotClient
 from .gento_kinematics import GentoMeshKinematics
-from .frames import J4Frames,J4_FRAME
+from .frames import J4Frames,J4_FRAME,TCP_FRAMES
 
 
 class MeshSimulationSDK:
@@ -19,6 +19,7 @@ class MeshSimulationSDK:
         root=Path(sdk_root)
         if not (root/'PYTHON_SDK/GentoRobot.py').exists():root=root.parent/'tianji-robot-SDK'
         self.reference_frame=J4_FRAME
+        self.tcp_frames=TCP_FRAMES
         self.frames=J4Frames(model_root)
         self.kinematics=GentoMeshKinematics(root,Path(model_root))
         self.client=GentoRobotClient(self.kinematics,model_root,sim_ip=sim_ip)

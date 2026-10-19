@@ -1,4 +1,4 @@
-"""Common J4 reference frame; native arm SDK coordinates remain shoulder-local."""
+"""J4 palm-center TCP conversion; native SDK still solves shoulder-to-flange."""
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -6,6 +6,8 @@ import numpy as np
 import yaml
 
 from marvin_sim.kinematics import validate_transform
+
+TCP_FRAMES=('palm_center_L','palm_center_R')
 
 J4_FRAME='Gento_Luna_Leg_J4_Link'
 
@@ -27,6 +29,17 @@ class J4Frames:
         root=ET.parse(model/'urdf/marvin_mesh_hands.urdf').getroot()
         self.joints={j.find('child').get('link'):j for j in root.findall('joint')}
         self.body_names=[j['name'] for j in yaml.safe_load((model/'config/body.yaml').read_text())['joints']]
+        self.tools=[]
+        for arm,side in enumerate('LR'):
+            path=[];link=TCP_FRAMES[arm]
+            while link!=f'flange_{side}':
+                if link not in self.joints:raise ValueError(f'Missing palm TCP frame: {link}; rebuild model')
+                joint=self.joints[link]
+                if joint.get('type')!='fixed':raise ValueError('Palm TCP must be rigidly attached to flange')
+                path.append(joint);link=joint.find('parent').get('link')
+            tool=np.eye(4)
+            for joint in reversed(path):tool=tool@origin(joint.find('origin'))
+            self.tools.append(tool)
         self.paths=[]
         for side in 'LR':
             path=[];link=f'Base_{side}'
@@ -66,7 +79,7 @@ class J4Frames:
         return result
 
     def fk(self,arm,shoulder_pose,body_positions):
-        return self.shoulder(arm,body_positions)@validate_transform(shoulder_pose)
+        return self.shoulder(arm,body_positions)@validate_transform(shoulder_pose)@self.tools[arm]
 
     def ik_target(self,arm,j4_pose,body_positions):
-        return np.linalg.inv(self.shoulder(arm,body_positions))@validate_transform(j4_pose)
+        return np.linalg.inv(self.shoulder(arm,body_positions))@validate_transform(j4_pose)@np.linalg.inv(self.tools[arm])
