@@ -1,3 +1,4 @@
+# 实体单臂 SDK 控制脚本；默认连接后只读预览，执行运动受命令行选项及目标校验约束。
 """Single-arm position control; default is connected, read-only preview."""
 import argparse
 import ipaddress
@@ -6,12 +7,12 @@ import sys
 import time
 from pathlib import Path
 
-# Support both SDK/real_test and a real_test directory beside the SDK repository.
+# Locate the SDK from the workspace or a legacy SDK-adjacent layout.
 base = Path(__file__).resolve().parent.parent
-sdk_root = next((p for p in (base, base / 'tianji-robot-SDK')
+sdk_root = next((p for p in (base, base / 'tianji-robot-SDK', base.parent / 'tianji-robot-SDK')
                  if (p / 'PYTHON_SDK/GentoRobot.py').is_file()), None)
 if sdk_root is None:
-    raise ImportError('Cannot find PYTHON_SDK beside real_test or in sibling tianji-robot-SDK')
+    raise ImportError('Cannot find PYTHON_SDK in the SDK or repository tianji-robot-SDK directory')
 sys.path.insert(0, str(sdk_root))
 from PYTHON_SDK.GentoRobot import GentoRobot, FX_InvKineSolverParams, FXStateType
 

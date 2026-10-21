@@ -12,7 +12,7 @@
 | `ros2_ws/src/marvin_mesh_sim` | STL 整机仿真，接通双臂原版 SDK 正逆解与控制 |
 | `ros2_ws/src/marvin_sim` | 原版 SDK 的本机虚拟控制器及运动学仿真基础 |
 | `ros2_ws/src/gento_dual_arm` | Gento 双臂 ROS 2 接口 |
-| `real_test` | 真机控制脚本 |
+| `ros2_ws/real_test` | 真机控制脚本 |
 
 ## 获取代码
 
