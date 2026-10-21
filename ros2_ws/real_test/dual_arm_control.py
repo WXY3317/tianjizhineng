@@ -1,3 +1,4 @@
+# 实体双臂 SDK 轨迹脚本；通过单一连接和组合启动掩码协调两臂，执行前检查目标与限位。
 """Dual-arm joint trajectories using one SDK connection and a combined start mask."""
 import argparse
 import ipaddress

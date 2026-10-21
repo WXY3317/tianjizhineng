@@ -1,3 +1,5 @@
+所有命令均从仓库根目录执行；本目录位于 `ros2_ws/real_test`，SDK 保留在仓库根目录的 `tianji-robot-SDK`。
+
 # 单臂真机测试
 
 `arm_control.py` 在正逆解示例基础上增加位置模式切换、目标下发、到位监测、超时处理、异常急停和显式断开连接。Python 3.10+，仅依赖标准库与仓库 SDK；需将匹配系统架构的 `libGentoSDKPY.so` / `.dll` 放在 `PYTHON_SDK` 中。
@@ -6,13 +8,13 @@
 
 ```bash
 # 只读当前左臂关节角和末端位姿
-python3 real_test/arm_control.py --ip 6.6.7.190 --arm 0
+python3 ros2_ws/real_test/arm_control.py --ip 6.6.7.190 --arm 0
 
 # 预览：左臂第一个关节相对当前位置增加 1 度
-python3 real_test/arm_control.py --ip 6.6.7.190 --arm 0 --delta 1 0 0 0 0 0 0
+python3 ros2_ws/real_test/arm_control.py --ip 6.6.7.190 --arm 0 --delta 1 0 0 0 0 0 0
 
 # 执行同一相对动作（以本次运行读到的位置为起点）
-python3 real_test/arm_control.py --ip 6.6.7.190 --arm 0 --delta 1 0 0 0 0 0 0 --execute
+python3 ros2_ws/real_test/arm_control.py --ip 6.6.7.190 --arm 0 --delta 1 0 0 0 0 0 0 --execute
 ```
 
 - `--arm 0/1`：左臂/右臂，每次只操作一只手臂。
@@ -29,13 +31,16 @@ TCP 模式执行的是关节空间位置运动，**不保证末端沿直线移�
 
 逆解失败的真实返回值可能是整数错误码，因此脚本检查结果类型和超限标记，并以 FK 回代验证（位置误差阈值 0.1 个模型长度单位，旋转矩阵元素误差阈值 0.001）。这不是精度标定结果。
 
-离线测试不连接硬件，也不加载动态库：
+离线测试使用 ROS 2 桥接包中的 fake SDK 用例，不连接硬件、不加载动态库。
+从仓库根目录运行：
 
 ```bash
-python3 -m unittest discover -s real_test -p 'test_*.py' -v
+source /opt/ros/humble/setup.bash
+PYTHONPATH="$PWD/ros2_ws/src/gento_dual_arm:$PYTHONPATH" python3 -m pytest \
+  ros2_ws/src/gento_dual_arm/test/test_bridge.py -q -k 'not ros_topics_and_stamps'
 ```
 
-测试覆盖预览不运动、成功执行与清理、发送失败急停、拒绝接管、限位/非有限值拒绝及超时急停。真机行为仍需现场验证。
+这些用例包含目标校验、预览、轨迹执行与异常清理；真机行为仍需现场验证。
 
 ## 双臂控制
 
@@ -43,14 +48,14 @@ python3 -m unittest discover -s real_test -p 'test_*.py' -v
 
 ```bash
 # 读取双臂当前关节角与 TCP，不运动
-python3 real_test/dual_arm_control.py --ip 6.6.7.190
+python3 ros2_ws/real_test/dual_arm_control.py --ip 6.6.7.190
 
 # 预览：左右臂的第一关节分别增加 1 度
-python3 real_test/dual_arm_control.py --ip 6.6.7.190 \
+python3 ros2_ws/real_test/dual_arm_control.py --ip 6.6.7.190 \
   --delta 1 0 0 0 0 0 0  1 0 0 0 0 0 0
 
 # 真机执行上述双臂增量动作
-python3 real_test/dual_arm_control.py --ip 6.6.7.190 \
+python3 ros2_ws/real_test/dual_arm_control.py --ip 6.6.7.190 \
   --delta 1 0 0 0 0 0 0  1 0 0 0 0 0 0 --execute
 ```
 
