@@ -1,3 +1,4 @@
+# 交互控制面板：读取关节、预览正解并提交关节或逆解目标；执行命令经 ROS 桥接交给 SDK。
 import json
 import time
 import numpy as np

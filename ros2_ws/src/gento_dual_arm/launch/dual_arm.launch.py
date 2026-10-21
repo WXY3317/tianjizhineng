@@ -1,3 +1,4 @@
+# 声明双臂控制参数并启动 Gento ROS 桥接节点。
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration

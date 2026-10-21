@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# 依据机器人描述包生成 cuRobo 碰撞模型 YAML，参数和默认路径见脚本选项。
 # Generate a cuRobo robot collision YAML from a ROS 2 *_description package.
 #
 # Designed to be copied or kept inside any xxx_description repo. Defaults are

@@ -1,3 +1,4 @@
+# 加载 Luna MuJoCo 模型并执行模型检查，辅助发现生成和资源配置问题。
 from __future__ import annotations
 
 import json

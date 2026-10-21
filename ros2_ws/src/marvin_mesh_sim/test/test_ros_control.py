@@ -1,3 +1,4 @@
+# 启动整机 ROS/SDK 链路，验证双臂、躯干、头部和灵巧手的公开控制接口。
 import json
 import os
 from pathlib import Path

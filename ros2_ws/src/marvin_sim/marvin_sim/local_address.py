@@ -1,3 +1,4 @@
+# 枚举本机网卡并选择非回环 IPv4；显式传入的仿真 IP 也必须属于本机。
 """Select an assigned local IPv4: vendor SDK rejects every 127.* address."""
 import fcntl
 import ipaddress

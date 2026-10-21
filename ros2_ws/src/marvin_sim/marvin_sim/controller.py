@@ -1,3 +1,4 @@
+# 实现旧版 Marvin 虚拟控制器的 UDP 协议子集；固定接收端口要求避免多个 SDK 客户端争用。
 """100343 UDP protocol subset for an unmodified libMarvinSDK.so client.
 
 Local host only, one SDK client (the SDK fixes its receive port at 4730).

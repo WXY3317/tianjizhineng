@@ -1,3 +1,4 @@
+# 使用原版 Gento 动态库验证本地协议、躯干头部控制及 ctypes 结构体布局。
 """Exercise the vendor Python wrapper and native library against local controller."""
 from pathlib import Path
 import struct

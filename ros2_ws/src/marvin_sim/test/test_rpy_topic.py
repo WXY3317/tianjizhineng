@@ -1,3 +1,4 @@
+# 检查 RPY 目标话题的单位、输入校验与位姿转换。
 import math
 
 import numpy as np

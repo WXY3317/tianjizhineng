@@ -1,3 +1,5 @@
+# 从 MJCF 和 STL 生成整机 URDF、关节配置及资源审计报告；输出文件应通过此生成器更新。
+# 处理机械臂安装方向、SG100 手部限位及固定手掌 TCP，保证模型与 SDK 的几何约定一致。
 """Build a portable whole-robot URDF from existing MJCF and audited STL assets."""
 import argparse
 import hashlib

@@ -1,3 +1,4 @@
+# 通过原版 SG100 SDK 打包命令，将 CANFD 帧封装进本机 UDP，接收反馈后交回原版 SDK 解码。
 """Original SG100 SDK client using local UDP to carry its CANFD fragments."""
 import json
 from pathlib import Path
@@ -27,10 +28,12 @@ class SG100Client:
                 self.names[side]=[j['name'] for j in config[side]['joints']]
                 model=np.array([j['range'] for j in config[side]['joints']])
                 sdk=np.radians([[j['min_angle'],j['max_angle']] for j in mapping[side]])
+                # 仅接受模型限位与原厂角度映射限位的交集，避免两个控制约定不一致。
                 self.limits[side]=np.column_stack((np.maximum(model[:,0],sdk[:,0]),np.minimum(model[:,1],sdk[:,1])))
                 self.devices[side]=SG100Device(sdk_root,side)
         except BaseException:self.close();raise
 
+    # 从原版 SDK 取出待发送 CANFD 帧；外加本机 UDP 信封，不改变原厂帧载荷。
     def flush(self):
         for side,device in self.devices.items():
             for can_id,data in device.CANFDGetTxFrames():
@@ -41,11 +44,13 @@ class SG100Client:
         q=np.asarray(joints_rad,dtype=float);bounds=self.limits[side]
         if q.shape!=(11,) or not np.isfinite(q).all():raise ValueError('Expected 11 finite hand angles')
         if np.any(q<bounds[:,0]) or np.any(q>bounds[:,1]):raise ValueError('Hand target exceeds SG100/model limits')
+        # 模型用弧度，原厂 SG100 位置 API 用度，在此统一转换。
         self.devices[side].SetJointPositions(np.degrees(q))
         self.flush()
 
     def pump(self):
         now=time.monotonic()
+        # 约每 20 毫秒请求一次状态，非阻塞接收并交给原厂库解析；有效更新才刷新反馈时间。
         if now-self.last_poll>=.02:
             for device in self.devices.values():device.RequestHandStatus()
             self.last_poll=now;self.flush()
@@ -62,6 +67,7 @@ class SG100Client:
 
     def read(self):
         self.pump()
+        # 拒绝使用超过 0.5 秒没有更新的缓存反馈，避免把断开的仿真状态当作当前状态。
         if any(time.monotonic()-t>.5 for t in self.refreshed.values()):
             raise RuntimeError('Original SG100 SDK feedback missing/stale (>0.5 seconds)')
         return {s:np.radians(d.GetCachedPositions()) for s,d in self.devices.items()}

@@ -1,3 +1,4 @@
+# 检查机器人描述资源及模型结构，防止描述文件与资源引用不一致。
 import importlib.util
 import math
 import subprocess

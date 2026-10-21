@@ -1,3 +1,4 @@
+# 启动旧版 Marvin SDK 仿真、ROS 桥接及模型显示。
 """SDK UDP controller + real SDK bridge + URDF visualization."""
 from pathlib import Path
 

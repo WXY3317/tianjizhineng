@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# 旧版 Marvin 仿真启动入口，准备工作区环境并启动 ROS/SDK 控制链路。
 set -e
 
 workspace_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

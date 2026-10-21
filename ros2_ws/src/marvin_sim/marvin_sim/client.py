@@ -1,3 +1,4 @@
+# 封装原版 Marvin SDK 的本机连接、模式控制与反馈；用于旧版机械臂仿真链路。
 """SDK client restricted to this host. Motion uses the original library."""
 import ctypes
 import time

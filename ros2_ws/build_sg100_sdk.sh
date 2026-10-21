@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# 编译自研 SG100 C ABI 适配层并链接原版 SDK，供仿真中的 Python 调用。
 set -e
 workspace_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 sdk_dir="${1:-$(dirname -- "$workspace_dir")/SG100_SDK_Publish}"

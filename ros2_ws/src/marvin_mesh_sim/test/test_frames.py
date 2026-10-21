@@ -1,3 +1,4 @@
+# 通过独立累积 URDF 变换验证 J4 正逆解坐标转换，包含躯干姿态变化。
 """J4 FK/IK compared with independently accumulated full URDF transforms."""
 import xml.etree.ElementTree as ET
 

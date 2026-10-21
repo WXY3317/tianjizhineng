@@ -1,3 +1,4 @@
+# 虚拟双臂的关节插值器：接收目标并按时间更新状态，不直接连接实体硬件。
 """Pure joint interpolation for the virtual Gento arm controller (no old SDK)."""
 import time
 import numpy as np

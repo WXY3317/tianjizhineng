@@ -1,3 +1,4 @@
+# 从 Luna URDF 生成可重复构建的 MJCF 模型及场景，保留原始资源供重新生成。
 """Generate a self-contained MJCF package from the supplied Luna URDF.
 
 This script is intentionally kept in the output package so the conversion is

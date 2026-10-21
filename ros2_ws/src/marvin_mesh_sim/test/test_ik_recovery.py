@@ -1,3 +1,4 @@
+# 复现右臂单一参考值导致的逆解失败，验证多参考值恢复和解的有效性。
 """Recorded right-arm J4 target rejected by a single reference-dependent IK."""
 from pathlib import Path
 import numpy as np

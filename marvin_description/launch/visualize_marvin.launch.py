@@ -1,3 +1,4 @@
+# 只启动机器人描述可视化，通过关节状态发布器和 RViz 查看模型。
 # Copyright 2026
 # SPDX-License-Identifier: Apache-2.0
 """Marvin description-only RViz visualization launch.

@@ -1,3 +1,4 @@
+# 在 ROS 的米/弧度约定与 SDK 原生单位之间转换，并检查输入长度和有限值。
 """ROS SI units to native SDK units, with strict input checks."""
 import math
 

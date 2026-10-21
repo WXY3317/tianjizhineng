@@ -1,3 +1,4 @@
+# 验证重复启动复用后台，以及模型发布节点缺失时的恢复行为。
 """Starting the launcher twice must preserve the backend, not flash/exit."""
 import os
 import re

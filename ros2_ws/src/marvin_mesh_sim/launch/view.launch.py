@@ -1,3 +1,4 @@
+# 复用已运行的整机 SDK 仿真后台，重新打开界面；可按参数补启模型发布节点。
 """Reopen GUI windows while reusing an existing SDK simulation backend."""
 from pathlib import Path
 

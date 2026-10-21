@@ -1,3 +1,4 @@
+# 加载 MuJoCo 模型并输出模型结构，辅助核对关节、刚体及资源是否成功导入。
 from __future__ import annotations
 
 import sys

@@ -1,3 +1,4 @@
+# 维护躯干六关节和头部两关节的限位与插值状态，供虚拟控制器推进运动。
 """Bounded torso/head joint interpolation; no vendor hardware commands."""
 from pathlib import Path
 import time

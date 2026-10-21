@@ -1,3 +1,4 @@
+# 兼容手部仿真接口：维护手部关节状态及旧版命令入口；与原厂机械臂固件接口分开。
 """Joint-level hand simulation. This API is separate from vendor arm firmware."""
 import json
 from pathlib import Path

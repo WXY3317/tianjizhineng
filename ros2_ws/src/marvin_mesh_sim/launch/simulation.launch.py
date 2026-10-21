@@ -1,3 +1,4 @@
+# 启动整机仿真控制器、SDK 桥接、模型发布器和可选界面；后端退出时联动关闭本次启动。
 from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory

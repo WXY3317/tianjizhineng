@@ -1,3 +1,4 @@
+# 机器人描述包的构建与资源安装配置，供 ROS 2 包索引和可视化查找模型。
 cmake_minimum_required(VERSION 3.16)
 project(marvin_description VERSION 0.1.0 LANGUAGES CXX)
 

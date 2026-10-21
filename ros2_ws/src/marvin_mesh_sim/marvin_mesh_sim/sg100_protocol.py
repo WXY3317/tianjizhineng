@@ -1,3 +1,5 @@
+# 实现虚拟 SG100 手掌的位置控制协议、CRC 校验和分片重组。
+# 本地 UDP 外层为左右手标识、四字节小端 CAN ID 与 CANFD 载荷，内部保留原厂帧格式。
 """Virtual SG100 palm position-control subset. CANFD fragments travel over UDP.
 
 UDP envelope: side ASCII L/R + uint32 little-endian CAN ID + 1..64 payload
@@ -9,6 +11,7 @@ import time
 import numpy as np
 
 
+# CRC 使用原厂帧的多项式和初末异或约定，不能替换成默认参数不同的通用 CRC 函数。
 def crc32(data):
     value=0xffffffff
     for byte in data:
@@ -25,6 +28,7 @@ def frame(cmd,data=b'',dst=0xfe,src=0xfd):
 
 class Stream:
     def __init__(self):self.buffer=bytearray();self.last=time.monotonic()
+    # UDP 中的 CANFD 载荷需要重新拼成原厂消息；超时清空残片，限制缓存大小防止无限增长。
     def feed(self,data):
         now=time.monotonic()
         if now-self.last>.5:self.buffer.clear()

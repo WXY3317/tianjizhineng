@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
+# 整机仿真启动入口；--build 先生成模型和构建，再通过锁文件复用或启动后台。
+# 默认选择本机 IP，SDK 命令交给本地虚拟控制器；重复启动会恢复可视化界面。
 set -e
 workspace_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(dirname -- "$workspace_dir")"
 # ROS Debian packages use the system Python. Keep build tools and launched
-# nodes on the same interpreter as the installed ROS Jazzy distribution.
+# nodes on the same interpreter as the installed ROS Humble distribution.
 export PATH="/usr/bin:$PATH"
-source /opt/ros/jazzy/setup.bash
+# source /opt/ros/humble/setup.bash
 cd "$workspace_dir"
 if [[ "${1:-}" == "--build" ]]; then
   PYTHONPATH="$workspace_dir/src/marvin_sim:$workspace_dir/src/marvin_mesh_sim:${PYTHONPATH:-}" \

@@ -1,3 +1,4 @@
+# 提供运动学计算与输入校验；长度和角度在 ROS 边界使用米、弧度，原厂接口按各自单位转换。
 """Compatibility import: mesh kinematics now uses the original Gento SDK."""
 from pathlib import Path
 from .gento_kinematics import GentoMeshKinematics

@@ -1,3 +1,4 @@
+# 独立读取 STL 几何中心，验证手掌 TCP 的固定变换及其与手指运动的独立性。
 """Palm TCP is attached to the fixed palm geometry, not moving fingers."""
 import xml.etree.ElementTree as ET
 import numpy as np

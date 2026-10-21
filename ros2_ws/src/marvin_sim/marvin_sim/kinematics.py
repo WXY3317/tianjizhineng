@@ -1,3 +1,4 @@
+# 提供运动学计算与输入校验；长度和角度在 ROS 边界使用米、弧度，原厂接口按各自单位转换。
 """Real vendor FK/IK with SI boundary units and model limit checks.
 
 The vendor library has process-global arm slots 0 and 1. Use one instance per

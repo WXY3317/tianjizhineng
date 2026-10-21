@@ -1,3 +1,4 @@
+# 用 ctypes 加载自研 C ABI 适配层，将 Python 调用转交原版 SG100 C++ SDK。
 """C ABI adapter to the original, unmodified SG100 C++ SDK."""
 import ctypes as C
 from pathlib import Path

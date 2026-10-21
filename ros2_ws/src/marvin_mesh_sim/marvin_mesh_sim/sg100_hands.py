@@ -1,3 +1,4 @@
+# 将原版 SG100 数据包驱动到手部关节模型，并生成虚拟手掌反馈；不模拟触觉和接触力。
 """Hand model driven exclusively by decoded original SG100 SDK packets."""
 import json
 from pathlib import Path

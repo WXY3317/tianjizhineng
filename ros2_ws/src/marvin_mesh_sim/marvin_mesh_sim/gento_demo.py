@@ -1,3 +1,4 @@
+# 直接调用原版 Gento SDK 的仿真示例，用于检查模式切换、位置命令与反馈；示例角度使用度。
 """Direct original Gento SDK position-control example; angles in degrees."""
 import argparse
 from pathlib import Path

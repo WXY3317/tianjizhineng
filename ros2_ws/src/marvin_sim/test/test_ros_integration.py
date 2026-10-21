@@ -1,3 +1,4 @@
+# 启动旧版 ROS/SDK 仿真链路并验证公开控制话题。
 """Launch the actual ROS/SDK stack and exercise public command interfaces."""
 import json
 import os

@@ -1,3 +1,4 @@
+# ROS 2 Python 包安装配置：注册包索引、共享资源和可执行入口，供 colcon 构建使用。
 from pathlib import Path
 from setuptools import setup
 

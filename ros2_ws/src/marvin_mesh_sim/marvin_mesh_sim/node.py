@@ -1,3 +1,4 @@
+# 整机仿真 ROS 入口：组合双臂、躯干、头部及 SG100 手模型，发布整机关节状态并提供 SDK 桥接。
 import json
 from pathlib import Path
 

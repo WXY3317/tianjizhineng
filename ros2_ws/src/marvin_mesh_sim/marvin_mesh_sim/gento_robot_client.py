@@ -1,3 +1,4 @@
+# 在同一个原版 Gento SDK 连接中统一管理双臂、躯干与头部，避免重复占用固定接收端口。
 """One original Gento SDK connection controls both arms, body and head."""
 import numpy as np
 

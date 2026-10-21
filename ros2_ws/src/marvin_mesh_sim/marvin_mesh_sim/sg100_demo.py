@@ -1,3 +1,4 @@
+# 演示 SG100 原版命名的手指位置控制及状态读取，用于验证仿真通信链路。
 """Move SG100 fingers via original vendor SDK APIs and inspect SDK feedback."""
 import argparse
 import time

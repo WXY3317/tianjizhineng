@@ -1,3 +1,5 @@
+// SG100 原版 C++ SDK 的 C ABI 适配层，供 Python ctypes 调用。
+// 命令打包和反馈解析仍由原版库完成；句柄由 sg_open 创建并由 sg_close 释放。
 // Thin C ABI only: all command packing and feedback decoding stay in vendor SDK.
 #include "sg100_device.h"
 #include <cstring>

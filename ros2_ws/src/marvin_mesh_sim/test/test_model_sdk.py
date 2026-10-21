@@ -1,3 +1,4 @@
+# 检查模型资源、关节配置与 SDK 几何一致性，并验证仿真控制接口。
 import hashlib
 import json
 from pathlib import Path

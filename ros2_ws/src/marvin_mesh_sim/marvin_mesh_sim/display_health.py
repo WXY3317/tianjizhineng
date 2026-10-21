@@ -1,3 +1,4 @@
+# 通过 ROS 节点发现检查 robot_description 发布者，帮助启动脚本恢复丢失的模型显示。
 """Check whether a reused backend still has its robot-description publisher."""
 import time
 

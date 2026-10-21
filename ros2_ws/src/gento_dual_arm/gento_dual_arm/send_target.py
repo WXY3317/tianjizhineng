@@ -1,3 +1,4 @@
+# 等待 ROS 订阅发现后发送一次新目标，避免发现完成前丢失首条控制消息。
 """Publish one fresh absolute target after ROS subscriber discovery."""
 import argparse
 import time

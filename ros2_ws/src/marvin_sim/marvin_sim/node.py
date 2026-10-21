@@ -1,3 +1,4 @@
+# ROS 节点入口：读取启动参数，连接控制模块，订阅目标并发布状态和反馈。
 import json
 import math
 import time

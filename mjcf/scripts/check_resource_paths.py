@@ -1,3 +1,4 @@
+# 检查 MJCF 引用的模型和网格路径，定位缺失资源，便于打包和迁移。
 from __future__ import annotations
 
 import re

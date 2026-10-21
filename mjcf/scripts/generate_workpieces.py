@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# 在两个物料框中各放置五个工件，并更新 props XML 中的生成区段。
 """在两个物料框（StorageCage_B / StorageCage_I）内各随机摆放 5 个工件，
 生成 MuJoCo body 定义并写回 luna_m6_props.xml 的标记块。
 

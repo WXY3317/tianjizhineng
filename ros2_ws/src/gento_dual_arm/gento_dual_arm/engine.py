@@ -1,3 +1,4 @@
+# 串行执行 SDK 连接、目标下发及反馈读取，管理双臂控制状态；调用应由同一执行器串行调度。
 """Single-thread SDK state machine. All calls must be serialized by the ROS executor."""
 import math
 import time

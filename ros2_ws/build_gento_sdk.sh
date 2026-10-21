@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# 从本地原版 Gento 源码构建 SDK 动态库，供 Python 接口加载。
 set -e
 workspace_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 gento_root="${1:-$(dirname -- "$workspace_dir")/tianji-robot-SDK}"

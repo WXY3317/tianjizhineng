@@ -1,3 +1,5 @@
+# 调用原版 Gento 原生库进行肩部到法兰的正逆解，并检查限位和正解回代误差。
+# 单个参考关节解算失败时尝试有限组参考值；这里不负责 J4 和手掌 TCP 的坐标转换。
 """Mesh-calibrated FK/IK using only the Gento SDK's native kinematics handle."""
 import ctypes
 from pathlib import Path
@@ -17,6 +19,7 @@ class GentoMeshKinematics(Kinematics):
         self.robot.kine_log_level(0)
         # Vendor Python declares FX_BOOL as c_int in IK outputs, whereas its
         # C header defines unsigned char. Correct the ABI in this adapter only.
+        # 按 C 头文件使用单字节布尔字段，修正 Python 包装的结构体布局；只修改本适配层，不改原厂文件。
         self.IK=type('NativeIK',(ctypes.Structure,),{'_fields_':[
             (name,ctypes.c_ubyte*7 if name in ('m_Output_IsDeg','m_Output_JntExdTags') else ctypes.c_ubyte
              if name in ('m_Output_IsOutRange','m_Output_IsJntExd') else kind)
@@ -52,10 +55,12 @@ class GentoMeshKinematics(Kinematics):
         q=self.validate_joints(arm,joints)
         result=self.robot.forward_kinematics(arm,np.degrees(q).tolist())
         if isinstance(result,int):raise ValueError(f'Gento SDK FK failed: {result}')
+        # 原版 SDK 输出平移为毫米；转换成米后再交给 ROS 和坐标变换层。
         value=validate_transform(result).copy();value[:3,3]*=.001
         return value
 
     def _ik_once(self,arm,target,reference):
+        # 逆解边界进行反向单位转换：目标米→毫米，参考关节弧度→度。
         native=target.copy();native[:3,3]*=1000.
         request=self.IK()
         request.m_Input_IK_TargetTCP=(ctypes.c_double*16)(*native.ravel())
@@ -69,6 +74,7 @@ class GentoMeshKinematics(Kinematics):
         if result.m_Output_IsJntExd:raise ValueError('Gento SDK IK candidate exceeds joint limits')
         if any(result.m_Output_IsDeg):raise ValueError('Gento SDK IK candidate is singular')
         q=self.validate_joints(arm,np.radians(list(result.m_Output_RetJoint)))
+        # 对候选解做正解回代，防止 SDK 返回标志正常但几何误差过大的关节结果。
         dp,dr=pose_error(self.fk(arm,q),target)
         if dp>1e-5 or dr>1e-4:raise ValueError(f'Gento SDK IK validation failed: {dp:g} m, {dr:g} rad')
         return q
@@ -81,6 +87,7 @@ class GentoMeshKinematics(Kinematics):
         # A seven-axis IK failure for one reference does not prove that the
         # target is unreachable. Keep the target fixed and try bounded,
         # deterministic alternate references using the same original SDK.
+        # 七自由度的解依赖参考姿态；目标和限位保持不变，有限尝试回到初始姿态及扰动参考值。
         section=slice(arm*7,arm*7+7);lower=self.lower[section];upper=self.upper[section]
         home=np.radians(INITIAL_DEG[arm])
         seeds=[reference+(home-reference)*fraction for fraction in (.25,.5,.75,1.)]
@@ -100,6 +107,7 @@ class GentoMeshKinematics(Kinematics):
         if not solutions:
             raise ValueError(f'Gento SDK IK: no validated solution after {attempts} references; first: {initial_error}')
         # Compare bounded joint displacement, without wrapping through limits.
+        # 按相对原始参考关节的位移选择候选解，不能跨越关节限位做角度环绕。
         result=min(solutions,key=lambda q:float(np.linalg.norm(q-reference)))
         self.last_ik_info['max_joint_change_deg']=float(np.max(np.abs(np.degrees(result-reference))))
         return result

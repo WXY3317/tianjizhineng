@@ -1,3 +1,4 @@
+# 使用原版 SG100 库验证命令序列化、虚拟手掌处理和反馈解码。
 """Real vendor SO serialization, virtual palm and real SO feedback decoding."""
 import json
 from pathlib import Path

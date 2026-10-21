@@ -1,3 +1,5 @@
+# 封装原版 Gento SDK 的躯干和头部模式切换、反馈读取与连接生命周期。
+# 仿真地址必须是本机已分配的 IPv4；原厂 SDK 对外使用的角度需在模型边界转换为弧度。
 """Body/head commands and feedback through unmodified GentoRobot + native SO."""
 import time
 
@@ -13,6 +15,7 @@ class GentoBodyClient:
         self.module=vendor(sdk_root)
         self.robot=self.module.GentoRobot(precision=7)
         self.model=Body(model_root)
+        # 连接目标由本机网卡选择器约束，不将仿真命令发送给任意外部 IP。
         self.address=local_address(sim_ip)
         self.connected=False
         self.serial=None;self.last_refresh=time.monotonic()

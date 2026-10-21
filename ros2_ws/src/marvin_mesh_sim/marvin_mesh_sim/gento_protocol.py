@@ -1,3 +1,5 @@
+# 实现本机虚拟控制器所需的 Gento 协议子集，校验整包后再更新关节状态。
+# 服务端绑定本机网卡地址，反馈发往回环地址以到达原版 SDK 的通配接收端口。
 """Local Gento 4.4.2 protocol subset, exercised by the unmodified vendor SDK.
 
 SDK binds wildcard receive ports equal to its destination ports. The server
@@ -23,6 +25,7 @@ def vendor(sdk_root):
     return module
 
 
+# 先检查帧头、长度和校验和，再拆出命令；解析失败不应产生部分运动指令。
 def decode(packet):
     if (len(packet)<6 or packet[:2]!=b'Fa'
             or int.from_bytes(packet[2:4],'little')!=len(packet)-6

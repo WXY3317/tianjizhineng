@@ -1,3 +1,4 @@
+# 通过原版动态库验证旧版仿真协议和运动学，不连接实体机器人。
 """Integration checks against the actual vendor shared libraries (no robot)."""
 import importlib.util
 from pathlib import Path

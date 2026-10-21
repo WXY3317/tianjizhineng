@@ -1,3 +1,5 @@
+# 整机仿真对外 Python 接口：连接原版 SDK、读写关节，并提供 J4 下手掌中心的正逆解。
+# 左右臂可用 A/L/left/0 与 B/R/right/1 标识；手部兼容命令通过本地仿真通道传递。
 """Python API: Gento FK/IK expressed in J4 + original SDK controls + hand simulator."""
 import json
 from pathlib import Path
@@ -33,10 +35,12 @@ class MeshSimulationSDK:
         if arm in ('B','R','right',1):return 1
         raise ValueError('Arm must be A/L/left or B/R/right')
 
+    # 公开关节接口使用度，与原版 SDK 的习惯一致；内部客户端仍使用弧度。
     def get_joint_positions(self,arm):
         a=self.arm_index(arm)
         return np.degrees(self.client.read()[7*a:7*a+7]).tolist()
 
+    # 输入关节为度，返回 J4 到手掌中心的 4×4 齐次变换，其中平移为米。
     def fk(self,arm,joints_deg=None):
         a=self.arm_index(arm)
         joints_deg=self.get_joint_positions(arm) if joints_deg is None else joints_deg
@@ -44,6 +48,7 @@ class MeshSimulationSDK:
         body=self.frames.body_from_rt(self.client.feedback)
         return self.frames.fk(a,self.kinematics.fk(a,np.radians(joints_deg)),body)
 
+    # 目标为 J4 下的手掌位姿，返回关节角度；解算前刷新躯干反馈并要求 J5/J6 停稳。
     def ik(self,arm,pose_m,reference_deg=None):
         a=self.arm_index(arm)
         reference_deg=self.get_joint_positions(arm) if reference_deg is None else reference_deg
@@ -61,6 +66,7 @@ class MeshSimulationSDK:
         return solution
 
     def _hand_request(self,operation,**values):
+        # 为兼容手部请求分配唯一编号，只接受匹配编号且来自本机仿真端口的响应。
         request_id=uuid.uuid4().hex
         request={'id':request_id,'op':operation,**values}
         self.hand_socket.sendto(json.dumps(request,allow_nan=False).encode(),(self.client.address,4741))

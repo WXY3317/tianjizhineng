@@ -1,3 +1,4 @@
+# 将 ROS 双臂目标交给原版 Gento SDK，并将反馈发布回 ROS；运动目标统一为 J4 下的手掌 TCP。
 """ROS arm interfaces backed by the original Gento SDK, sharing one connection."""
 import json
 import time

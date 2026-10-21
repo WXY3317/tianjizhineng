@@ -1,3 +1,4 @@
+# 命令行仿真示例：连接 SDK 后展示状态读取及运动控制流程，参数由命令行提供。
 """Headless end-to-end demo: real SDK FK -> IK -> UDP motion -> feedback."""
 import argparse
 import json
