@@ -1,6 +1,19 @@
-# 天机双臂机器人开发与仿真
+# 天机双臂机器人开发与仿真（end-Modification 分支）
 
-包含天机机器人 SDK、双臂/灵巧手模型、ROS 2 控制节点和运动学仿真功能包。
+本分支用于整机运动学仿真，包含原厂 SDK、双臂/灵巧手模型、ROS 2 控制节点和可视化面板。
+仿真通过原版 Gento、SG100 SDK 连接本机虚拟控制器，运行时不需要连接真实机器人。
+
+## 分支用途
+
+| 分支 | 用途 |
+|---|---|
+| `end-Modification` | 整机仿真：双臂、灵巧手、躯干和头部控制，统一面板与手掌 TCP 正逆解 |
+| `real` | 双臂真机 ROS 2 控制：关节目标、末端 FK/IK、反馈与停止；已移除仿真功能包 |
+
+真机运行请使用 [`real` 分支说明](https://github.com/WXY3317/tianjizhineng/blob/real/ros2_ws/REAL_ROBOT.md)。
+两个分支的启动入口、目标话题和坐标系不同，不能直接混用。
+
+## 目录结构
 
 | 目录 | 内容 |
 |---|---|
@@ -20,7 +33,7 @@
 
 ```bash
 git lfs install
-git clone git@github.com:WXY3317/tianjizhineng.git
+git clone --branch end-Modification git@github.com:WXY3317/tianjizhineng.git
 cd tianjizhineng
 git lfs pull
 ```
@@ -31,10 +44,13 @@ git lfs pull
 RViz2、robot_state_publisher、colcon。需要与本机架构匹配的 SDK 动态库。
 
 ```bash
+source /opt/ros/humble/setup.bash
 cd ros2_ws
 ./run_marvin_mesh_sim.sh --build
-# 后续启动：
+# 后续启动（新终端先加载 ROS 环境）：
 ./run_marvin_mesh_sim.sh
+# 无图形界面：
+./run_marvin_mesh_sim.sh rviz:=false panel:=false
 ```
 
 包含底盘、腰腿/躯干、头部、双臂和双手，共 47 个真实 STL，
@@ -45,5 +61,44 @@ cd ros2_ws
 重复启动会复用后台并重新打开界面。
 本版是运动学仿真，不含接触动力学或自动避碰。
 
-详细用法和 Python API 见 [marvin_mesh_sim 使用说明](ros2_ws/src/marvin_mesh_sim/README.md)。
+## ROS 2 控制接口
+
+新终端先加载 ROS 和工作空间环境：
+
+```bash
+source /opt/ros/humble/setup.bash
+cd ros2_ws  # 从仓库根目录进入
+source install/setup.bash
+```
+
+| 话题 | 用途 | 消息类型 |
+|---|---|---|
+| `/marvin_sim/target_joints` | 完整单臂 7 关节或双臂 14 关节绝对目标 | `sensor_msgs/msg/JointState` |
+| `/marvin_sim/left/target_pose`、`right/target_pose` | 左右手掌 TCP 目标 | `geometry_msgs/msg/PoseStamped` |
+| `/marvin_sim/left/target_rpy`、`right/target_rpy` | `[x, y, z, roll, pitch, yaw]` 末端目标 | `std_msgs/msg/Float64MultiArray` |
+| `/marvin_mesh_sim/body_targets` | 躯干和头部关节目标 | `sensor_msgs/msg/JointState` |
+| `/marvin_mesh_sim/hand_targets` | 完整单手 11 关节目标 | `sensor_msgs/msg/JointState` |
+| `/marvin_sim/sdk_joint_states` | 双臂 SDK 反馈 | `sensor_msgs/msg/JointState` |
+| `/marvin_sim/status` | 双臂命令执行状态 | `std_msgs/msg/String` |
+
+ROS 位置使用 m、角度使用 rad；控制面板支持角度/弧度切换。
+末端目标参考系为 `Gento_Luna_Leg_J4_Link`，控制点为手掌中心，姿态可使用四元数或 RPY。
+IK 后执行关节运动，不保证末端直线；执行末端目标时应保持躯干 J5/J6 不动。
+
+```bash
+# 查看反馈与命令状态
+ros2 topic echo /marvin_sim/sdk_joint_states
+ros2 topic echo /marvin_sim/status
+# 停止双臂 / 重新启用
+ros2 service call /marvin_sim/stop std_srvs/srv/Trigger '{}'
+ros2 service call /marvin_sim/enable std_srvs/srv/Trigger '{}'
+```
+
+## 运行与使用说明
+
+关闭 RViz 或面板只关闭窗口；在后台启动终端按 Ctrl+C 停止仿真。
+原版 SDK 的反馈端口固定，不要同时启动仿真、真机节点或多个 SDK 控制客户端。
+仿真模型的运动学配置不代表已完成真机标定，不能用于真机执行。
+
+详细话题示例、构建验证和 Python API 见 [marvin_mesh_sim 使用说明](ros2_ws/src/marvin_mesh_sim/README.md)。
 SDK 和第三方模型保留各自随附的许可证与说明。

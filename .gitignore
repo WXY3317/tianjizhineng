@@ -10,6 +10,9 @@
 ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
+ros2_ws/build_real/
+ros2_ws/install_real/
+ros2_ws/log_real/
 
 # SDK 内的编译日志
 tianji-robot-SDK/log/
