@@ -1,3 +1,4 @@
+# 使用替代硬件的假 SDK 检查桥接状态机，无需连接机器人。
 """Tests use fake SDK hardware; no robot connection or native library is required."""
 import importlib
 import math
@@ -15,7 +16,7 @@ from gento_dual_arm.engine import Engine
 BASE = Path(__file__).resolve().parents[4]
 ROOT = next(p for p in (BASE, BASE/'tianji-robot-SDK')
             if (p/'PYTHON_SDK/GentoRobot.py').is_file())
-HELPERS = next(p for p in (ROOT/'real_test', ROOT.parent/'real_test')
+HELPERS = next(p for p in (BASE/'ros2_ws/real_test', ROOT/'real_test', ROOT.parent/'real_test')
                if (p/'dual_arm_control.py').is_file())
 sys.path.insert(0, str(HELPERS))
 sys.path.insert(0, str(ROOT))
