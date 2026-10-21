@@ -42,6 +42,10 @@ class Engine:
             result = self.robot.inverse_kinematics(arm, p)
             if not isinstance(result, self.ik_type):
                 raise ValueError(f'arm{arm} IK failed: {result}')
+            if result.m_Output_IsOutRange:
+                raise ValueError(f'arm{arm} IK outside workspace')
+            if any(result.m_Output_IsDeg):
+                raise ValueError(f'arm{arm} IK is singular')
             if result.m_Output_IsJntExd or any(result.m_Output_JntExdTags):
                 raise ValueError(f'arm{arm} IK exceeds joint limits')
             q = list(result.m_Output_RetJoint)

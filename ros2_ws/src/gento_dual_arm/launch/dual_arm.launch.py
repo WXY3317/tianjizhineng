@@ -8,8 +8,8 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     defaults = {
-        'sdk_root': ('/home/wxy/code/tianji/tianji-robot-SDK', str),
-        'ip': ('6.6.7.190', str), 
+        'sdk_root': ('', str),
+        'ip': ('', str),
         'execute': ('false', bool),
         'speed': ('5.0', float), 
         'acc': ('5.0', float),

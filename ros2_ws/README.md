@@ -1,5 +1,8 @@
 # Gento 双臂 ROS 2 功能包
 
+`real` 分支的专用入口为 `./run_real_robot.sh`，默认连接真机预览；
+完整流程见 [双臂真机使用说明](REAL_ROBOT.md)。
+
 适用本仓库 SDK 4.4.2，已在 ROS 2 Humble / Python 3.10 下构建。包含：
 
 - `gento_dual_arm`：单 SDK 连接的双臂控制节点，以及一次性目标发布器。

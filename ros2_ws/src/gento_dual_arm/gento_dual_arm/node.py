@@ -18,6 +18,7 @@ from std_msgs.msg import Empty, String
 
 from .conversions import JOINT_NAMES, finite, joint_target, pose_matrix, quaternion
 from .engine import Engine
+from .native_ik import bind_native_ik
 
 DEFAULTS = {
     'sdk_root': '', 'ip': '', 'execute': False,
@@ -65,7 +66,8 @@ class Bridge(Node):
         sys.path.insert(0, str(helpers_dir))
         h = importlib.import_module('dual_arm_control')
         sdk = importlib.import_module('PYTHON_SDK.GentoRobot')
-        self.engine = Engine(sdk.GentoRobot(), h, sdk.FX_InvKineSolverParams, self.c)
+        robot = sdk.GentoRobot()
+        self.engine = Engine(robot, h, bind_native_ik(robot, sdk), self.c)
         self.engine.connect()
         self.frames = [self.c.left_frame, self.c.right_frame]
         qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.VOLATILE)

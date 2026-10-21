@@ -28,6 +28,7 @@ class DualRobot:
     max_point = 5000
 
     def __init__(self):
+        self.dll = SimpleNamespace(FX_L1_Kinematics_InverseKinematics=SimpleNamespace())
         self.calls = []
         self.positions = [[0.] * 7, [0.] * 7]
         self.states = [0, 0]
@@ -270,3 +271,44 @@ def test_timeout_detected_and_stop_failure_still_unlinks():
     e.robot.emergency_stop = lambda mask: 1
     with pytest.raises(RuntimeError): e.close()
     assert e.robot.calls[-2:] == ['cleanup', 'unlink']
+
+
+@pytest.mark.parametrize('field', ['m_Output_IsOutRange', 'm_Output_IsDeg', 'm_Output_IsJntExd'])
+def test_invalid_ik_flags_rejected_before_upload(field):
+    e = engine()
+    def solve(arm, p):
+        if field == 'm_Output_IsDeg':
+            p.m_Output_IsDeg[0] = 1
+        else:
+            setattr(p, field, 1)
+        return p
+    e.robot.inverse_kinematics = solve
+    matrix = e.robot.forward_kinematics(0, [0.] * 7)
+    with pytest.raises(ValueError):
+        e.start(matrices=[matrix, matrix])
+    assert not e.robot.calls
+    e.close()
+
+
+def test_native_ik_layout_matches_vendor_header(tmp_path):
+    import ctypes
+    import subprocess
+    from gento_dual_arm.native_ik import bind_native_ik
+    sdk = importlib.import_module('PYTHON_SDK.GentoRobot')
+    robot = DualRobot()
+    native = bind_native_ik(robot, sdk)
+    fields = [name for name, _ in native._fields_]
+    code = '#include <iostream>\n#include <cstddef>\n#include "FXKinematics.h"\nint main(){\n'
+    code += 'std::cout << sizeof(FX_InvKineSolvePara);\n'
+    for field in fields:
+        code += f'std::cout << " " << offsetof(FX_InvKineSolvePara,{field});\n'
+    code += '}\n'
+    source = tmp_path/'abi.cpp'
+    source.write_text(code)
+    includes = sorted({p.parent for p in (ROOT/'C_SDK').rglob('*.h')})
+    binary = tmp_path/'abi'
+    subprocess.run(['g++', '-std=c++11', str(source), *[f'-I{p}' for p in includes],
+                    '-o', str(binary)], check=True, capture_output=True)
+    actual = list(map(int, subprocess.check_output([str(binary)], text=True).split()))
+    assert actual == [ctypes.sizeof(native)] + [getattr(native, f).offset for f in fields]
+    assert robot.dll.FX_L1_Kinematics_InverseKinematics.argtypes[-1] == ctypes.POINTER(native)
