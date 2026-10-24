@@ -1,5 +1,15 @@
 所有命令均从仓库根目录执行；本目录位于 `ros2_ws/real_test`，SDK 保留在仓库根目录的 `tianji-robot-SDK`。
 
+## 全部软件急停
+
+```bash
+python3 ros2_ws/real_test/emergency_stop.py
+```
+
+运行后立即连接固定 IP `6.6.7.100` 的控制器并调用 `emergency_stop(FXObjMask.OBJ_ALL_FLAG)`，请求停止双臂、头部、躯干和升降机构，不需要 `--execute`。脚本检查返回掩码，全部确认时退出码为 0，连接或部分急停失败时为 1，中断时为 130；不会复位错误或恢复运动。需要与控制器匹配的 SDK 动态库，不依赖 ROS 2。
+
+这是软件急停，连接建立、网络或 SDK 调用可能延迟或失败，不能代替硬件急停。SDK 的全部对象掩码不包含独立 SG100 灵巧手。其他 SDK 客户端的连接或端口争用也可能导致本脚本失败，必须现场确认停止状态。
+
 # 单臂真机测试
 
 `arm_control.py` 在正逆解示例基础上增加位置模式切换、目标下发、到位监测、超时处理、异常急停和显式断开连接。Python 3.10+，仅依赖标准库与仓库 SDK；需将匹配系统架构的 `libGentoSDKPY.so` / `.dll` 放在 `PYTHON_SDK` 中。
