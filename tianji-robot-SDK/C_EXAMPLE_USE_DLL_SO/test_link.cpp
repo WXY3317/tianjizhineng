@@ -19,19 +19,16 @@ int main(int argc, char *argv[])
     int sdk_version = 0;
     sdk_version = FX_L1_System_GetSDKVersion();
     printf("SDK version is 0x%08x\n", sdk_version);
-
     ret = FX_L1_System_Link(6, 6, 7, 190, FX_LOG_ALL_FLAG);
-    printf("Return code: %d", ret);
-    if (ret == 0)
+    if (ret < 0)
     {
-        printf(" (success)\n");
-        printf("Calling FX_L1_System_Unlink...\n");
-        FX_L1_System_Unlink();
-        printf("Unlink done.\n");
+        printf("Failed to link system.\n");
     }
     else
     {
-        printf(" (failure)\n");
+        printf("Calling FX_L1_System_Unlink...\n");
+        FX_L1_System_Unlink();
+        printf("Unlink done.\n");
     }
 
     printf("=== Test finished ===\n");

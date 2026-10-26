@@ -23,6 +23,7 @@ typedef struct
 
 unsigned int FX_LOG_L1_LEVEL = 0;
 char FX_ROBOT_NAME[30] = {0};
+char FX_ROBOT_SUBNAME[30] = {0};
 int FX_ARM0_DOF = 0;
 int FX_ARM1_DOF = 0;
 int FX_HEAD_DOF = 0;
@@ -40,10 +41,8 @@ const char *_FX_RobotType2Str(FXRobotType robot_type)
 {
     switch (robot_type)
     {
-    case FX_ROBOT_MARVIN_PRO_M3:
-        return "MarvinProM3";
-    case FX_ROBOT_MARVIN_PRO_M6:
-        return "MarvinProM6";
+    case FX_ROBOT_MARVIN_PRO:
+        return "MarvinPro";
     case FX_ROBOT_GENTO_SKYE:
         return "GentoSkye";
     case FX_ROBOT_GENTO_LUNA:
@@ -337,10 +336,20 @@ int FX_L1_System_Link(unsigned char ip1, unsigned char ip2, unsigned char ip3, u
         _FX_ERRO("%s: Invalid IP address: %u.%u.%u.%u", __FUNCTION__, ip1, ip2, ip3, ip4);
         return FUNC_RET_INVALID_INPUT_ARG;
     }
-
-    if (FX_L0_System_RequestControl(ip1, ip2, ip3, ip4) != 0)
+    while(FX_L0_ResetSystemMsg() != 0)
     {
-        _FX_ERRO("%s: Link robot failed, the ethernet work is down or someone has already linked to the controller", __FUNCTION__);
+        CUtility::UniMilliSleep(10);
+    }
+    int request_ret = FX_L0_System_RequestControl(ip1, ip2, ip3, ip4);
+    if (request_ret == -1)
+    {
+        _FX_ERRO("%s: Link robot failed, the ethernet work is down", __FUNCTION__);
+        FX_L0_System_Unlink();
+        return FUNC_RET_LINK_FAILED;
+    }
+    else if (request_ret == -2)
+    {
+        _FX_ERRO("%s: Link robot failed, someone has already linked to the controller", __FUNCTION__);
         FX_L0_System_Unlink();
         return FUNC_RET_LINK_REJECTED;
     }
@@ -369,6 +378,7 @@ int FX_L1_System_Link(unsigned char ip1, unsigned char ip2, unsigned char ip3, u
     _FX_INFO("%s: Link success, communication delay is %dms", __FUNCTION__, ret);
 
     char robot_name[30] = {0};
+    char robot_sub_name[30] = {0};
     char dof_arm0_name[30] = {0};
     char dof_arm1_name[30] = {0};
     char dof_head_name[30] = {0};
@@ -385,13 +395,9 @@ int FX_L1_System_Link(unsigned char ip1, unsigned char ip2, unsigned char ip3, u
     }
     else
     {
-        if (strcmp(FX_ROBOT_NAME, "MarvinProM3") == 0)
+        if (strcmp(FX_ROBOT_NAME, "MarvinPro") == 0)
         {
-            FX_ROBOT_TYPE = FX_ROBOT_MARVIN_PRO_M3;
-        }
-        else if (strcmp(FX_ROBOT_NAME, "MarvinProM6") == 0)
-        {
-            FX_ROBOT_TYPE = FX_ROBOT_MARVIN_PRO_M6;
+            FX_ROBOT_TYPE = FX_ROBOT_MARVIN_PRO;
         }
         else if (strcmp(FX_ROBOT_NAME, "GentoSkye") == 0)
         {
@@ -410,6 +416,11 @@ int FX_L1_System_Link(unsigned char ip1, unsigned char ip2, unsigned char ip3, u
             return FUNC_RET_INVALID_ROBOT_TYPE;
         }
     }
+    sprintf(robot_sub_name, "R.BASIC.SubName");
+    if (FX_L1_Param_GetString(robot_sub_name, FX_ROBOT_SUBNAME) != FUNC_RET_SUCCESS)
+    {
+        _FX_WARN("%s: Failed to get parameter: %s", __FUNCTION__, robot_sub_name);
+    }    
     sprintf(dof_arm0_name, "R.A0.BASIC.Dof");
     if (FX_L1_Param_GetInt32(dof_arm0_name, &FX_ARM0_DOF) != FUNC_RET_SUCCESS)
     {
@@ -440,7 +451,7 @@ int FX_L1_System_Link(unsigned char ip1, unsigned char ip2, unsigned char ip3, u
         _FX_WARN("%s: Failed to get parameter: %s", __FUNCTION__, dof_lift_name);
         FX_LIFT_DOF = 0;
     }
-    _FX_INFO("%s: DOF of [%s]: arm0=%d, arm1=%d, head=%d, body=%d, lift=%d", __FUNCTION__, FX_ROBOT_NAME, FX_ARM0_DOF, FX_ARM1_DOF, FX_HEAD_DOF, FX_BODY_DOF, FX_LIFT_DOF);
+    _FX_INFO("%s: DOF of [%s.%s]: arm0=%d, arm1=%d, head=%d, body=%d, lift=%d", __FUNCTION__, FX_ROBOT_NAME, FX_ROBOT_SUBNAME, FX_ARM0_DOF, FX_ARM1_DOF, FX_HEAD_DOF, FX_BODY_DOF, FX_LIFT_DOF);
 
     FX_LINK_IP[0] = ip1;
     FX_LINK_IP[1] = ip2;
@@ -476,6 +487,11 @@ unsigned int FX_L1_System_GetLogLevel()
 int FX_L1_System_GetControllerVersion()
 {
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }    
     int version = FX_L0_System_GetControllerVersion();
     if (version < 0)
     {
@@ -559,6 +575,11 @@ int FX_L1_System_Reboot()
     }
 
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     if (FX_L0_System_Reboot() != 0)
     {
         _FX_ERRO("%s: Failed to reboot controller", __FUNCTION__);
@@ -570,6 +591,9 @@ int FX_L1_System_Reboot()
 
 int FX_L1_System_Update(char *update_file_path, char *ini_file_path)
 {
+    _FX_INFO("%s: update_file_path=%s, ini_file_path=%s", __FUNCTION__,
+             update_file_path ? update_file_path : "NULL",
+             ini_file_path ? ini_file_path : "NULL");
     if (update_file_path == NULL && ini_file_path == NULL)
     {
         _FX_ERRO("%s: Update file path and ini file path are all invalid", __FUNCTION__);
@@ -588,10 +612,15 @@ int FX_L1_System_Update(char *update_file_path, char *ini_file_path)
         if (FX_L1_System_SendFile(ini_file_path, (char *)"/home/FUSION/Tmp/robot.ini.UPDATE") != 0)
         {
             _FX_ERRO("%s: Failed to transfer ini file to the controller", __FUNCTION__);
-            return FUNC_RET_RECV_FILE_FAILED;
+            return FUNC_RET_SEND_FILE_FAILED;
         }
     }
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     if (FX_L0_System_Update() != 0)
     {
         _FX_ERRO("%s: Failed to set controller update flag", __FUNCTION__);
@@ -631,6 +660,125 @@ int FX_L1_System_RecvFile(char *local_file_path, char *remote_file_path)
     }
 }
 
+int FX_L1_System_SetSystemTime(int year, int month, int day, int hour, int minute, int second)
+{
+    std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
+    if(FX_L0_System_SetSystemTime(year, month, day, hour, minute, second) == 0)
+    {
+        return FUNC_RET_SUCCESS;
+    }
+    else
+    {
+        return FUNC_RET_OPERATION_FAILED;
+    }
+}
+
+int FX_L1_System_GetSystemTime(char time_str[20])
+{
+    std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
+    if(FX_L0_System_GetSystemTime(time_str) == 0)
+    {
+        return FUNC_RET_SUCCESS;
+    }
+    else
+    {
+        return FUNC_RET_OPERATION_FAILED;
+    }
+}
+
+int FX_L1_System_SetSystemIP(int ip[4])
+{
+    std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
+    if(FX_L0_System_SetSystemIP(ip) == 0)
+    {
+        return FUNC_RET_SUCCESS;
+    }
+    else
+    {
+        return FUNC_RET_OPERATION_FAILED;
+    }
+}
+
+int FX_L1_System_GetSystemIP(char ip_str[20])
+{
+    std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
+    if(FX_L0_System_GetSystemIP(ip_str) == 0)
+    {
+        return FUNC_RET_SUCCESS;
+    }
+    else
+    {
+        return FUNC_RET_OPERATION_FAILED;
+    }
+}
+
+int FX_L1_System_SetSN(char serial[30])
+{
+    if (serial == NULL || strlen(serial) > 29)
+    {
+        _FX_ERRO("%s: serial is not valid", __FUNCTION__);
+        return FUNC_RET_INVALID_INPUT_ARG;
+    }
+    std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
+    if (FX_L0_System_SetSN(serial) == 0)
+    {
+        return FUNC_RET_SUCCESS;
+    }
+    else
+    {
+        return FUNC_RET_OPERATION_FAILED;
+    }
+}
+
+int FX_L1_System_GetSN(char serial[30])
+{
+    if (serial == NULL)
+    {
+        _FX_ERRO("%s: serial can not be NULL", __FUNCTION__);
+        return FUNC_RET_INVALID_INPUT_ARG;
+    }
+    std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
+    if (FX_L0_System_GetSN(serial) == 0)
+    {
+        return FUNC_RET_SUCCESS;
+    }
+    else
+    {
+        return FUNC_RET_OPERATION_FAILED;
+    }
+}
+
+
 int FX_L1_Fbk_GetCtrlObjDof(FXObjType obj_type)
 {
     switch (obj_type)
@@ -650,7 +798,7 @@ int FX_L1_Fbk_GetCtrlObjDof(FXObjType obj_type)
     }
 }
 
-int FX_L1_Fbk_GetCtrlObjServoVersion(FXObjType obj_type, char version[7][30])
+int FX_L1_Fbk_GetCtrlObjServoVersion(FXObjType obj_type, char firmware_version[7][30], unsigned int config_version[7])
 {
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
     switch (obj_type)
@@ -661,16 +809,23 @@ int FX_L1_Fbk_GetCtrlObjServoVersion(FXObjType obj_type, char version[7][30])
         {
             if (i < FX_ARM0_DOF)
             {
-                if (FX_L0_Arm0_State_GetServoVersion(i, version[i]) != 0)
+                if (FX_L0_Arm0_State_GetServoFirmwareVersion(i, firmware_version[i]) != 0)
                 {
-                    _FX_WARN("%s: Failed to get %s.Axis%d servo version", __FUNCTION__, _FX_ObjType2Str(obj_type), i);
-                    version[i][0] = 0;
+                    _FX_WARN("%s: Failed to get %s.Axis%d servo firmware version", __FUNCTION__, _FX_ObjType2Str(obj_type), i);
+                    firmware_version[i][0] = 0;
                     return FUNC_RET_OPERATION_FAILED;
                 }
+                if (FX_L0_Arm0_State_GetServoConfigVersion(i, &config_version[i]) != 0)
+                {
+                    _FX_WARN("%s: Failed to get %s.Axis%d servo config version", __FUNCTION__, _FX_ObjType2Str(obj_type), i);
+                    config_version[i] = 0;
+                    return FUNC_RET_OPERATION_FAILED;
+                }                
             }
             else
             {
-                version[i][0] = 0;
+                firmware_version[i][0] = 0;
+                config_version[i] = 0;
             }
         }
         break;
@@ -681,16 +836,23 @@ int FX_L1_Fbk_GetCtrlObjServoVersion(FXObjType obj_type, char version[7][30])
         {
             if (i < FX_ARM1_DOF)
             {
-                if (FX_L0_Arm1_State_GetServoVersion(i, version[i]) != 0)
+                if (FX_L0_Arm1_State_GetServoFirmwareVersion(i, firmware_version[i]) != 0)
                 {
-                    _FX_WARN("%s: Failed to get %s.Axis%d servo version", __FUNCTION__, _FX_ObjType2Str(obj_type), i);
-                    version[i][0] = 0;
+                    _FX_WARN("%s: Failed to get %s.Axis%d servo firmware version", __FUNCTION__, _FX_ObjType2Str(obj_type), i);
+                    firmware_version[i][0] = 0;
                     return FUNC_RET_OPERATION_FAILED;
                 }
+                if (FX_L0_Arm1_State_GetServoConfigVersion(i, &config_version[i]) != 0)
+                {
+                    _FX_WARN("%s: Failed to get %s.Axis%d servo config version", __FUNCTION__, _FX_ObjType2Str(obj_type), i);
+                    config_version[i] = 0;
+                    return FUNC_RET_OPERATION_FAILED;
+                } 
             }
             else
             {
-                version[i][0] = 0;
+                firmware_version[i][0] = 0;
+                config_version[i] = 0;
             }
         }
         break;
@@ -701,16 +863,23 @@ int FX_L1_Fbk_GetCtrlObjServoVersion(FXObjType obj_type, char version[7][30])
         {
             if (i < FX_HEAD_DOF)
             {
-                if (FX_L0_Head_State_GetServoVersion(i, version[i]) != 0)
+                if (FX_L0_Head_State_GetServoFirmwareVersion(i, firmware_version[i]) != 0)
                 {
-                    _FX_WARN("%s: Failed to get %s.Axis%d servo version", __FUNCTION__, _FX_ObjType2Str(obj_type), i);
-                    version[i][0] = 0;
+                    _FX_WARN("%s: Failed to get %s.Axis%d servo firmware version", __FUNCTION__, _FX_ObjType2Str(obj_type), i);
+                    firmware_version[i][0] = 0;
                     return FUNC_RET_OPERATION_FAILED;
                 }
+                if (FX_L0_Head_State_GetServoConfigVersion(i, &config_version[i]) != 0)
+                {
+                    _FX_WARN("%s: Failed to get %s.Axis%d servo config version", __FUNCTION__, _FX_ObjType2Str(obj_type), i);
+                    config_version[i] = 0;
+                    return FUNC_RET_OPERATION_FAILED;
+                } 
             }
             else
             {
-                version[i][0] = 0;
+                firmware_version[i][0] = 0;
+                config_version[i] = 0;
             }
         }
         break;
@@ -721,16 +890,23 @@ int FX_L1_Fbk_GetCtrlObjServoVersion(FXObjType obj_type, char version[7][30])
         {
             if (i < FX_BODY_DOF)
             {
-                if (FX_L0_Body_State_GetServoVersion(i, version[i]) != 0)
+                if (FX_L0_Body_State_GetServoFirmwareVersion(i, firmware_version[i]) != 0)
                 {
-                    _FX_WARN("%s: Failed to get %s.Axis%d servo version", __FUNCTION__, _FX_ObjType2Str(obj_type), i);
-                    version[i][0] = 0;
+                    _FX_WARN("%s: Failed to get %s.Axis%d servo firmware version", __FUNCTION__, _FX_ObjType2Str(obj_type), i);
+                    firmware_version[i][0] = 0;
                     return FUNC_RET_OPERATION_FAILED;
                 }
+                if (FX_L0_Body_State_GetServoConfigVersion(i, &config_version[i]) != 0)
+                {
+                    _FX_WARN("%s: Failed to get %s.Axis%d servo config version", __FUNCTION__, _FX_ObjType2Str(obj_type), i);
+                    config_version[i] = 0;
+                    return FUNC_RET_OPERATION_FAILED;
+                } 
             }
             else
             {
-                version[i][0] = 0;
+                firmware_version[i][0] = 0;
+                config_version[i] = 0;
             }
         }
         break;
@@ -739,13 +915,11 @@ int FX_L1_Fbk_GetCtrlObjServoVersion(FXObjType obj_type, char version[7][30])
     default:
     {
         _FX_ERRO("%s: %s doesn't support the operation", __FUNCTION__, _FX_ObjType2Str(obj_type));
-        version[0][0] = 0;
-        version[1][0] = 0;
-        version[2][0] = 0;
-        version[3][0] = 0;
-        version[4][0] = 0;
-        version[5][0] = 0;
-        version[6][0] = 0;
+        for(FX_INT32 i = 0; i < 7; i++)
+        {
+            firmware_version[i][0] = 0;
+            config_version[i] = 0;
+        }
         return FUNC_RET_INVALID_OBJ;
     }
     }
@@ -755,6 +929,11 @@ int FX_L1_Fbk_GetCtrlObjServoVersion(FXObjType obj_type, char version[7][30])
 int FX_L1_Fbk_GetCtrlObjSensorVersionAndSerial(FXObjType obj_type, int version[7], int serial[7])
 {
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -857,6 +1036,11 @@ int FX_L1_Fbk_GetCtrlObjSensorVersionAndSerial(FXObjType obj_type, int version[7
 int FX_L1_Fbk_GetCtrlObjPhysicalState(FXObjType obj_type, int *physical_state)
 {
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -1250,9 +1434,36 @@ int FX_L1_Fbk_CheckUserDataSet(int user_data_len)
     return FUNC_RET_SUCCESS;
 }
 
+int FX_L1_Fbk_ResetSystemMsg()
+{
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
+    if(FX_L0_ResetSystemMsg() == 0)
+    {
+        return FUNC_RET_SUCCESS;
+    }
+    else
+    {
+        return FUNC_RET_OPERATION_FAILED;
+    }
+}
+
+int FX_L1_Fbk_GetSystemMsg(char* msg, int max_msg_len)
+{
+    return FX_L0_GetSystemMsg(msg, max_msg_len);
+}
+
 int FX_L1_State_GetServoErrorCode(FXObjType obj_type, unsigned int error_code[7])
 {
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -1833,6 +2044,12 @@ int FX_L1_State_SwitchToImpJointMode(FXObjType obj_type, unsigned int timeout, d
         }
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
+
     FXStateType cur_state = FX_STATE_UNKNOWN;
     cur_state = FX_L1_Fbk_CurrentState(obj_type);
     switch (cur_state)
@@ -1895,7 +2112,7 @@ int FX_L1_State_SwitchToImpJointMode(FXObjType obj_type, unsigned int timeout, d
                     _FX_ERRO("%s: %s is not allowed to do the operation, it is moving", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_INVALID_CONDITION;
                 }
-                if (FX_L0_Arm0_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm0_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0 || FX_L0_Arm0_Runtime_SetJointK(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Arm0_Runtime_SetJointD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Arm0_Runtime_SetDragType(FX_DEFAULT_THREAD_ID, FX_DRAG_TYPE_NULL) != 0 || FX_L0_Arm0_Runtime_SetImpType(FX_DEFAULT_THREAD_ID, FX_IMP_TYPE_JOINT) != 0 || FX_L0_Arm0_Runtime_SetState(FX_DEFAULT_THREAD_ID, ARM_STATE_TORQUE) != 0)
+                if (FX_L0_Arm0_Runtime_SetJointK(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Arm0_Runtime_SetJointD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Arm0_Runtime_SetDragType(FX_DEFAULT_THREAD_ID, FX_DRAG_TYPE_NULL) != 0 || FX_L0_Arm0_Runtime_SetImpType(FX_DEFAULT_THREAD_ID, FX_IMP_TYPE_JOINT) != 0 || FX_L0_Arm0_Runtime_SetState(FX_DEFAULT_THREAD_ID, ARM_STATE_TORQUE) != 0)
                 {
                     _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_FORMAT_CMD_FAILED;
@@ -1910,7 +2127,7 @@ int FX_L1_State_SwitchToImpJointMode(FXObjType obj_type, unsigned int timeout, d
                     _FX_ERRO("%s: %s is not allowed to do the operation, it is moving", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_INVALID_CONDITION;
                 }
-                if (FX_L0_Arm1_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm1_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0 || FX_L0_Arm1_Runtime_SetJointK(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Arm1_Runtime_SetJointD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Arm1_Runtime_SetDragType(FX_DEFAULT_THREAD_ID, FX_DRAG_TYPE_NULL) != 0 || FX_L0_Arm1_Runtime_SetImpType(FX_DEFAULT_THREAD_ID, FX_IMP_TYPE_JOINT) != 0 || FX_L0_Arm1_Runtime_SetState(FX_DEFAULT_THREAD_ID, ARM_STATE_TORQUE) != 0)
+                if (FX_L0_Arm1_Runtime_SetJointK(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Arm1_Runtime_SetJointD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Arm1_Runtime_SetDragType(FX_DEFAULT_THREAD_ID, FX_DRAG_TYPE_NULL) != 0 || FX_L0_Arm1_Runtime_SetImpType(FX_DEFAULT_THREAD_ID, FX_IMP_TYPE_JOINT) != 0 || FX_L0_Arm1_Runtime_SetState(FX_DEFAULT_THREAD_ID, ARM_STATE_TORQUE) != 0)
                 {
                     _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_FORMAT_CMD_FAILED;
@@ -1918,19 +2135,6 @@ int FX_L1_State_SwitchToImpJointMode(FXObjType obj_type, unsigned int timeout, d
                 break;
             }
             case FX_OBJ_BODY:
-            {
-                if (FX_ROBOT_TYPE != FX_ROBOT_GENTO_LUNA)
-                {
-                    _FX_ERRO("%s: %s doesn't support the operation", __FUNCTION__, _FX_RobotType2Str(FX_ROBOT_TYPE));
-                    return FUNC_RET_INVALID_ROBOT_TYPE;
-                }
-                if (FX_L0_Body_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Body_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0 || FX_L0_Body_Runtime_SetPDP(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Body_Runtime_SetPDD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Body_Runtime_SetState(FX_DEFAULT_THREAD_ID, BODY_STATE_TORQUE) != 0)
-                {
-                    _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
-                    return FUNC_RET_FORMAT_CMD_FAILED;
-                }
-                break;
-            }
             case FX_OBJ_HEAD:
             case FX_OBJ_LIFT:
             default:
@@ -1943,6 +2147,22 @@ int FX_L1_State_SwitchToImpJointMode(FXObjType obj_type, unsigned int timeout, d
         // wait response
         if (timeout == 0) // non-block
         {
+            if(obj_type == FX_OBJ_ARM0)
+            {
+                if(FX_L0_Arm0_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm0_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0)
+                {
+                    _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                    return FUNC_RET_FORMAT_CMD_FAILED;
+                }
+            }
+            else // FX_OBJ_ARM1
+            {
+                if(FX_L0_Arm1_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm1_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0)
+                {
+                    _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                    return FUNC_RET_FORMAT_CMD_FAILED;
+                }
+            }
             _FX_INFO("%s: %s transfer to STATE_IMP_JOINT success [non-block]", __FUNCTION__, _FX_ObjType2Str(obj_type));
             return FUNC_RET_SUCCESS;
         }
@@ -1951,6 +2171,22 @@ int FX_L1_State_SwitchToImpJointMode(FXObjType obj_type, unsigned int timeout, d
             CUtility::UniMilliSleep(1);
             if (FX_L1_Fbk_CurrentState(obj_type) == FX_STATE_IMP_JOINT)
             {
+                if(obj_type == FX_OBJ_ARM0)
+                {
+                    if(FX_L0_Arm0_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm0_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0)
+                    {
+                        _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                        return FUNC_RET_FORMAT_CMD_FAILED;
+                    }
+                }
+                else // FX_OBJ_ARM1
+                {
+                    if(FX_L0_Arm1_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm1_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0)
+                    {
+                        _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                        return FUNC_RET_FORMAT_CMD_FAILED;
+                    }
+                }
                 _FX_INFO("%s: %s transfer to STATE_IMP_JOINT success [block]", __FUNCTION__, _FX_ObjType2Str(obj_type));
                 return FUNC_RET_SUCCESS;
             }
@@ -2008,7 +2244,11 @@ int FX_L1_State_SwitchToImpCartMode(FXObjType obj_type, unsigned int timeout, do
             d[i] = 0;
         }
     }
-
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     FXStateType cur_state = FX_STATE_UNKNOWN;
     cur_state = FX_L1_Fbk_CurrentState(obj_type);
     switch (cur_state)
@@ -2071,7 +2311,7 @@ int FX_L1_State_SwitchToImpCartMode(FXObjType obj_type, unsigned int timeout, do
                     _FX_ERRO("%s: %s is not allowed to do the operation, it is moving", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_INVALID_CONDITION;
                 }
-                if (FX_L0_Arm0_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm0_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0 || FX_L0_Arm0_Runtime_SetCartK(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Arm0_Runtime_SetCartD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Arm0_Runtime_SetDragType(FX_DEFAULT_THREAD_ID, FX_DRAG_TYPE_NULL) != 0 || FX_L0_Arm0_Runtime_SetImpType(FX_DEFAULT_THREAD_ID, FX_IMP_TYPE_CART) != 0 || FX_L0_Arm0_Runtime_SetState(FX_DEFAULT_THREAD_ID, ARM_STATE_TORQUE) != 0)
+                if (FX_L0_Arm0_Runtime_SetCartK(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Arm0_Runtime_SetCartD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Arm0_Runtime_SetDragType(FX_DEFAULT_THREAD_ID, FX_DRAG_TYPE_NULL) != 0 || FX_L0_Arm0_Runtime_SetImpType(FX_DEFAULT_THREAD_ID, FX_IMP_TYPE_CART) != 0 || FX_L0_Arm0_Runtime_SetState(FX_DEFAULT_THREAD_ID, ARM_STATE_TORQUE) != 0)
                 {
                     _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_FORMAT_CMD_FAILED;
@@ -2086,7 +2326,7 @@ int FX_L1_State_SwitchToImpCartMode(FXObjType obj_type, unsigned int timeout, do
                     _FX_ERRO("%s: %s is not allowed to do the operation, it is moving", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_INVALID_CONDITION;
                 }
-                if (FX_L0_Arm1_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm1_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0 || FX_L0_Arm1_Runtime_SetCartK(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Arm1_Runtime_SetCartD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Arm1_Runtime_SetDragType(FX_DEFAULT_THREAD_ID, FX_DRAG_TYPE_NULL) != 0 || FX_L0_Arm1_Runtime_SetImpType(FX_DEFAULT_THREAD_ID, FX_IMP_TYPE_CART) != 0 || FX_L0_Arm1_Runtime_SetState(FX_DEFAULT_THREAD_ID, ARM_STATE_TORQUE) != 0)
+                if (FX_L0_Arm1_Runtime_SetCartK(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Arm1_Runtime_SetCartD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Arm1_Runtime_SetDragType(FX_DEFAULT_THREAD_ID, FX_DRAG_TYPE_NULL) != 0 || FX_L0_Arm1_Runtime_SetImpType(FX_DEFAULT_THREAD_ID, FX_IMP_TYPE_CART) != 0 || FX_L0_Arm1_Runtime_SetState(FX_DEFAULT_THREAD_ID, ARM_STATE_TORQUE) != 0)
                 {
                     _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_FORMAT_CMD_FAILED;
@@ -2106,6 +2346,22 @@ int FX_L1_State_SwitchToImpCartMode(FXObjType obj_type, unsigned int timeout, do
         // wait response
         if (timeout == 0) // non-block
         {
+            if(obj_type == FX_OBJ_ARM0)
+            {
+                if(FX_L0_Arm0_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm0_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0)
+                {
+                    _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                    return FUNC_RET_FORMAT_CMD_FAILED;
+                }
+            }
+            else // FX_OBJ_ARM1
+            {
+                if(FX_L0_Arm1_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm1_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0)
+                {
+                    _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                    return FUNC_RET_FORMAT_CMD_FAILED;
+                }
+            }        
             _FX_INFO("%s: %s transfer to STATE_IMP_CART success [non-block]", __FUNCTION__, _FX_ObjType2Str(obj_type));
             return FUNC_RET_SUCCESS;
         }
@@ -2114,6 +2370,22 @@ int FX_L1_State_SwitchToImpCartMode(FXObjType obj_type, unsigned int timeout, do
             CUtility::UniMilliSleep(1);
             if (FX_L1_Fbk_CurrentState(obj_type) == FX_STATE_IMP_CART)
             {
+                if(obj_type == FX_OBJ_ARM0)
+                {
+                    if(FX_L0_Arm0_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm0_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0)
+                    {
+                        _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                        return FUNC_RET_FORMAT_CMD_FAILED;
+                    }
+                }
+                else // FX_OBJ_ARM1
+                {
+                    if(FX_L0_Arm1_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm1_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0)
+                    {
+                        _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                        return FUNC_RET_FORMAT_CMD_FAILED;
+                    }
+                }            
                 _FX_INFO("%s: %s transfer to STATE_IMP_CART success [block]", __FUNCTION__, _FX_ObjType2Str(obj_type));
                 return FUNC_RET_SUCCESS;
             }
@@ -2160,6 +2432,12 @@ int FX_L1_State_SwitchToImpForceMode(FXObjType obj_type, unsigned int timeout, d
     if (torque_ctrl[FX_TORQUE_ANGLE] < 0)
     {
         torque_ctrl[FX_TORQUE_ANGLE] = 0;
+    }
+
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
     }
 
     FXStateType cur_state = FX_STATE_UNKNOWN;
@@ -2325,6 +2603,12 @@ FX_L1_SDK_API int FX_L1_State_SwitchToPDMode(FXObjType obj_type, unsigned int ti
         }
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
+
     FXStateType cur_state = FX_STATE_UNKNOWN;
     cur_state = FX_L1_Fbk_CurrentState(obj_type);
     switch (cur_state)
@@ -2400,7 +2684,7 @@ FX_L1_SDK_API int FX_L1_State_SwitchToPDMode(FXObjType obj_type, unsigned int ti
                     _FX_ERRO("%s: %s is not allowed to do the operation, it is moving", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_INVALID_CONDITION;
                 }
-                if (FX_L0_Arm0_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm0_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0 || FX_L0_Arm0_Runtime_SetJointK(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Arm0_Runtime_SetJointD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Arm0_Runtime_SetDragType(FX_DEFAULT_THREAD_ID, FX_DRAG_TYPE_NULL) != 0 || FX_L0_Arm0_Runtime_SetImpType(FX_DEFAULT_THREAD_ID, FX_IMP_TYPE_PD) != 0 || FX_L0_Arm0_Runtime_SetState(FX_DEFAULT_THREAD_ID, ARM_STATE_TORQUE) != 0)
+                if (FX_L0_Arm0_Runtime_SetJointK(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Arm0_Runtime_SetJointD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Arm0_Runtime_SetDragType(FX_DEFAULT_THREAD_ID, FX_DRAG_TYPE_NULL) != 0 || FX_L0_Arm0_Runtime_SetImpType(FX_DEFAULT_THREAD_ID, FX_IMP_TYPE_PD) != 0 || FX_L0_Arm0_Runtime_SetState(FX_DEFAULT_THREAD_ID, ARM_STATE_TORQUE) != 0)
                 {
                     _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_FORMAT_CMD_FAILED;
@@ -2415,7 +2699,7 @@ FX_L1_SDK_API int FX_L1_State_SwitchToPDMode(FXObjType obj_type, unsigned int ti
                     _FX_ERRO("%s: %s is not allowed to do the operation, it is moving", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_INVALID_CONDITION;
                 }
-                if (FX_L0_Arm1_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm1_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0 || FX_L0_Arm1_Runtime_SetJointK(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Arm1_Runtime_SetJointD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Arm1_Runtime_SetDragType(FX_DEFAULT_THREAD_ID, FX_DRAG_TYPE_NULL) != 0 || FX_L0_Arm1_Runtime_SetImpType(FX_DEFAULT_THREAD_ID, FX_IMP_TYPE_PD) != 0 || FX_L0_Arm1_Runtime_SetState(FX_DEFAULT_THREAD_ID, ARM_STATE_TORQUE) != 0)
+                if (FX_L0_Arm1_Runtime_SetJointK(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Arm1_Runtime_SetJointD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Arm1_Runtime_SetDragType(FX_DEFAULT_THREAD_ID, FX_DRAG_TYPE_NULL) != 0 || FX_L0_Arm1_Runtime_SetImpType(FX_DEFAULT_THREAD_ID, FX_IMP_TYPE_PD) != 0 || FX_L0_Arm1_Runtime_SetState(FX_DEFAULT_THREAD_ID, ARM_STATE_TORQUE) != 0)
                 {
                     _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_FORMAT_CMD_FAILED;
@@ -2429,7 +2713,7 @@ FX_L1_SDK_API int FX_L1_State_SwitchToPDMode(FXObjType obj_type, unsigned int ti
                     _FX_ERRO("%s: %s doesn't support the operation", __FUNCTION__, _FX_RobotType2Str(FX_ROBOT_TYPE));
                     return FUNC_RET_INVALID_ROBOT_TYPE;
                 }
-                if (FX_L0_Body_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Body_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0 || FX_L0_Body_Runtime_SetPDP(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Body_Runtime_SetPDD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Body_Runtime_SetState(FX_DEFAULT_THREAD_ID, BODY_STATE_TORQUE) != 0)
+                if (FX_L0_Body_Runtime_SetPDP(FX_DEFAULT_THREAD_ID, k) != 0 || FX_L0_Body_Runtime_SetPDD(FX_DEFAULT_THREAD_ID, d) != 0 || FX_L0_Body_Runtime_SetState(FX_DEFAULT_THREAD_ID, BODY_STATE_TORQUE) != 0)
                 {
                     _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_FORMAT_CMD_FAILED;
@@ -2448,6 +2732,30 @@ FX_L1_SDK_API int FX_L1_State_SwitchToPDMode(FXObjType obj_type, unsigned int ti
         // wait response
         if (timeout == 0) // non-block
         {
+            if(obj_type == FX_OBJ_ARM0)
+            {
+                if(FX_L0_Arm0_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm0_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0)
+                {
+                    _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                    return FUNC_RET_FORMAT_CMD_FAILED;
+                }
+            }
+            else if(obj_type == FX_OBJ_ARM1)
+            {
+                if(FX_L0_Arm1_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm1_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0)
+                {
+                    _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                    return FUNC_RET_FORMAT_CMD_FAILED;
+                }
+            }
+            else // FX_OBJ_BODY
+            {
+                if(FX_L0_Body_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Body_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0)
+                {
+                    _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                    return FUNC_RET_FORMAT_CMD_FAILED;
+                }
+            }
             _FX_INFO("%s: %s transfer to STATE_IMP_JOINT success [non-block]", __FUNCTION__, _FX_ObjType2Str(obj_type));
             return FUNC_RET_SUCCESS;
         }
@@ -2456,6 +2764,30 @@ FX_L1_SDK_API int FX_L1_State_SwitchToPDMode(FXObjType obj_type, unsigned int ti
             CUtility::UniMilliSleep(1);
             if (FX_L1_Fbk_CurrentState(obj_type) == FX_STATE_PD)
             {
+                if(obj_type == FX_OBJ_ARM0)
+                {
+                    if(FX_L0_Arm0_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm0_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0)
+                    {
+                        _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                        return FUNC_RET_FORMAT_CMD_FAILED;
+                    }
+                }
+                else if(obj_type == FX_OBJ_ARM1)
+                {
+                    if(FX_L0_Arm1_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Arm1_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0)
+                    {
+                        _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                        return FUNC_RET_FORMAT_CMD_FAILED;
+                    }
+                }
+                else // FX_OBJ_BODY
+                {
+                    if(FX_L0_Body_Runtime_SetVelRatio(FX_DEFAULT_THREAD_ID, vel_ratio) != 0 || FX_L0_Body_Runtime_SetAccRatio(FX_DEFAULT_THREAD_ID, acc_ratio) != 0)
+                    {
+                        _FX_ERRO("%s: %s format command failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                        return FUNC_RET_FORMAT_CMD_FAILED;
+                    }
+                }            
                 _FX_INFO("%s: %s transfer to STATE_IMP_JOINT success [block]", __FUNCTION__, _FX_ObjType2Str(obj_type));
                 return FUNC_RET_SUCCESS;
             }
@@ -2494,6 +2826,12 @@ int FX_L1_State_SwitchToDragJoint(FXObjType obj_type, unsigned int timeout, doub
         {
             d[i] = 0;
         }
+    }
+
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
     }
 
     FXStateType cur_state = FX_STATE_UNKNOWN;
@@ -2641,6 +2979,12 @@ int FX_L1_State_SwitchToDragCartX(FXObjType obj_type, unsigned int timeout, doub
         }
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
+
     FXStateType cur_state = FX_STATE_UNKNOWN;
     cur_state = FX_L1_Fbk_CurrentState(obj_type);
     switch (cur_state)
@@ -2784,6 +3128,12 @@ int FX_L1_State_SwitchToDragCartY(FXObjType obj_type, unsigned int timeout, doub
         {
             d[i] = 0;
         }
+    }
+
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
     }
 
     FXStateType cur_state = FX_STATE_UNKNOWN;
@@ -2931,6 +3281,12 @@ int FX_L1_State_SwitchToDragCartZ(FXObjType obj_type, unsigned int timeout, doub
         }
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
+
     FXStateType cur_state = FX_STATE_UNKNOWN;
     cur_state = FX_L1_Fbk_CurrentState(obj_type);
     switch (cur_state)
@@ -3076,6 +3432,11 @@ int FX_L1_State_SwitchToDragCartR(FXObjType obj_type, unsigned int timeout, doub
         }
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     FXStateType cur_state = FX_STATE_UNKNOWN;
     cur_state = FX_L1_Fbk_CurrentState(obj_type);
     switch (cur_state)
@@ -3209,6 +3570,12 @@ int FX_L1_State_SwitchToCollaborativeRelease(FXObjType obj_type, unsigned int ti
         return FUNC_RET_INVALID_ROBOT_TYPE;
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
+
     FXStateType cur_state = FX_STATE_UNKNOWN;
     cur_state = FX_L1_Fbk_CurrentState(obj_type);
     switch (cur_state)
@@ -3312,6 +3679,11 @@ int FX_L1_Param_SetInt32(char *name, int value)
         return FUNC_RET_INVALID_INPUT_ARG;
     }
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     if (FX_L0_Param_SetInt(name, value) != 0)
     {
         _FX_ERRO("%s: Failed to set %s=%d", __FUNCTION__, name, value);
@@ -3334,6 +3706,11 @@ int FX_L1_Param_SetFloat(char *name, float value)
         return FUNC_RET_INVALID_INPUT_ARG;
     }
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     if (FX_L0_Param_SetFloat(name, value) != 0)
     {
         _FX_ERRO("%s: Failed to set %s=%.4f", __FUNCTION__, name, value);
@@ -3356,6 +3733,11 @@ int FX_L1_Param_GetInt32(char *name, int *value)
         return FUNC_RET_INVALID_INPUT_ARG;
     }
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     if (FX_L0_Param_GetInt(name, value) != 0)
     {
         _FX_ERRO("%s: Failed to get %s", __FUNCTION__, name);
@@ -3373,6 +3755,11 @@ int FX_L1_Param_GetFloat(char *name, float *value)
         return FUNC_RET_INVALID_INPUT_ARG;
     }
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     if (FX_L0_Param_GetFloat(name, value) != 0)
     {
         _FX_ERRO("%s: Failed to get %s", __FUNCTION__, name);
@@ -3390,6 +3777,11 @@ int FX_L1_Param_GetString(char *name, char *value)
         return FUNC_RET_INVALID_INPUT_ARG;
     }
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     if (FX_L0_Param_GetString(name, value) != 0)
     {
         _FX_ERRO("%s: Failed to get %s", __FUNCTION__, name);
@@ -3555,6 +3947,11 @@ int FX_L1_Config_SetBrakeLock(FXObjType obj_type, unsigned char axis_mask)
     }
 
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -3642,6 +4039,11 @@ int FX_L1_Config_SetBrakeUnlock(FXObjType obj_type, unsigned char axis_mask)
     }
 
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -3728,6 +4130,11 @@ int FX_L1_Config_ResetEncOffset(FXObjType obj_type, unsigned char axis_mask)
         return FUNC_RET_INVALID_ROBOT_TYPE;
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -3886,6 +4293,11 @@ int FX_L1_Config_ClearEncError(FXObjType obj_type, unsigned char axis_mask)
     }
 
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -3978,6 +4390,11 @@ int FX_L1_Config_ResetAxisSensorOffset(FXObjType obj_type, unsigned int axis_id)
     char SensorDir_name[30] = {0};
     float sensor_value = 0;
     const ROBOT_RT *rt = FX_L0_GetRobotRT();
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -4125,6 +4542,11 @@ int FX_L1_Config_ResetSensorOffset(FXObjType obj_type)
     float sensor_value[8] = {0};
     int dof = 0;
     const ROBOT_RT *rt = FX_L0_GetRobotRT();
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -4269,6 +4691,11 @@ int FX_L1_Config_DisableSoftLimit(FXObjType obj_type, unsigned char axis_mask)
     }
 
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -4374,6 +4801,12 @@ int FX_L1_Config_SetTraj(FXObjType obj_type, unsigned int point_num, double *poi
         return FUNC_RET_INVALID_ROBOT_TYPE;
     }
 
+    int runtime_ret = 0;
+    int try_count = 0;
+    unsigned int full_frame_num = point_num / 50;
+    unsigned int relic_point_num = point_num % 50;
+    unsigned int full_frame_count = 0; 
+
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -4389,14 +4822,24 @@ int FX_L1_Config_SetTraj(FXObjType obj_type, unsigned int point_num, double *poi
             return FUNC_RET_INVALID_CONDITION;
         }
         // InitTraj
+        try_count = 0;
         {
+ARM0_TRY_AGAIN1:        
             std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
-            if (FX_L0_Arm0_Runtime_InitTraj(FX_DEFAULT_THREAD_ID, point_num) != 0)
+            runtime_ret = FX_L0_Arm0_Runtime_InitTraj(FX_DEFAULT_THREAD_ID, point_num);
+        }
+        if(runtime_ret != 0)
+        {
+            if(try_count > 100)
             {
                 _FX_ERRO("%s: %s format command Runtime_InitTraj failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
                 return FUNC_RET_FORMAT_CMD_FAILED;
             }
-        }
+            CUtility::UniMilliSleep(1);
+            try_count++;
+            goto ARM0_TRY_AGAIN1;
+        }        
+        
         int wait_count = 10;
         do
         {
@@ -4409,25 +4852,49 @@ int FX_L1_Config_SetTraj(FXObjType obj_type, unsigned int point_num, double *poi
             }
         } while (RobotCtrl::GetIns()->m_RobotSG.m_ARMS[0].m_ARM_GET.m_ARM_FBK_TrajState != 1);
         // SetTraj
-        unsigned int full_frame_num = point_num / 50;
-        unsigned int relic_point_num = point_num % 50;
+        while(full_frame_count < full_frame_num)
         {
-            std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
-            for (unsigned int i = 0; i < full_frame_num; i++)
+            try_count = 0;
             {
-                if (FX_L0_Arm0_Runtime_SetTraj(FX_DEFAULT_THREAD_ID, i, 50, &point_data[350 * i]) != 0)
-                {
-                    _FX_ERRO("%s: %s format command Runtime_SetTraj failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
-                    return FUNC_RET_FORMAT_CMD_FAILED;
-                }
+ARM0_TRY_AGAIN2:            
+                std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+                runtime_ret = FX_L0_Arm0_Runtime_SetTraj(FX_DEFAULT_THREAD_ID, full_frame_count, 50, &point_data[350 * full_frame_count]);
             }
-            if (relic_point_num != 0)
+            if(runtime_ret != 0)
             {
-                if (FX_L0_Arm0_Runtime_SetTraj(FX_DEFAULT_THREAD_ID, full_frame_num, relic_point_num, &point_data[350 * full_frame_num]) != 0)
+                if(try_count > 100)
                 {
                     _FX_ERRO("%s: %s format command Runtime_SetTraj failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_FORMAT_CMD_FAILED;
                 }
+                CUtility::UniMilliSleep(1);
+                try_count++;
+                goto ARM0_TRY_AGAIN2;
+            }
+            else
+            {
+                full_frame_count++;
+            }
+        }
+
+        if (relic_point_num != 0)
+        {
+            try_count = 0;
+            {
+ARM0_TRY_AGAIN3:            
+                std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+                runtime_ret = FX_L0_Arm0_Runtime_SetTraj(FX_DEFAULT_THREAD_ID, full_frame_num, relic_point_num, &point_data[350 * full_frame_num]);
+            }
+            if(runtime_ret != 0)
+            {
+                if(try_count > 100)
+                {
+                    _FX_ERRO("%s: %s format command Runtime_SetTraj failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                    return FUNC_RET_FORMAT_CMD_FAILED;
+                }
+                CUtility::UniMilliSleep(1);
+                try_count++;
+                goto ARM0_TRY_AGAIN3;
             }
         }
         wait_count = 10;
@@ -4458,14 +4925,24 @@ int FX_L1_Config_SetTraj(FXObjType obj_type, unsigned int point_num, double *poi
             return FUNC_RET_INVALID_CONDITION;
         }
         // InitTraj
+        try_count = 0;
         {
+ARM1_TRY_AGAIN1:        
             std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
-            if (FX_L0_Arm1_Runtime_InitTraj(FX_DEFAULT_THREAD_ID, point_num) != 0)
+            runtime_ret = FX_L0_Arm1_Runtime_InitTraj(FX_DEFAULT_THREAD_ID, point_num);
+        }
+        if(runtime_ret != 0)
+        {
+            if(try_count > 100)
             {
                 _FX_ERRO("%s: %s format command Runtime_InitTraj failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
                 return FUNC_RET_FORMAT_CMD_FAILED;
             }
-        }
+            CUtility::UniMilliSleep(1);
+            try_count++;
+            goto ARM1_TRY_AGAIN1;
+        }  
+
         int wait_count = 10;
         do
         {
@@ -4478,25 +4955,49 @@ int FX_L1_Config_SetTraj(FXObjType obj_type, unsigned int point_num, double *poi
             }
         } while (RobotCtrl::GetIns()->m_RobotSG.m_ARMS[1].m_ARM_GET.m_ARM_FBK_TrajState != 1);
         // SetTraj
-        unsigned int full_frame_num = point_num / 50;
-        unsigned int relic_point_num = point_num % 50;
+        while(full_frame_count < full_frame_num)
         {
-            std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
-            for (unsigned int i = 0; i < full_frame_num; i++)
+            try_count = 0;
             {
-                if (FX_L0_Arm1_Runtime_SetTraj(FX_DEFAULT_THREAD_ID, i, 50, &point_data[350 * i]) != 0)
-                {
-                    _FX_ERRO("%s: %s format command Runtime_SetTraj failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
-                    return FUNC_RET_FORMAT_CMD_FAILED;
-                }
+ARM1_TRY_AGAIN2:            
+                std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+                runtime_ret = FX_L0_Arm1_Runtime_SetTraj(FX_DEFAULT_THREAD_ID, full_frame_count, 50, &point_data[350 * full_frame_count]);
             }
-            if (relic_point_num != 0)
+            if(runtime_ret != 0)
             {
-                if (FX_L0_Arm1_Runtime_SetTraj(FX_DEFAULT_THREAD_ID, full_frame_num, relic_point_num, &point_data[350 * full_frame_num]) != 0)
+                if(try_count > 100)
                 {
                     _FX_ERRO("%s: %s format command Runtime_SetTraj failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
                     return FUNC_RET_FORMAT_CMD_FAILED;
                 }
+                CUtility::UniMilliSleep(1);
+                try_count++;
+                goto ARM1_TRY_AGAIN2;
+            }
+            else
+            {
+                full_frame_count++;
+            }
+        }
+
+        if (relic_point_num != 0)
+        {
+            try_count = 0;
+            {
+ARM1_TRY_AGAIN3:            
+                std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+                runtime_ret = FX_L0_Arm1_Runtime_SetTraj(FX_DEFAULT_THREAD_ID, full_frame_num, relic_point_num, &point_data[350 * full_frame_num]);
+            }
+            if(runtime_ret != 0)
+            {
+                if(try_count > 100)
+                {
+                    _FX_ERRO("%s: %s format command Runtime_SetTraj failed", __FUNCTION__, _FX_ObjType2Str(obj_type));
+                    return FUNC_RET_FORMAT_CMD_FAILED;
+                }
+                CUtility::UniMilliSleep(1);
+                try_count++;
+                goto ARM1_TRY_AGAIN3;
             }
         }
         wait_count = 10;
@@ -4542,6 +5043,11 @@ int FX_L1_Config_SetPDCmdCycleTime(int cycle_time)
     }
 
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     if (FX_L0_System_SetPDCmdCycleTime(cycle_time_actual) == 0)
     {
         _FX_INFO("%s: Set PD command cycle time to be %dms success", __FUNCTION__, cycle_time_actual);
@@ -4557,6 +5063,11 @@ int FX_L1_Config_SetPDCmdCycleTime(int cycle_time)
 int FX_L1_Config_GetPDCmdCycleTime(int *cycle_time)
 {
     std::lock_guard<std::mutex> lock(FX_L1_MUTEX);
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     if (FX_L0_System_GetPDCmdCycleTime(cycle_time) == 0)
     {
         _FX_INFO("%s: PD command cycle time is %dms", __FUNCTION__, *cycle_time);
@@ -4689,6 +5200,11 @@ int FX_L1_Runtime_SetJointPosCmd(unsigned int thread_id, FXObjType obj_type, dou
         return FUNC_RET_INVALID_THREAD_ID;
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -4745,7 +5261,7 @@ int FX_L1_Runtime_SetJointPosCmd(unsigned int thread_id, FXObjType obj_type, dou
     return FUNC_RET_SUCCESS;
 }
 
-FX_L1_SDK_API int FX_L1_Runtime_SetJointPosPDCmd(unsigned int thread_id, FXObjType obj_type, double pos_cmd[7])
+int FX_L1_Runtime_SetJointPosPDCmd(unsigned int thread_id, FXObjType obj_type, double pos_cmd[7])
 {
     static int arm0_cmd_serial = 7;
     static int arm1_cmd_serial = 7;
@@ -4757,6 +5273,11 @@ FX_L1_SDK_API int FX_L1_Runtime_SetJointPosPDCmd(unsigned int thread_id, FXObjTy
         return FUNC_RET_INVALID_THREAD_ID;
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -4829,6 +5350,11 @@ int FX_L1_Runtime_SetForceCtrl(unsigned int thread_id, FXObjType obj_type, doubl
         return FUNC_RET_INVALID_THREAD_ID;
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -4866,6 +5392,11 @@ int FX_L1_Runtime_SetTorqueCtrl(unsigned int thread_id, FXObjType obj_type, doub
         return FUNC_RET_INVALID_THREAD_ID;
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -4912,6 +5443,11 @@ int FX_L1_Runtime_SetVelRatio(unsigned int thread_id, FXObjType obj_type, double
         vel_ratio = 100;
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -4985,6 +5521,11 @@ int FX_L1_Runtime_SetAccRatio(unsigned int thread_id, FXObjType obj_type, double
         acc_ratio = 100;
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -5067,6 +5608,11 @@ int FX_L1_Runtime_SetSpeedRatio(unsigned int thread_id, FXObjType obj_type, doub
         acc_ratio = 100;
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -5139,6 +5685,11 @@ int FX_L1_Runtime_SetJointK(unsigned int thread_id, FXObjType obj_type, double k
         }
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -5184,6 +5735,11 @@ int FX_L1_Runtime_SetJointD(unsigned int thread_id, FXObjType obj_type, double d
         }
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -5233,6 +5789,11 @@ int FX_L1_Runtime_SetJointKD(unsigned int thread_id, FXObjType obj_type, double 
         }
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -5277,7 +5838,11 @@ int FX_L1_Runtime_SetCartK(unsigned int thread_id, FXObjType obj_type, double k[
             k[i] = 0;
         }
     }
-
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -5323,6 +5888,11 @@ int FX_L1_Runtime_SetCartD(unsigned int thread_id, FXObjType obj_type, double d[
         }
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -5372,6 +5942,11 @@ int FX_L1_Runtime_SetCartKD(unsigned int thread_id, FXObjType obj_type, double k
         }
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -5409,6 +5984,11 @@ int FX_L1_Runtime_SetToolK(unsigned int thread_id, FXObjType obj_type, double k[
         return FUNC_RET_INVALID_THREAD_ID;
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -5446,6 +6026,11 @@ int FX_L1_Runtime_SetToolD(unsigned int thread_id, FXObjType obj_type, double d[
         return FUNC_RET_INVALID_THREAD_ID;
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -5483,6 +6068,11 @@ int FX_L1_Runtime_SetToolKD(unsigned int thread_id, FXObjType obj_type, double k
         return FUNC_RET_INVALID_THREAD_ID;
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     switch (obj_type)
     {
     case FX_OBJ_ARM0:
@@ -5528,6 +6118,11 @@ int FX_L1_Runtime_SetBodyPDP(unsigned int thread_id, double p[6])
         }
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     if (FX_L0_Body_Runtime_SetPDP(thread_id, p) != 0)
     {
         _FX_WARN("[Thread%u]%s: Body format command failed", thread_id, __FUNCTION__);
@@ -5552,6 +6147,11 @@ int FX_L1_Runtime_SetBodyPDD(unsigned int thread_id, double d[6])
         }
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     if (FX_L0_Body_Runtime_SetPDD(thread_id, d) != 0)
     {
         _FX_WARN("[Thread%u]%s: Body format command failed", thread_id, __FUNCTION__);
@@ -5580,6 +6180,11 @@ int FX_L1_Runtime_SetBodyPD(unsigned int thread_id, double p[6], double d[6])
         }
     }
 
+    if (FX_L0_System_GetLinkState() != 1)
+    {
+        _FX_ERRO("%s: Link is not connected, reject operation", __FUNCTION__);
+        return FUNC_RET_LINK_LOST;
+    }
     if (FX_L0_Body_Runtime_SetPDP(thread_id, p) != 0 || FX_L0_Body_Runtime_SetPDD(thread_id, d) != 0)
     {
         _FX_WARN("[Thread%u]%s: Body format command failed", thread_id, __FUNCTION__);

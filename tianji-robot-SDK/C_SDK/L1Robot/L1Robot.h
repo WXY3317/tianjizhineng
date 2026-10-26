@@ -79,7 +79,7 @@ extern "C"
      *
      * @return void
      */
-    FX_L1_SDK_API void FX_L1_System_Unlink();
+    FX_L1_SDK_API void FX_L1_System_Unlink(void);
     /**
      * @brief Retrieve the current communication link state of the system.
      *
@@ -95,7 +95,7 @@ extern "C"
      * @note The returned value represents the most recently known link status
      *       and may not reflect real-time link fluctuations.
      */
-    FX_L1_SDK_API int FX_L1_System_GetLinkState();
+    FX_L1_SDK_API int FX_L1_System_GetLinkState(void);
     /**
      * @brief Set the global log level for L1 APIs.
      *
@@ -114,7 +114,7 @@ extern "C"
      *
      * @return Currently configured log level.
      */
-    FX_L1_SDK_API unsigned int FX_L1_System_GetLogLevel();
+    FX_L1_SDK_API unsigned int FX_L1_System_GetLogLevel(void);
 
     /**
      * @brief Query the controller firmware version.
@@ -125,7 +125,7 @@ extern "C"
      *
      * @see FX_L1_System_GetSDKVersion
      */
-    FX_L1_SDK_API int FX_L1_System_GetControllerVersion();
+    FX_L1_SDK_API int FX_L1_System_GetControllerVersion(void);
 
     /**
      * @brief Query the SDK version.
@@ -134,7 +134,7 @@ extern "C"
      *
      * @return Encoded SDK version value, or FUNC_RET_OPERATION_FAILED if unavailable.
      */
-    FX_L1_SDK_API int FX_L1_System_GetSDKVersion();
+    FX_L1_SDK_API int FX_L1_System_GetSDKVersion(void);
 
     /**
      * @brief Reboot the robot system.
@@ -145,7 +145,7 @@ extern "C"
      *
      * @see FXFuncReturn
      */
-    FX_L1_SDK_API int FX_L1_System_Reboot();
+    FX_L1_SDK_API int FX_L1_System_Reboot(void);
 
     /**
      * @brief Perform a system update using specified files.
@@ -188,7 +188,87 @@ extern "C"
      */
     FX_L1_SDK_API int FX_L1_System_RecvFile(char *local_file_path,
                                             char *remote_file_path);
+    /**
+     * @brief Set the system time on the controller.
+     *
+     * Configures the controller's real-time clock to the specified date and time.
+     *
+     * @param year   Year value (e.g., 2024).
+     * @param month  Month value (1–12).
+     * @param day    Day value (1–31, depending on month and year).
+     * @param hour   Hour value (0–23).
+     * @param minute Minute value (0–59).
+     * @param second Second value (0–59).
+     * @return Defined in FXFuncReturn.
+     *
+     * @see FXFuncReturn
+     */
+    FX_L1_SDK_API int FX_L1_System_SetSystemTime(int year, int month, int day, int hour, int minute, int second);
+    
+    /**
+     * @brief Get the current system time from the controller.
+     *
+     * Retrieves the controller's current date and time as a formatted string.
+     *
+     * @param time_str Buffer to receive the time string. The buffer must be at
+     *                 least 20 characters long. The format is typically
+     *                 "YYYY-MM-DD HH:MM:SS" (null-terminated).
+     * @return Defined in FXFuncReturn.
+     *
+     * @see FXFuncReturn
+     */
+    FX_L1_SDK_API int FX_L1_System_GetSystemTime(char time_str[20]);
+    
+    /**
+     * @brief Set the system network configuration on the controller.
+     *
+     * Configures the controller's IPv4 address, subnet mask, and default gateway.
+     *
+     * @param ip      IPv4 address as an array of 4 bytes, e.g., {192, 168, 1, 10}.
+     * @return Defined in FXFuncReturn.
+     *
+     * @see FXFuncReturn
+     */
+    FX_L1_SDK_API int FX_L1_System_SetSystemIP(int ip[4]);
+    
+    /**
+     * @brief Get the current system network configuration from the controller.
+     *
+     * Retrieves the controller's current IPv4 address, subnet mask, and default
+     * gateway.
+     *
+     * @param[out] ip_str  Buffer to receive the IPv4 address, e.g., "192.168.1.190".
+     * @return Defined in FXFuncReturn.
+     *
+     * @see FXFuncReturn
+     */
+    FX_L1_SDK_API int FX_L1_System_GetSystemIP(char ip_str[20]);
 
+ /**
+     * @brief Set the robot serial number.
+     *
+     * @param[in] serial  Null-terminated string containing the serial number.
+     *                    Maximum length is 29 characters (plus null terminator)
+     *                    to fit within the 30-byte buffer.
+     *
+     * @return Defined in FXFuncReturn.
+     *
+     * @see FXFuncReturn
+     */
+    FX_L1_SDK_API int FX_L1_System_SetSN(char serial[30]);
+    /**
+     * @brief Retrieve the robot serial number.
+     *
+     * @param[out] serial  Buffer to receive the null-terminated serial number string.
+     *                     Must be at least 30 bytes in size to accommodate up to
+     *                     29 characters plus the null terminator.
+     *
+     * @return Defined in FXFuncReturn.
+     *
+     * @see FXFuncReturn
+     */
+    FX_L1_SDK_API int FX_L1_System_GetSN(char serial[30]);
+    
     /* =========================================================
      * Feedback APIs
      * ========================================================= */
@@ -202,16 +282,17 @@ extern "C"
     FX_L1_SDK_API int FX_L1_Fbk_GetCtrlObjDof(FXObjType obj_type);
 
     /**
-     * @brief Retrieve servo firmware versions for a control object.
+     * @brief Retrieve servo versions for a control object.
      *
      * @param obj_type Target object type.
-     * @param version Output buffer for version strings.
+     * @param firmware_version Output buffer for servo firmware version strings.
+     * @param config_version Output buffer for servo config version.
      * @return Defined in FXFuncReturn.
      *
      * @see FXFuncReturn
      */
     FX_L1_SDK_API int FX_L1_Fbk_GetCtrlObjServoVersion(FXObjType obj_type,
-                                                        char version[7][30]);
+                                                        char firmware_version[7][30], unsigned int config_version[7]);
 
     /**
      * @brief Retrieve sensor firmware versions and serial numbers.
@@ -245,7 +326,7 @@ extern "C"
      *
      * @see FXRobotType
      */
-    FX_L1_SDK_API FXRobotType FX_L1_Fbk_GetRobotType();
+    FX_L1_SDK_API FXRobotType FX_L1_Fbk_GetRobotType(void);
 
     /**
      * @brief Query the current high-level state of a control object.
@@ -264,7 +345,7 @@ extern "C"
      *
      * @return Pointer to ROBOT_RT data.
      */
-    FX_L1_SDK_API const ROBOT_RT *FX_L1_Fbk_GetRT();
+    FX_L1_SDK_API const ROBOT_RT *FX_L1_Fbk_GetRT(void);
 
     /**
      * @brief Access slow-group feedback data.
@@ -273,7 +354,7 @@ extern "C"
      *
      * @return Pointer to ROBOT_SG data.
      */
-    FX_L1_SDK_API const ROBOT_SG *FX_L1_Fbk_GetSG();
+    FX_L1_SDK_API const ROBOT_SG *FX_L1_Fbk_GetSG(void);
 
     /**
      * @brief Sample the user data from feedback.
@@ -289,7 +370,7 @@ extern "C"
      *
      * @note This function clears all previously registered user data sets.
      */
-    FX_L1_SDK_API void FX_L1_Fbk_ResetUserDataSet();
+    FX_L1_SDK_API void FX_L1_Fbk_ResetUserDataSet(void);
     
     /**
      * @brief Register a user data set for feedback.
@@ -315,6 +396,29 @@ extern "C"
      * @see FXFuncReturn
      */
     FX_L1_SDK_API int FX_L1_Fbk_CheckUserDataSet(int user_data_len);
+    /**
+     * @brief Clear all system message.
+     *
+     * This function clears or resets the internal system message context.
+     * It is typically used during initialization or after processing a 
+     * system-level notification.
+     *
+     * @return Defined in FXFuncReturn.
+     *
+     * @see FXFuncReturn
+     */
+    FX_L1_SDK_API int FX_L1_Fbk_ResetSystemMsg(void);
+    /**
+     * @brief Retrieve the current system message.
+     *
+     * @param[out] msg         Buffer to receive the system message string.
+     * @param[in]  max_msg_len Maximum size of the message buffer, including the null terminator.
+     *
+     * @return Defined in FXFuncReturn.
+     *
+     * @see FXFuncReturn
+     */
+    FX_L1_SDK_API int FX_L1_Fbk_GetSystemMsg(char* msg, int max_msg_len);
 
     /**
      * @brief Retrieve servo error codes for a control object.

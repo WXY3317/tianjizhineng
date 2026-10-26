@@ -1,4 +1,4 @@
-# Robot SDK - 天机机器人软件开发工具包
+# FX L1 Robot SDK - 人形机器人软件开发工具包
 
 ## 版本管理与兼容性
 
@@ -16,9 +16,9 @@
 当连接错误为 `-4` 时，可先调用获取SDK版本接口，再根据SDK版本对控制器进行升级或降级。
 ---
 
-## 1. 简介
+## 1. 机器人简介
 
-天机机器人产品线包括：
+FX 人形机器人是面向科研、工业协作和服务应用的先进双臂多自由度机器人系统。产品线包括：
 
 - **Marvin Pro M3 / M6** — 通用人形平台
 - **Gento Skye / Gento Luna** — 双臂协作人形机器人
@@ -74,6 +74,9 @@ FX L1 Robot SDK 提供了一套高层 C API，用于控制、监控和编程 FX 
 
 | 版本    | 日期         | 说明 |
 |-------|------------|------|
+| 4.5.0 | 2026-07-09 | 修改基座IMU数据为单独RT|
+| 4.5.0 | 2026-07-06 | 反馈数据增加手臂/身体/头部的温度反馈；碰撞检测Interf变更为C函数接口|
+| 4.4.2 | 2026-06-29 | 增加接口：FX_L1_System_SetSystemTime,FX_L1_System_GetSystemTime,FX_L1_System_SetSystemIP,FX_L1_System_GetSystemIP,FX_L1_Fbk_ResetSystemMsg,FX_L1_Fbk_GetSystemMsg； 修改接口：FX_L1_Fbk_GetCtrlObjServoVersion|
 | 4.4.2 | 2026-06-16 | 增加用户数据采集接口：FX_L1_Fbk_GetUserData，FX_L1_Fbk_ResetUserDataSet，FX_L1_Fbk_RegisterUserDataSet，FX_L1_Fbk_CheckUserDataSet|
 | 4.4.2 | 2026-06-12 | FX_L1_Runtime_*接口支持多线程安全，最多7个线程同时调用|
 | 4.4.1 | 2026-06-05 | 修复接口：FX_L1_Runtime_StopTraj|
@@ -93,26 +96,38 @@ GENTO_SDK/
 ├── C_SDK/                          # SDK 源码
 │   ├── Common/                     # 公共头文件（FXCommon.h、FXErrorCode.h）
 │   ├── FileClient/                 # 文件传输客户端
+|   |── FXConfig/                   # 配置文件
+│   │   ├── InterferenceCfg/        # 接口文件
+│   │   ├── URDF/                   # URDF 
+|   |── FXUtility/                  # 公用功能，跨层
+│   │   ├── FXCfg/                  # 解析文件库
+│   │   ├── FXMath/                 # 公共数学库
+|   |── Interf/                     # 公用功能，碰撞检测
 │   ├── Kinematics/                 # 运动学子模块
 │   │   ├── ArmKinematics/          # 机械臂运动学
-│   │   ├── BaseMath/               # 基础数学库
 │   │   ├── DynaIdent/              # 动力学辨识
 │   │   ├── KineCommon/             # 运动学通用类型
 │   │   ├── MotionPlanner/          # 轨迹规划器
 │   │   └── SkyeBodyKinematics/     # Skye 机身运动学
 │   ├── L0Control/                  # 底层通信与控制
-│   └── L1Robot/                    # 上层 API（L1Robot.h、L0KineMotion.h）
+│   └── L1Robot/                    # 上层 API
+├── FX_PLATFORM/                    # UI源码
+│   ├── setup.py/                   # 软件构建执行文件脚本
+│   ├── UI.py/                      # 上位机软件源码
 ├── C_EXAMPLE/                      # C++ 示例 — 直接调用 C_SDK 源码
-├── C_EXAMPLE_USE_DLL_SO/           # C++ 示例 — 调用编译后的 DLL/SO 库
 │   ├── build_windows.bat           # Windows 示例编译脚本
 │   └── build_linux.sh              # Linux 示例编译脚本
+├── C_EXAMPLE_USE_DLL_SO/           # C++ 示例 — 调用编译后的 DLL/SO 库
+│   ├── build_windows_dll.bat       # Windows 示例编译脚本
+│   └── build_linux_so.sh           # Linux 示例编译脚本
 ├── PYTHON_SDK/                     # Python 封装层（基于 DLL/SO）
 │   └── GentoRobot.py               # Python 主入口类
 ├── PYTHON_EXAMPLE/                 # Python 示例程序
+|── FXPlatform                      # linux上位机，ubuntu20.04及以上可使用
+|── FXPlatform.exe                  # windows上位机
 ├── win_auto_compile.bat            # Windows 一键编译脚本（源码 → DLL）
 ├── linux_auto_compile.sh           # Linux 一键编译脚本（源码 → SO）
-├── compile_methods.txt             # 各平台编译命令参考
-└── README.md
+└── README.md                       # SDK文档
 ```
 
 ## 5. 快速开始
@@ -121,6 +136,7 @@ GENTO_SDK/
 
 - **操作系统**：Linux（Ubuntu 20.04(glibc=2.31) 及以上）或 Windows 10/11
 - **编译器**：GCC 9+（Linux）、MinGW g++ / MSYS2（Windows）
+- **PYTHON版本**： python>=3.10
 - **网络**：以太网连接机器人控制器（建议使用静态 IP）
 - **机器人控制器 IP**：默认 6.6.7.190（请以实际机器人文档为准）
 
@@ -188,93 +204,41 @@ print("已断开连接。")
 
 ### 5.3 构建方式
 
-SDK 支持三种使用方式：
+SDK 支持两种使用方式：
 
 **方式一：直接调用源码（不编译库）**
 
-将你的 `C_EXAMPLE/main.cpp` 与 `C_SDK/` 下的所有 `.cpp` 文件一起编译。参考 [C_EXAMPLE/](C_EXAMPLE/)。
-
 Windows：
 ```bash
-g++ -w C_EXAMPLE/main.cpp \
-  C_SDK/L0Control/*.cpp C_SDK/FileClient/*.cpp C_SDK/L1Robot/*.cpp \
-  C_SDK/Kinematics/*.cpp C_SDK/Kinematics/ArmKinematics/*.cpp \
-  C_SDK/Kinematics/BaseMath/*.cpp C_SDK/Kinematics/DynaIdent/*.cpp \
-  C_SDK/Kinematics/KineCommon/*.cpp C_SDK/Kinematics/MotionPlanner/*.cpp \
-  C_SDK/Kinematics/SkyeBodyKinematics/*.cpp \
-  -I C_SDK/Common -I C_SDK/Kinematics -I C_SDK/Kinematics/ArmKinematics \
-  -I C_SDK/Kinematics/BaseMath -I C_SDK/Kinematics/DynaIdent \
-  -I C_SDK/Kinematics/KineCommon -I C_SDK/Kinematics/MotionPlanner \
-  -I C_SDK/Kinematics/SkyeBodyKinematics \
-  -I C_SDK/FileClient -I C_SDK/L0Control -I C_SDK/L1Robot \
-  -o main.exe -lws2_32 -lwinmm -DCMPL_WIN -DL1_SDK_EXPORTS
+# 例如： `C_EXAMPLE/example_basic_LinkSystem.cpp` 与 `C_SDK/` 下的所有 `.cpp` 文件一起编译。
+# 第一步 编译
+./C_EXAMPLE/build_windows.bat example_basic_LinkSystem.cpp
+
+# 第二步 执行
+./C_EXAMPLE/example_basic_LinkSystem.exe
+
+
+# 编译全部
+./C_EXAMPLE/build_windows.bat all                #-> builds every example_*.cpp
 ```
 
 Linux：
 ```bash
-g++ -w C_EXAMPLE/main.cpp \
-  C_SDK/L0Control/*.cpp C_SDK/FileClient/*.cpp C_SDK/L1Robot/*.cpp \
-  C_SDK/Kinematics/*.cpp C_SDK/Kinematics/ArmKinematics/*.cpp \
-  C_SDK/Kinematics/BaseMath/*.cpp C_SDK/Kinematics/DynaIdent/*.cpp \
-  C_SDK/Kinematics/KineCommon/*.cpp C_SDK/Kinematics/MotionPlanner/*.cpp \
-  C_SDK/Kinematics/SkyeBodyKinematics/*.cpp \
-  -I C_SDK/Common -I C_SDK/Kinematics -I C_SDK/Kinematics/ArmKinematics \
-  -I C_SDK/Kinematics/BaseMath -I C_SDK/Kinematics/DynaIdent \
-  -I C_SDK/Kinematics/KineCommon -I C_SDK/Kinematics/MotionPlanner \
-  -I C_SDK/Kinematics/SkyeBodyKinematics \
-  -I C_SDK/FileClient -I C_SDK/L0Control -I C_SDK/L1Robot \
-  -o main -lrt -DCMPL_LIN -DL1_SDK_EXPORTS
+# 例如： `C_EXAMPLE/example_basic_LinkSystem.cpp` 与 `C_SDK/` 下的所有 `.cpp` 文件一起编译。
+# 第一步 编译
+./C_EXAMPLE/build_linux.sh example_basic_LinkSystem.cpp
+
+# 第二步 执行
+./C_EXAMPLE/example_basic_LinkSystem
+
+
+# 编译全部
+./C_EXAMPLE/build_linux.sh all                #-> builds every example_*.cpp
 ```
 
-**方式二：编译为 DLL/SO 库后调用**
+**方式二：使用自动化编译脚本，编译为 DLL/SO 库后调用**
 
-先编译共享库，再链接你的程序。参考 [C_EXAMPLE_USE_DLL_SO/](C_EXAMPLE_USE_DLL_SO/)。
-
-Windows — 编译并链接 DLL：
-```bash
-# 第一步：编译 DLL（C/C++ 调用用）
-g++ C_SDK/L0Control/*.cpp C_SDK/FileClient/*.cpp C_SDK/L1Robot/*.cpp \
-  C_SDK/Kinematics/*.cpp C_SDK/Kinematics/ArmKinematics/*.cpp \
-  C_SDK/Kinematics/BaseMath/*.cpp C_SDK/Kinematics/DynaIdent/*.cpp \
-  C_SDK/Kinematics/KineCommon/*.cpp C_SDK/Kinematics/MotionPlanner/*.cpp \
-  C_SDK/Kinematics/SkyeBodyKinematics/*.cpp \
-  -I C_SDK/Common -I C_SDK/Kinematics -I C_SDK/Kinematics/ArmKinematics \
-  -I C_SDK/Kinematics/BaseMath -I C_SDK/Kinematics/DynaIdent \
-  -I C_SDK/Kinematics/KineCommon -I C_SDK/Kinematics/MotionPlanner \
-  -I C_SDK/Kinematics/SkyeBodyKinematics \
-  -I C_SDK/FileClient -I C_SDK/L0Control -I C_SDK/L1Robot \
-  -Wall -O2 -shared -o libGentoSDK.dll -DL1_SDK_EXPORTS -DCMPL_WIN \
-  -lws2_32 -lwinmm
-
-# 第二步：链接你的程序，注意实际路径，这里假设在 main.cpp在主目录下，与 C_SDK 在同一目录
-g++ main.cpp -I C_SDK/L1Robot -I C_SDK/Common \
-  -L C_SDK/ -lGentoSDK -DCMPL_WIN -o main.exe
-```
-
-Linux — 编译并链接 SO：
-```bash
-# 第一步：编译 SO
-g++ C_SDK/L0Control/*.cpp C_SDK/FileClient/*.cpp C_SDK/L1Robot/*.cpp \
-  C_SDK/Kinematics/*.cpp C_SDK/Kinematics/ArmKinematics/*.cpp \
-  C_SDK/Kinematics/BaseMath/*.cpp C_SDK/Kinematics/DynaIdent/*.cpp \
-  C_SDK/Kinematics/KineCommon/*.cpp C_SDK/Kinematics/MotionPlanner/*.cpp \
-  C_SDK/Kinematics/SkyeBodyKinematics/*.cpp \
-  -I C_SDK/Common -I C_SDK/Kinematics -I C_SDK/Kinematics/ArmKinematics \
-  -I C_SDK/Kinematics/BaseMath -I C_SDK/Kinematics/DynaIdent \
-  -I C_SDK/Kinematics/KineCommon -I C_SDK/Kinematics/MotionPlanner \
-  -I C_SDK/Kinematics/SkyeBodyKinematics \
-  -I C_SDK/FileClient -I C_SDK/L0Control -I C_SDK/L1Robot \
-  -Wall -O2 -fPIC -shared -o libGentoSDK.so -lpthread -lrt -DCMPL_LIN
-
-# 第二步：链接你的程序，注意实际路径，这里假设在 main.cpp在主目录下，与 C_SDK 在同一目录
-g++ main.cpp -I C_SDK/L1Robot -I C_SDK/Common \
-  -L C_SDK/ -lGentoSDK -Wl,-rpath,C_SDK/ -DCMPL_LIN -o main
-```
-
-
-**方式三：使用自动化编译脚本（推荐）**
-
-项目提供了三个一键编译脚本，自动完成编译和文件分发。
+项目主目录下提供了两个一键编译脚本，自动完成编译， 在C_EXAMPLE_USE_DLL_SO/下提供两个将库和使用代码一起编译的脚本实现使用代码自动编译。
 
 Windows：
 ```bash
@@ -284,7 +248,13 @@ win_auto_compile.bat
 - 编译 `libGentoSDK.dll`（C/C++ 用）→ 自动复制到 [C_EXAMPLE_USE_DLL_SO/](C_EXAMPLE_USE_DLL_SO/)
 
 # 第二步：编译你的代码，注意实际路径，这里假设你的代码路径为 C_EXAMPLE_USE_DLL_SO\test_link.cpp
-./C_EXAMPLE_USE_DLL_SO.build_windows.bat
+./C_EXAMPLE_USE_DLL_SO/build_windows_dll.bat test_link.cpp
+
+# 第三步 执行
+./C_EXAMPLE_USE_DLL_SO/test_link.exe
+
+# 将 ../C_EXAMPLE/下所有demo全部编译
+./C_EXAMPLE_USE_DLL_SO/build_windows_dll.bat all                   #-> builds every ..\C_EXAMPLE\example_*.cpp
 ```
 Linux：
 
@@ -295,7 +265,13 @@ Linux：
 - 编译 `libGentoSDKPY.so`（Python 用，兼容多 glibc 版本）→ 自动复制到 [PYTHON_SDK/](PYTHON_SDK/)
 
 # 第二步：编译你的代码，注意实际路径，这里假设你的代码路径为 C_EXAMPLE_USE_DLL_SO\test_link.cpp
-./C_EXAMPLE_USE_DLL_SO/build_linux.sh
+./C_EXAMPLE_USE_DLL_SO/build_linux_so.sh test_link.cpp
+
+# 第三步 执行
+./C_EXAMPLE_USE_DLL_SO/test_link
+
+# 将 ../C_EXAMPLE/下所有demo全部编译
+./C_EXAMPLE_USE_DLL_SO/build_linux_so.sh all                   #-> builds every ..\C_EXAMPLE\example_*.cpp
 ```
 
 linux兼容编译:
@@ -379,12 +355,47 @@ lib/
     └── libGentoSDKPY.so
 ```
 
+### 5.6 编译环境与依赖差异说明
+
+**参考编译环境**：仓库内提供的 `.so` 在 **Ubuntu 20.04（glibc 2.31）/ x86_64** 上编译。这是向下兼容的目标基准——在此环境编译的库可直接用于 Ubuntu 20.04 及以上的 x86_64 / ARM64 主流系统。
+
+> 不同机器编译出的 `.so`，用 `ldd *.so` 查看到的依赖项可能不一样。**这是正常现象**，多数差异无害，但需要能区分。
+
+**常见 `ldd` 差异与含义**：
+
+| `ldd` 看到的差异 | 原因 | 是否需要处理 |
+|------------------|------|--------------|
+| 出现 / 不出现 `libstdc++.so.6` | `libGentoSDKPY.so` 使用了 `-static-libgcc -static-libstdc++`，C++ 运行时被静态打进库；**不出现 = 静态成功** | 参考环境产物不应出现，确认即可 |
+| 出现 / 不出现 `libpthread.so`、`libdl.so`、`librt.so` | glibc 2.34+ 将它们并入 `libc.so.6`，叠加新版链接器默认的 `--as-needed` 会丢弃未被引用的库 | 无需处理，纯表象差异 |
+| `libc.so.6` 实际要求的 `GLIBC_x.x` 版本号不同 | 由编译机的 glibc 版本决定，**决定库能跑多老的系统** | **关键指标**：参考环境为 2.31 |
+
+**只有最后一行（GLIBC 最大版本号）是真正的可移植性指标**，前两行不影响库在目标机器上的运行。
+
+**自查命令**（在编译机上对产物执行）：
+
+```bash
+# 查看直接依赖了哪些 .so（等价于 ldd，但更准确）
+readelf -d libGentoSDKPY.so | grep NEEDED
+
+# 确认 C++ 运行时是否已静态（无输出 = 已静态）
+readelf -d libGentoSDKPY.so | grep -E 'libstdc|libgcc'
+
+# 查看库要求的最高 glibc 版本（参考环境应为 2.31）
+objdump -T libGentoSDKPY.so | grep -oE 'GLIBC_[0-9.]+' | sort -V | tail
+```
+
+**结论**：
+
+- 在 **Ubuntu 20.04** 编译 → 最高要求 `GLIBC_2.31` → 可在 Ubuntu 20.04 及以上运行。
+- 在更新的系统（如 Ubuntu 22.04，glibc 2.35）编译 → 最高要求可能升至 `GLIBC_2.34` → **无法在 Ubuntu 20.04 上运行**，会报 `version 'GLIBC_2.34' not found`。
+- 因此**需要兼容旧系统时，请按 5.5 节在 Ubuntu 20.04 或更老的 x86_64 环境编译**，而不是在最新系统上编译。
+
 ## 6. 重要使用说明
 
 ### 6.1 网络与连接
 
 - SDK 使用带专有可靠协议的 UDP。请确保防火墙允许配置端口（默认 50000–50010）上的 UDP 通信。
-- `FX_L1_System_Link()` 成功时返回正延迟值（微秒），而非零值。负值视为错误。
+- `FX_L1_System_Link()` 成功时返回正延迟值（毫秒），而非零值。负值视为错误。
 - 务必在程序退出前调用 `FX_L1_System_Unlink()` 释放套接字和资源。
 
 ### 6.2 状态机
@@ -411,7 +422,7 @@ lib/
 
 ### 6.5 线程安全
 
-L1 SDK 默认非线程安全。不要从多个线程并发调用 API 函数，除非自行做了外部同步。
+L1 SDK 默认多线程安全（L0及以下统一使用第0号线程）支持1~7号线程并发调用 API 函数。
 
 ### 6.6 错误处理
 
@@ -529,22 +540,22 @@ SDK 版本必须与控制器固件兼容。请将 SDK 或机器人控制器更�
 ### 8.2 性能考量
 
 - 实时指令（`FX_L1_Runtime_SetJointPosCmd`）通过 UDP 发送，不保证在硬实时截止时间内到达。对时间要求苛刻的应用，建议使用 L0 实时接口。
-- 轨迹规划函数在 PC 端执行计算；点集不能超过 5,000 个点， 可能导致内存占用大幅增加②规划失败。
+- 轨迹规划函数在 PC 端执行计算；点集不能超过 5000 个点， 可能导致内存占用大幅增加，导致规划失败。
 
 ### 8.3 支持的机器人型号与自由度
 
 | 机器人型号 | 臂 DOF | 躯干 DOF | 头部 DOF | 升降台 DOF |
 |------------|--------|----------|----------|-------------|
-| Marvin Pro M3 | 7+7 | 0 | 3 | 2 |
-| Marvin Pro M6 | 7+7 | 6（腰部） | 3 | 2 |
-| Gento Skye | 7+7 | 3（躯干） | 3 | 2 |
+| Marvin Pro M3 | 7+7 | 0 | 0 | 0 |
+| Marvin Pro M6 | 7+7 | 0 | 0 | 0 |
+| Gento Skye | 7+7 | 3 | 3 | 2 |
 | Gento Luna | 7+7 | 6 | 3 | 0 |
 
 可在运行时通过 `FX_L1_Fbk_GetCtrlObjDof()` 查询实际 DOF。
 
 ### 8.4 文件传输
 
-`FX_L1_System_SendFile()` 和 `RecvFile()` 使用专有的可靠 UDP 文件传输协议。最大文件大小为 2 GB。请确保远程路径可写（如控制器上的 `/home/fx/`）。
+`FX_L1_System_SendFile()` 和 `RecvFile()` 使用专有的可靠 UDP 文件传输协议。文件过大将会传输失败。请确保远程路径可写（如控制器上的 `/home/FUSION/`）。
 
 ### 8.5 固件升级
 
@@ -555,7 +566,6 @@ SDK 版本必须与控制器固件兼容。请将 SDK 或机器人控制器更�
 - **SDK 源码**：[C_SDK/](C_SDK/)
 - **C/C++ 示例**：[C_EXAMPLE/](C_EXAMPLE/)（直接调用源码）、[C_EXAMPLE_USE_DLL_SO/](C_EXAMPLE_USE_DLL_SO/)（调用库）
 - **Python 示例**：[PYTHON_EXAMPLE/](PYTHON_EXAMPLE/)
-- **编译命令参考**：[compile_methods.txt](compile_methods.txt)
 - **自动化编译脚本**：[win_auto_compile.bat](win_auto_compile.bat)（Windows）、[linux_auto_compile.sh](linux_auto_compile.sh)（Linux）
 
 ## 9. 许可与免责声明
@@ -564,4 +574,4 @@ SDK 版本必须与控制器固件兼容。请将 SDK 或机器人控制器更�
 
 ---
 
-*FX Robotics SDK — L1 API Reference | Version 4.2.1 | © FX Robotics. All rights reserved.*
+*FX Robotics SDK/API Reference | Version 4.5.0 | © FX Robotics. All rights reserved.*

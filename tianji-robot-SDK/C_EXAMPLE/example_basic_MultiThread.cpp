@@ -22,6 +22,12 @@
 #include "L1Robot.h"
 #include <thread>
 
+#ifdef _WIN32
+#define SLEEP_MS(ms) Sleep(ms)
+#else
+#define SLEEP_MS(ms) usleep((ms) * 1000)
+#endif
+
 int exit_thread = 0; ///< Global flag to request all threads to exit
 int run_thread = 0; ///< Global flag to start or stop motion threads
 double arm0_target[7] = { 94.0, -87.0, -89.0, -94.0, 2.469, 0.0, -7.428 }; ///< Target joint positions for ARM0
@@ -125,7 +131,7 @@ void thread1()
 
             if (FX_L1_Runtime_SetJointPosCmd(2, FX_OBJ_ARM1, cmd_pos) != FUNC_RET_SUCCESS)
             {
-                error_count[0]++;
+                error_count[1]++;
             }
         }
         next_tick += period;
@@ -154,7 +160,7 @@ void thread2()
                 error_count[2]++;
             }
         }
-        Sleep(500);
+        SLEEP_MS(500);
     }
 }
 /**
@@ -284,7 +290,7 @@ int main(int argc, char** argv)
     getchar();
     run_thread = 0;
     printf("Threads stopped\n");
-    printf("error_count = %d %d\n", error_count[0], error_count[1]);
+    printf("error_count = %d %d %d\n", error_count[0], error_count[1], error_count[2]);
     getchar();
 
     /* Return to IDLE state */

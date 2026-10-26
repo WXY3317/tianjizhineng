@@ -12,7 +12,7 @@ typedef struct
 static const OffsetTableItem g_RT_OffsetTable[] =
 {
     {"ROBOT_RT.m_RT_FrameSerial",                           FX_int,               1},
-
+    {"ROBOT_RT.m_DEVICE.m_DEVICE_FBK_Base_Gyro",            FX_float,             6},
     // ===================== HEAD_RT =====================
     {"ROBOT_RT.m_HEAD.m_HEAD_State.m_CurState",             FX_unsigned_short,    1},
     {"ROBOT_RT.m_HEAD.m_HEAD_State.m_CmdState",             FX_unsigned_short,    1},
@@ -41,7 +41,6 @@ static const OffsetTableItem g_RT_OffsetTable[] =
     {"ROBOT_RT.m_ARMS[0].m_ARM_OUT.m_ARM_FBK_Joint_SensorTor", FX_float,          7},
     {"ROBOT_RT.m_ARMS[0].m_ARM_OUT.m_ARM_FBK_Joint_ExternalTorEst", FX_float,     7},
     {"ROBOT_RT.m_ARMS[0].m_ARM_OUT.m_ARM_FBK_Base_FNEst",   FX_float,             6},
-    {"ROBOT_RT.m_ARMS[0].m_ARM_OUT.m_ARM_FBK_Base_Gyro",    FX_float,             6},
     {"ROBOT_RT.m_ARMS[0].m_ARM_OUT.m_ARM_FBK_Flange_FTSensor", FX_float,          6},
     {"ROBOT_RT.m_ARMS[0].m_ARM_OUT.m_ARM_FBK_Tag",          FX_int,               1},
 
@@ -64,7 +63,6 @@ static const OffsetTableItem g_RT_OffsetTable[] =
     {"ROBOT_RT.m_ARMS[1].m_ARM_OUT.m_ARM_FBK_Joint_SensorTor", FX_float,          7},
     {"ROBOT_RT.m_ARMS[1].m_ARM_OUT.m_ARM_FBK_Joint_ExternalTorEst", FX_float,     7},
     {"ROBOT_RT.m_ARMS[1].m_ARM_OUT.m_ARM_FBK_Base_FNEst",   FX_float,             6},
-    {"ROBOT_RT.m_ARMS[1].m_ARM_OUT.m_ARM_FBK_Base_Gyro",    FX_float,             6},
     {"ROBOT_RT.m_ARMS[1].m_ARM_OUT.m_ARM_FBK_Flange_FTSensor", FX_float,          6},
     {"ROBOT_RT.m_ARMS[1].m_ARM_OUT.m_ARM_FBK_Tag",          FX_int,               1},
 
@@ -104,7 +102,6 @@ static const OffsetTableItem g_RT_OffsetTable[] =
     {"ROBOT_RT.m_BODY.m_BODY_OUT.m_BODY_FBK_Joint_Pos",     FX_float,             6},
     {"ROBOT_RT.m_BODY.m_BODY_OUT.m_BODY_FBK_Joint_Vel",     FX_float,             6},
     {"ROBOT_RT.m_BODY.m_BODY_OUT.m_BODY_FBK_Joint_SensorTor", FX_float,           6},
-    {"ROBOT_RT.m_BODY.m_BODY_OUT.m_BODY_FBK_Base_Gyro",     FX_float,             6},
     {"ROBOT_RT.m_BODY.m_BODY_OUT.m_BODY_FBK_Tag",           FX_int,               1},
 
     // ===================== LIFT =====================
@@ -134,6 +131,7 @@ static const OffsetTableItem g_SG_OffsetTable[] =
     {"ROBOT_SG.m_HEAD.m_HEAD_SET.m_HEAD_SET_UpdateTag",     FX_char,              4},
     {"ROBOT_SG.m_HEAD.m_HEAD_GET.m_HEAD_FBK_Joint_Tor",     FX_float,             3},
     {"ROBOT_SG.m_HEAD.m_HEAD_GET.m_HEAD_FBK_Joint_ExtPos",  FX_float,             3},
+    {"ROBOT_SG.m_HEAD.m_HEAD_GET.m_HEAD_FBK_Joint_Temp",    FX_char,              3},
 
     // ===================== ARM_SG m_ARMS[0] =====================
     {"ROBOT_SG.m_ARMS[0].m_ARM_SET.m_ARM_Ctrl_ImpType",     FX_unsigned_int,      1},
@@ -149,6 +147,7 @@ static const OffsetTableItem g_SG_OffsetTable[] =
     {"ROBOT_SG.m_ARMS[0].m_ARM_SET.m_ARM_SET_UpdateTag",    FX_char,             16},
     {"ROBOT_SG.m_ARMS[0].m_ARM_GET.m_ARM_FBK_Joint_Tor",    FX_float,             7},
     {"ROBOT_SG.m_ARMS[0].m_ARM_GET.m_ARM_FBK_Joint_ExtPos", FX_float,             7},
+    {"ROBOT_SG.m_ARMS[0].m_ARM_GET.m_ARM_FBK_Joint_Temp",   FX_char,              7},
     {"ROBOT_SG.m_ARMS[0].m_ARM_GET.m_ARM_FBK_Flange_DI",    FX_char,              1},
     {"ROBOT_SG.m_ARMS[0].m_ARM_GET.m_ARM_FBK_LowSpdFlag",   FX_char,              1},
     {"ROBOT_SG.m_ARMS[0].m_ARM_GET.m_ARM_FBK_TrajState",    FX_char,              1},
@@ -168,6 +167,7 @@ static const OffsetTableItem g_SG_OffsetTable[] =
     {"ROBOT_SG.m_ARMS[1].m_ARM_SET.m_ARM_SET_UpdateTag",    FX_char,             16},
     {"ROBOT_SG.m_ARMS[1].m_ARM_GET.m_ARM_FBK_Joint_Tor",    FX_float,             7},
     {"ROBOT_SG.m_ARMS[1].m_ARM_GET.m_ARM_FBK_Joint_ExtPos", FX_float,             7},
+    {"ROBOT_SG.m_ARMS[1].m_ARM_GET.m_ARM_FBK_Joint_Temp",   FX_char,              7},
     {"ROBOT_SG.m_ARMS[1].m_ARM_GET.m_ARM_FBK_Flange_DI",    FX_char,              1},
     {"ROBOT_SG.m_ARMS[1].m_ARM_GET.m_ARM_FBK_LowSpdFlag",   FX_char,              1},
     {"ROBOT_SG.m_ARMS[1].m_ARM_GET.m_ARM_FBK_TrajState",    FX_char,              1},
@@ -200,6 +200,7 @@ static const OffsetTableItem g_SG_OffsetTable[] =
     {"ROBOT_SG.m_BODY.m_BODY_SET.m_BODY_SET_UpdateTag",     FX_char,              6},
     {"ROBOT_SG.m_BODY.m_BODY_GET.m_BODY_FBK_Joint_Tor",     FX_float,             6},
     {"ROBOT_SG.m_BODY.m_BODY_GET.m_BODY_FBK_Joint_ExtPos",  FX_float,             6},
+    {"ROBOT_SG.m_BODY.m_BODY_GET.m_BODY_FBK_Joint_Temp",    FX_char,              6},
     {"ROBOT_SG.m_BODY.m_BODY_GET.m_BODY_FBK_TrajState",     FX_char,              1},
     {"ROBOT_SG.m_BODY.m_BODY_GET.m_BODY_FBK_PD_CmdQuality", FX_char,              1},
     {"ROBOT_SG.m_BODY.m_BODY_GET.pad",                      FX_char,              2},

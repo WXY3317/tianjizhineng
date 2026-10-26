@@ -22,6 +22,12 @@
 #include "L1Robot.h"
 #include <thread>
 
+#ifdef _WIN32
+#define SLEEP_MS(ms) Sleep(ms)
+#else
+#define SLEEP_MS(ms) usleep((ms) * 1000)
+#endif
+
 int exit_thread = 0; ///< Global flag to request all threads to exit
 int run_thread = 0; ///< Global flag to start or stop data sampling
 /**
@@ -59,7 +65,7 @@ void thread0()
                 printf("UserSampleData: rt_serial = %d, sg_serial = %d\n", user_data.rt_serial, user_data.sg_serial);
             }
         }
-        Sleep(10);
+        SLEEP_MS(10);
     }
 }
 /**

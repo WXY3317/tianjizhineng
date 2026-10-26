@@ -22,9 +22,7 @@ for p in [str(base_dir), str(root_dir)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from PYTHON_SDK.GentoRobot import GentoRobot, RobotDataManager, ArmsSynchronousPlanningParams, error_dict, FXObjType, \
-    FXLogMask, FXObjMask, FXTerminalType, robot_type_map, state_map, FXHandType,FXHandAction,FXHandState
-
+from PYTHON_SDK.GentoRobot import GentoRobot, RobotDataManager, ArmsSynchronousPlanningParams, error_dict, FXObjType, FXLogMask, FXObjMask, FXTerminalType, robot_type_map, state_map, FXHandType,FXHandAction,FXHandState
 
 class App:
     def __init__(self, root):
@@ -36,8 +34,10 @@ class App:
         self.data_manager = None
         self.rt = None
         self.sg = None
+        self._log_running = False
 
         self.servo_versions = {}
+        self.servo_cfg_versions = {}
         self.sensor_versions = {}
         self.sensor_serials = {}
         self.sys_version = "Unknown"
@@ -61,21 +61,23 @@ class App:
 
         self.display_mode = 0
         self.mode_names = ["Position", "CmdPosition", "Velocity", "SensorTorque", "TorqueExt", "MotorTorque",
-                           "ExtPosition", "BaseGyro", "FlangForce"]
+                           "ExtPosition", "BaseGyro", "FlangForce","Temperature"]
         self.data_keys = [('fb_pos'), ('cmd_pos'), ('fb_vel'), ('fb_sensor'), ('fb_ext_torque'), ('joint_torque'),
-                          ('ext_pos'), ('base_gyro'), ('flange_force')]
-        self.arm_rt_key = [('fb_pos'), ('cmd_pos'), ('fb_vel'), ('fb_sensor'), ('fb_ext_torque'), ('base_gyro'),
+                          ('ext_pos'), ('base_gyro'), ('flange_force'),('joint_temp')]
+        self.arm_rt_key = [('fb_pos'), ('cmd_pos'), ('fb_vel'), ('fb_sensor'), ('fb_ext_torque'), 
                            ('flange_force')]
-        self.arm_sg_key = [('joint_torque'), ('ext_pos')]
+        self.arm_rt_device_key=[('base_gyro')]
+        self.arm_sg_key = [('joint_torque'), ('ext_pos'),('joint_temp')]
         self.body_rt_key = [('fb_pos'), ('cmd_pos'), ('fb_vel'), ('fb_sensor')]
-        self.body_sg_key = [('joint_torque'), ('ext_pos')]
+        self.body_rt_device_key=[('base_gyro')]
+        self.body_sg_key = [('joint_torque'), ('ext_pos'),('joint_temp')]
         self.head_rt_key = [('fb_pos'), ('cmd_pos')]
-        self.head_sg_key = [('ext_pos')]
+        self.head_sg_key = [('ext_pos'),('joint_temp')]
         self.lift_rt_key = [('fb_pos'), ('cmd_pos')]
         self.lift_sg_key = [('joint_torque')]
 
         self.hand_rt_key=[('fb_pos'),('vel'),('cmd_pos')]
-        self.hand_sg_key = [('joint_torque')]
+        self.hand_sg_key = [('joint_torque'),('joint_temp')]
 
         self.widgets = {}
 
@@ -1495,27 +1497,38 @@ class App:
             side="right", padx=(20, 0))
 
     def create_status_bar(self):
-        """Create the bottom status bar"""
-        self.status_bar = tk.Frame(self.root, height=20)
+        """Create the bottom status bar with log on a separate row"""
+        self.status_bar = tk.Frame(self.root, height=35)
         self.status_bar.pack(side="bottom", fill="x")
+        self.status_bar.pack_propagate(False) 
 
+        self.status_bar.columnconfigure(0, weight=1) 
+        self.status_bar.columnconfigure(1, weight=0)
+        self.status_bar.columnconfigure(2, weight=0)
+        self.status_bar.columnconfigure(3, weight=1) 
+
+        # ==========Row 0==========
         self.which_robot_label = tk.Label(
-            self.status_bar, text=f"Robot type:", fg="black", font=("Arial", 9))
-        self.which_robot_label.pack(side="left", padx=(15, 150))
+            self.status_bar, text="Robot type:", fg="black", font=("Arial", 9))
+        self.which_robot_label.grid(row=0, column=0, sticky="w", padx=(15, 10))
 
         self.version_label = tk.Label(
-            self.status_bar, text=f"Controller version:", fg="black", font=("Arial", 9))
-        self.version_label.pack(side="left", padx=(0, 150))
+            self.status_bar, text="Controller version:", fg="black", font=("Arial", 9))
+        self.version_label.grid(row=0, column=1, sticky="w", padx=(0, 10))
 
         self.sdk_version_label = tk.Label(
             self.status_bar, text=f"SDK version:{self.sdk_version}", fg="black", font=("Arial", 9))
-        self.sdk_version_label.pack(side="left", padx=(0, 50))
+        self.sdk_version_label.grid(row=0, column=2, sticky="w", padx=(0, 50))
 
         self.time_label = tk.Label(
             self.status_bar, text="", fg="black", font=("Arial", 9))
-        self.time_label.pack(side="right", padx=15)
-        self.update_time()
+        self.time_label.grid(row=0, column=3, sticky="e", padx=15)
+        self.update_time()  
 
+        self.log_label = tk.Label(
+            self.status_bar, text="Controller Log:", fg="black", font=("Arial", 9))
+        self.log_label.grid(row=1, column=0, columnspan=4, sticky="w", padx=(15, 0))
+        self.update_log()  
     # ==================== Core Control Methods (Adapted to new MarvinRobot API) ====================
     def init_kd_variables(self):
         self.cart_k_b_entry = tk.StringVar(value="3000,3000,3000,100,100,100,50")
@@ -1603,10 +1616,13 @@ class App:
                         self.status_label.config(text="Connected")
                         self.status_light.config(fg="green")
                         self.mode_btn.config(state="normal")
+                        robot.param_set_int("R.BASIC.LanguageType",1)
+                        time.sleep(0.5)
                         self.update_version_control()
                         self.data_manager = RobotDataManager(robot)
                         self.update_data()
                         self.refresh_params_from_realtime_data()
+                        self.update_log()
 
                     elif ret_link==-1:
                         messagebox.showerror('Linked', f"Link is established, but no data arrived in 100ms,\n please check the cables and firewall ")
@@ -1628,6 +1644,8 @@ class App:
                     self.data_manager = None
 
                 self.connected = False
+                self._log_running = False
+                self.log_label.config(text="Controller log: (not connected)")
                 self._reset_ui_after_disconnect()
                 self.mode_btn.config(state="disabled")
             except Exception as e:
@@ -1643,7 +1661,11 @@ class App:
             self.sys_version = robot.get_controller_version()
             self.version_label.config(text=f"System version: {self.sys_version}")
             self.sdk_version_label.config(text=f"SDK version: {self.sdk_version}")
-            self.which_robot_label.config(text=f"Robot type: {robot.get_robot_type()}")
+            sub_robot=robot.param_get_string('R.BASIC.SubName')
+            if sub_robot[0]==0:
+                self.which_robot_label.config(text=f"Robot type: {robot.get_robot_type()}"+ f"    Sub name:{   str(sub_robot[1])}")
+            else:
+                self.which_robot_label.config(text=f"Robot type: {robot.get_robot_type()}")
 
             devices_phys = ["Arm0", "Arm1", "Body", "Head", "Lift"]
             obj_types_phys = [FXObjType.OBJ_ARM0, FXObjType.OBJ_ARM1,
@@ -1674,17 +1696,22 @@ class App:
                                FXObjType.OBJ_BODY, FXObjType.OBJ_HEAD]
             for device, obj_type in zip(devices_servo, obj_types_servo):
                 try:
-                    ret,val = robot.get_ctrl_obj_servo_version(obj_type)
-                    if ret<0:
-                        self.servo_versions[device] =  f"Error: {robot._get_operate_error_msg(ret)}"
+                    ret, fw_versions, cfg_versions = robot.get_ctrl_obj_servo_version(obj_type)
+                    if ret < 0:
+                        self.servo_versions[device] = f"Error: {robot._get_operate_error_msg(ret)}"
+                        self.servo_cfg_versions[device] = f"Error: {robot._get_operate_error_msg(ret)}"
                         return
-                    if isinstance(val, (list, tuple)):
-                        val = ", ".join(str(v) for v in val)
-                    self.servo_versions[device] = str(val)
+                    fw_str = ", ".join(str(v) for v in fw_versions)
+                    cfg_str = ", ".join(str(v) for v in cfg_versions)
+                    self.servo_versions[device] = fw_str
+                    self.servo_cfg_versions[device] = cfg_str
                 except Exception as e:
                     self.servo_versions[device] = f"Error: {e}"
+                    self.servo_cfg_versions[device] = f"Error: {e}"
                 if hasattr(self, 'servo_version_labels') and device in self.servo_version_labels:
                     self.servo_version_labels[device].config(text=self.servo_versions[device])
+                if hasattr(self, 'servo_config_version_labels') and device in self.servo_config_version_labels:
+                    self.servo_config_version_labels[device].config(text=self.servo_cfg_versions[device])
 
             devices_sensor = ["Arm0", "Arm1", "Body"]
             obj_types_sensor = [FXObjType.OBJ_ARM0, FXObjType.OBJ_ARM1, FXObjType.OBJ_BODY]
@@ -1891,14 +1918,14 @@ class App:
         if key in self.hand_sg_key:
             hand0_pos = self.sg["hands"][0]["get"][key]
             hand1_pos = self.sg["hands"][0]["get"][key]
-        pos_text_hand0 = ", ".join(f"{v:.2f}" for v in hand0_pos)
+        pos_text_hand0 = ", ".join(f"{v:.3f}" for v in hand0_pos)
         self.hand0_pos_text.config(state="normal")
         self.hand0_pos_text.delete("1.0", tk.END)
         self.hand0_pos_text.insert("1.0", pos_text_hand0)
         self.hand0_pos_text.tag_add("center", "1.0", "end")
         self.hand0_pos_text.config(state="disabled")
 
-        pos_text_hand1 = ", ".join(f"{v:.2f}" for v in hand1_pos)
+        pos_text_hand1 = ", ".join(f"{v:.3f}" for v in hand1_pos)
         self.hand1_pos_text.config(state="normal")
         self.hand1_pos_text.delete("1.0", tk.END)
         self.hand1_pos_text.insert("1.0", pos_text_hand1)
@@ -1926,6 +1953,8 @@ class App:
         else:
             self.left_arm_error.config(text="")
 
+        if key in self.arm_rt_device_key:
+            joint_pos_l = self.rt[key]
         if key in self.arm_rt_key:
             joint_pos_l = self.rt["arms"][0]["fb"][key]
         if key in self.arm_sg_key:
@@ -1966,6 +1995,8 @@ class App:
         else:
             self.right_arm_error.config(text="")
 
+        if key in self.arm_rt_device_key:
+            joint_pos_r = self.rt[key]
         if key in self.arm_rt_key:
             joint_pos_r = self.rt["arms"][1]["fb"][key]
         if key in self.arm_sg_key:
@@ -1998,6 +2029,8 @@ class App:
         else:
             self.body_error_detail.config(text="")
 
+        if key in self.body_rt_device_key:
+            body_pos=self.rt[key]
         if key in self.body_rt_key:
             body_pos = self.rt["body"][key]
         if key in self.body_sg_key:
@@ -2062,6 +2095,26 @@ class App:
         current_time = time.strftime("%Y-%m-%d %H:%M:%S")
         self.time_label.config(text=current_time)
         self.root.after(1000, self.update_time)
+
+    def update_log(self):
+        """Start a background thread that continuously reads system messages."""
+        if self._log_running:
+            return
+        self._log_running = True
+
+        def _poll_log():
+            while self._log_running:
+                try:
+                    ret, msg = robot.fbk_get_system_msg()
+                    if  msg:
+                        self.root.after(0, lambda m=msg: self.log_label.config(
+                            text=f"Controller log: {m}"))
+                except Exception:
+                    pass
+                time.sleep(0.5)
+
+        t = threading.Thread(target=_poll_log, daemon=True)
+        t.start()
 
     def on_mousewheel(self, event):
         self.main_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
@@ -2930,13 +2983,13 @@ class App:
                 messagebox.showerror('Failed', f'{obj} can not clear {com_str} buffer: {robot._get_operate_error_msg(ret)}')
                 return
             time.sleep(0.01)
-            ret=robot.terminal_set(terminal, com, sample_data)
+            ret, send_time=robot.terminal_set(terminal, com, sample_data)
             if ret!= 0:
                 messagebox.showerror('Failed', f'{obj} set data to {com_str} failed: {robot._get_operate_error_msg(ret)}')
                 return
 
             for _ in range(200):
-                chn, data = robot.terminal_get(terminal)
+                chn, data, time_rec = robot.terminal_get(terminal)
                 if chn > 0:
                     hex_str = data.hex().upper()
                     formatted_hex = ' '.join(hex_str[i:i + 2] for i in range(0, len(hex_str), 2))
@@ -3223,6 +3276,8 @@ class App:
         # menu.add_command(label="FileClient", command=self.file_client_dialog)
         menu.add_separator()
         menu.add_command(label="System Upgrade", command=self.system_update_dialog)
+        menu.add_separator()
+        menu.add_command(label="Robot Settings",command=self.config_settings_dialog)
         # menu.add_separator()
         # menu.add_command(label="Docs", )#command=self.open_doc()
         try:
@@ -3360,7 +3415,7 @@ class App:
             return
         servo_sensor_version_window = tk.Toplevel(self.root)
         servo_sensor_version_window.title("Version")
-        servo_sensor_version_window.geometry("1000x600")
+        servo_sensor_version_window.geometry("1000x800")
         servo_sensor_version_window.configure(bg="white")
         servo_sensor_version_window.transient(self.root)
         servo_sensor_version_window.resizable(True, True)
@@ -3396,6 +3451,7 @@ class App:
 
         devices_servo = ["Arm0", "Arm1", "Body", "Head"]
         self.servo_version_labels = {}
+        self.servo_config_version_labels = {}
         for device in devices_servo:
             row_frame = tk.Frame(ss_frame1, bg="white")
             row_frame.pack(fill="x", padx=20, pady=2)
@@ -3405,6 +3461,15 @@ class App:
                                  font=("Arial", 9), anchor='w')
             val_label.pack(side="left", fill="x", expand=True, padx=5)
             self.servo_version_labels[device] = val_label
+
+            row_cfg = tk.Frame(ss_frame1, bg="white")
+            row_cfg.pack(fill="x", padx=20, pady=(0, 2))
+            label_cfg = tk.Label(row_cfg, text=f"{device} config:", width=12, anchor='w', bg="white")
+            label_cfg.pack(side="left")
+            cfg_label = tk.Label(row_cfg, text="", bg="white", fg="black",
+                                 font=("Arial", 9), anchor='w')
+            cfg_label.pack(side="left", fill="x", expand=True, padx=5)
+            self.servo_config_version_labels[device] = cfg_label
 
         # ---------- Sensor version & Serial section ----------
         ss_frame2 = tk.Frame(servo_sensor_version_window, bg="white")
@@ -3464,6 +3529,9 @@ class App:
         for device in self.servo_version_labels:
             self.servo_version_labels[device].config(
                 text=getattr(self, 'servo_versions', {}).get(device, 'Not connected'))
+        for device in self.servo_config_version_labels:
+            self.servo_config_version_labels[device].config(
+                text=getattr(self, 'servo_cfg_versions', {}).get(device, 'Not connected'))
         for device in self.sensor_version_labels:
             self.sensor_version_labels[device].config(
                 text=getattr(self, 'sensor_versions', {}).get(device, 'Not connected'))
@@ -5836,6 +5904,307 @@ class App:
         except Exception as e:
             messagebox.showerror('Error', f"Brake lock failed: {e}")
 
+    def config_settings_dialog(self):
+        # if not self.connected:
+        #     messagebox.showerror('Error', "Please connect robot first!")
+        #     return
+
+        config_ip_window = tk.Toplevel(self.root)
+        config_ip_window.title("Robot Settings")
+        config_ip_window.geometry("500x700")
+        config_ip_window.configure(bg="white")
+        config_ip_window.transient(self.root)
+        config_ip_window.resizable(False, False)
+        config_ip_window.grab_set()
+
+        # ==================== Robot Serial Number ====================
+        sn_title_frame = tk.Frame(config_ip_window, bg="white")
+        sn_title_frame.pack(fill="x", padx=5, pady=(15, 5))
+        tk.Label(sn_title_frame, text="Robot Serial Number", bg="#2196F3",
+                 fg="white", font=("Arial", 10, "bold")).pack(fill='x')
+
+        # Current SN
+        cur_sn_frame = tk.Frame(config_ip_window, bg="white")
+        cur_sn_frame.pack(fill="x", padx=20, pady=(8, 4))
+        tk.Label(cur_sn_frame, text="Current SN:", width=12, anchor='w', bg="white",
+                 font=("Arial", 10)).pack(side="left")
+        cur_sn_label = tk.Label(cur_sn_frame, text="", bg="white", fg="#2196F3",
+                                 font=("Arial", 10, "bold"), anchor='w')
+        cur_sn_label.pack(side="left", fill="x", expand=True, padx=5)
+
+        def refresh_sn():
+            try:
+                ret, sn = robot.get_system_sn()
+                if ret == 0 and sn:
+                    cur_sn_label.config(text=sn)
+                else:
+                    cur_sn_label.config(text="Failed to get SN")
+            except Exception as e:
+                cur_sn_label.config(text=f"Error: {e}")
+
+        refresh_sn()
+        tk.Button(cur_sn_frame, text="Refresh", width=8,
+                  font=("Arial", 9), command=refresh_sn).pack(side="left", padx=5)
+
+        # New SN entry
+        new_sn_frame = tk.Frame(config_ip_window, bg="white")
+        new_sn_frame.pack(fill="x", padx=20, pady=(8, 4))
+        tk.Label(new_sn_frame, text="New SN:", width=12, anchor='w', bg="white",
+                 font=("Arial", 10)).pack(side="left")
+        new_sn_var = tk.StringVar()
+        tk.Entry(new_sn_frame, textvariable=new_sn_var, width=30,
+                 font=("Arial", 10)).pack(side="left", padx=5)
+        tk.Label(new_sn_frame, text="max 29 chars", bg="white",
+                 fg="gray", font=("Arial", 8)).pack(side="left")
+
+        def apply_new_sn():
+            sn_str = new_sn_var.get().strip()
+            if not sn_str:
+                messagebox.showerror("Error", "Please enter a new serial number!")
+                return
+            if len(sn_str) > 29:
+                messagebox.showerror("Error", "Serial number must be at most 29 characters!")
+                return
+            if not messagebox.askyesno("Confirm", f"Set robot SN to '{sn_str}'?"):
+                return
+            try:
+                ret = robot.set_system_sn(sn_str)
+                if ret == 0:
+                    messagebox.showinfo("Success", f"Serial number set to '{sn_str}'.")
+                    new_sn_var.set("")
+                    refresh_sn()
+                else:
+                    messagebox.showerror("Failed",
+                                         f"Failed to set SN.\nError: {robot._get_operate_error_msg(ret)}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to set SN: {e}")
+
+        sn_btn_frame = tk.Frame(config_ip_window, bg="white")
+        sn_btn_frame.pack(pady=(4, 10))
+        tk.Button(sn_btn_frame, text="Set SN", width=12,
+                  font=("Arial", 10, "bold"), bg="#4CAF50", fg="white",
+                  command=apply_new_sn).pack(side="left", padx=10)
+
+        # ---------- Title ----------
+        title_frame = tk.Frame(config_ip_window, bg="white")
+        title_frame.pack(fill="x", padx=5, pady=(15, 10))
+        tk.Label(title_frame, text="Modify Robot IP Address", bg="#2196F3",
+                 fg="white", font=("Arial", 10, "bold")).pack(fill='x')
+
+        # ---------- Current IP ----------
+        current_frame = tk.Frame(config_ip_window, bg="white")
+        current_frame.pack(fill="x", padx=20, pady=(10, 5))
+        tk.Label(current_frame, text="Current IP:", width=12, anchor='w', bg="white",
+                 font=("Arial", 10)).pack(side="left")
+        current_ip_label = tk.Label(current_frame, text="", bg="white", fg="#2196F3",
+                                    font=("Arial", 10, "bold"), anchor='w')
+        current_ip_label.pack(side="left", fill="x", expand=True, padx=5)
+
+        ret, cur_ip = robot.get_system_ip()
+        if ret == 0 and cur_ip:
+            current_ip_label.config(text=cur_ip)
+        else:
+            current_ip_label.config(text="Failed to get IP")
+
+        # ---------- New IP entry ----------
+        new_ip_frame = tk.Frame(config_ip_window, bg="white")
+        new_ip_frame.pack(fill="x", padx=20, pady=(15, 5))
+        tk.Label(new_ip_frame, text="New IP:", width=12, anchor='w', bg="white",
+                 font=("Arial", 10)).pack(side="left")
+        new_ip_var = tk.StringVar()
+        new_ip_entry = tk.Entry(new_ip_frame, textvariable=new_ip_var, width=20,
+                                font=("Arial", 10))
+        new_ip_entry.pack(side="left", padx=5)
+        tk.Label(new_ip_frame, text="e.g. 192.168.1.100", bg="white",
+                 fg="gray", font=("Arial", 8)).pack(side="left")
+
+        # ---------- Hint ----------
+        hint_frame = tk.Frame(config_ip_window, bg="white")
+        hint_frame.pack(fill="x", padx=20, pady=(5, 5))
+        tk.Label(hint_frame, text="After modification, the system will restart.\n"
+                                  "You will need to reconnect with the new IP.",
+                 bg="white", fg="#F44336", font=("Arial", 8), anchor='w',
+                 justify='left').pack(fill="x")
+
+        # ---------- Buttons ----------
+        def apply_new_ip():
+            ip_str = new_ip_var.get().strip()
+            if not ip_str:
+                messagebox.showerror("Error", "Please enter a new IP address!")
+                return
+
+            # Validate IPv4 format
+            pattern = re.compile(
+                r'^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}'
+                r'(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$')
+            if not pattern.match(ip_str):
+                messagebox.showerror("IP Error",
+                                     f"'{ip_str}' is not a valid IPv4 address.\n"
+                                     "Please enter a valid IP, e.g. 192.168.1.100")
+                return
+
+            ip_parts = [int(x) for x in ip_str.split('.')]
+            if not messagebox.askyesno("Confirm",
+                                       f"Set robot IP to {ip_str}?\n\n"
+                                       "The system will restart after changing the IP.\n"
+                                       "You will need to reconnect manually."):
+                return
+
+            try:
+                ret = robot.set_system_ip(ip_parts)
+                if ret == 0:
+                    messagebox.showinfo("Success",
+                                        f"IP address set to {ip_str}.\n"
+                                        "The system will restart.\n"
+                                        "Please reconnect using the new IP after the robot restarts.")
+                    # Update the main UI's IP entry field
+                    self.arm_ip_entry.delete(0, tk.END)
+                    self.arm_ip_entry.insert(0, ip_str)
+                    config_ip_window.destroy()
+                else:
+                    messagebox.showerror("Failed",
+                                         f"Failed to set IP address.\n"
+                                         f"Error: {robot._get_operate_error_msg(ret)}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to set IP: {e}")
+
+        btn_frame = tk.Frame(config_ip_window, bg="white")
+        btn_frame.pack(pady=20)
+        tk.Button(btn_frame, text="Apply", width=12,
+                  font=("Arial", 11, "bold"), bg="#4CAF50", fg="white",
+                  command=apply_new_ip).pack(side="left", padx=10)
+        tk.Button(btn_frame, text="Cancel", width=12,
+                  font=("Arial", 11), bg="#9E9E9E", fg="white",
+                  command=config_ip_window.destroy).pack(side="left", padx=10)
+
+        # ==================== System Time ====================
+        time_title_frame = tk.Frame(config_ip_window, bg="white")
+        time_title_frame.pack(fill="x", padx=5, pady=(10, 5))
+        tk.Label(time_title_frame, text="System Time", bg="#2196F3",
+                 fg="white", font=("Arial", 10, "bold")).pack(fill='x')
+
+        # Current robot time
+        cur_time_frame = tk.Frame(config_ip_window, bg="white")
+        cur_time_frame.pack(fill="x", padx=20, pady=(8, 4))
+        tk.Label(cur_time_frame, text="Robot time:", width=12, anchor='w', bg="white",
+                 font=("Arial", 10)).pack(side="left")
+        cur_time_label = tk.Label(cur_time_frame, text="", bg="white", fg="#2196F3",
+                                   font=("Arial", 10, "bold"), anchor='w')
+        cur_time_label.pack(side="left", fill="x", expand=True, padx=5)
+
+        def refresh_robot_time():
+            try:
+                ret, t = robot.get_system_time()
+                if ret == 0 and t:
+                    cur_time_label.config(text=t)
+                else:
+                    cur_time_label.config(text="Failed to get time")
+            except Exception as e:
+                cur_time_label.config(text=f"Error: {e}")
+
+        refresh_robot_time()
+        tk.Button(cur_time_frame, text="Refresh", width=8,
+                  font=("Arial", 9), command=refresh_robot_time).pack(side="left", padx=5)
+
+        # New time entry (pre-filled with local PC time)
+        new_time_frame = tk.Frame(config_ip_window, bg="white")
+        new_time_frame.pack(fill="x", padx=20, pady=(8, 4))
+
+        def _local_time_tuple():
+            lt = time.localtime()
+            return (f"{lt.tm_year:04d}", f"{lt.tm_mon:02d}", f"{lt.tm_mday:02d}",
+                    f"{lt.tm_hour:02d}", f"{lt.tm_min:02d}", f"{lt.tm_sec:02d}")
+
+        lt = _local_time_tuple()
+        year_var  = tk.StringVar(value=lt[0])
+        month_var = tk.StringVar(value=lt[1])
+        day_var   = tk.StringVar(value=lt[2])
+        hour_var  = tk.StringVar(value=lt[3])
+        min_var   = tk.StringVar(value=lt[4])
+        sec_var   = tk.StringVar(value=lt[5])
+
+        tk.Label(new_time_frame, text="New time:", width=12, anchor='w', bg="white",
+                 font=("Arial", 10)).pack(side="left")
+        for var, w in ((year_var, 5), (month_var, 3), (day_var, 3),
+                       (hour_var, 3), (min_var, 3), (sec_var, 3)):
+            tk.Entry(new_time_frame, textvariable=var, width=w,
+                     font=("Arial", 10), justify="center").pack(side="left", padx=1)
+        tk.Label(new_time_frame, text="Y-M-D H:M:S", bg="white",
+                 fg="gray", font=("Arial", 8)).pack(side="left", padx=5)
+
+        # Sync-from-PC + Set buttons
+        time_btn_frame = tk.Frame(config_ip_window, bg="white")
+        time_btn_frame.pack(pady=(4, 10))
+
+        def sync_from_pc():
+            lt2 = _local_time_tuple()
+            year_var.set(lt2[0]); month_var.set(lt2[1]); day_var.set(lt2[2])
+            hour_var.set(lt2[3]); min_var.set(lt2[4]); sec_var.set(lt2[5])
+
+        def apply_new_time():
+            try:
+                y = int(year_var.get()); mo = int(month_var.get()); d = int(day_var.get())
+                h = int(hour_var.get()); mi = int(min_var.get()); s = int(sec_var.get())
+            except ValueError:
+                messagebox.showerror("Error", "Time fields must be integers.")
+                return
+            if not messagebox.askyesno("Confirm",
+                                       f"Set robot time to {y:04d}-{mo:02d}-{d:02d} {h:02d}:{mi:02d}:{s:02d}?"):
+                return
+            try:
+                ret = robot.set_system_time(y, mo, d, h, mi, s)
+                if ret == 0:
+                    messagebox.showinfo("Success", "Robot time updated.")
+                    refresh_robot_time()
+                else:
+                    messagebox.showerror("Failed",
+                                         f"Failed to set time.\nError: {robot._get_operate_error_msg(ret)}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to set time: {e}")
+
+        tk.Button(time_btn_frame, text="Sync from PC", width=12,
+                  font=("Arial", 10), bg="#9E9E9E", fg="white",
+                  command=sync_from_pc).pack(side="left", padx=10)
+        tk.Button(time_btn_frame, text="Set Time", width=12,
+                  font=("Arial", 10, "bold"), bg="#4CAF50", fg="white",
+                  command=apply_new_time).pack(side="left", padx=10)
+
+        # ==================== Reboot ====================
+        reboot_title_frame = tk.Frame(config_ip_window, bg="white")
+        reboot_title_frame.pack(fill="x", padx=5, pady=(10, 5))
+        tk.Label(reboot_title_frame, text="System Reboot", bg="#2196F3",
+                 fg="white", font=("Arial", 10, "bold")).pack(fill='x')
+
+        reboot_hint_frame = tk.Frame(config_ip_window, bg="white")
+        reboot_hint_frame.pack(fill="x", padx=20, pady=(4, 8))
+        tk.Label(reboot_hint_frame,
+                 text="Rebooting will disconnect the controller.\nPlease reconnect after the robot restarts.",
+                 bg="white", fg="#F44336", font=("Arial", 8), anchor='w',
+                 justify='left').pack(fill="x")
+
+        def do_reboot():
+            if not messagebox.askyesno("Confirm Reboot",
+                                       "Are you sure you want to reboot the robot controller?\n\n"
+                                       "The connection will be lost and you must reconnect afterwards."):
+                return
+            try:
+                ret = robot.reboot()
+                if ret == 0:
+                    messagebox.showinfo("Rebooting",
+                                        "Robot is rebooting.\nPlease reconnect after it restarts.")
+                    config_ip_window.destroy()
+                else:
+                    messagebox.showerror("Failed",
+                                         f"Reboot failed.\nError: {robot._get_operate_error_msg(ret)}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Reboot failed: {e}")
+
+        reboot_btn_frame = tk.Frame(config_ip_window, bg="white")
+        reboot_btn_frame.pack(pady=(0, 15))
+        tk.Button(reboot_btn_frame, text="Reboot Robot", width=14,
+                  font=("Arial", 11, "bold"), bg="#F44336", fg="white",
+                  command=do_reboot).pack(side="left", padx=10)
+
     def system_update_dialog(self):
         if not self.connected:
             messagebox.showerror('Error', "Please connect robot first!")
@@ -6232,7 +6601,6 @@ if __name__ == "__main__":
     data_queue = queue.Queue()
     crr_pth = os.getcwd()
     robot = GentoRobot()
-    robot.enable_lock()
     sdk_version = robot.get_sdk_version()
 
     root = tk.Tk()

@@ -20,8 +20,8 @@
  */
 
 #define FX_SDK_MAJOR_VERSION 4UL /**< Major version number */
-#define FX_SDK_MINOR_VERSION 4UL /**< Minor version number */
-#define FX_SDK_PATCH_VERSION 2UL /**< Patch version number */
+#define FX_SDK_MINOR_VERSION 5UL /**< Minor version number */
+#define FX_SDK_PATCH_VERSION 1UL /**< Patch version number */
 
 /**
  * @brief Construct a packed 32-bit SDK version value.
@@ -93,10 +93,9 @@ typedef enum
 typedef enum
 {
     FX_ROBOT_NULL = 0,          ///< Not a valid robot type
-    FX_ROBOT_MARVIN_PRO_M3 = 1, ///< MarvinProM3
-    FX_ROBOT_MARVIN_PRO_M6 = 2, ///< MarvinProM6
-    FX_ROBOT_GENTO_SKYE = 3,    ///< GentoSkye
-    FX_ROBOT_GENTO_LUNA = 4,    ///< GentoLuna
+    FX_ROBOT_MARVIN_PRO = 1, ///< MarvinPro
+    FX_ROBOT_GENTO_SKYE = 2,    ///< GentoSkye
+    FX_ROBOT_GENTO_LUNA = 3,    ///< GentoLuna
 } FXRobotType;
 
 /**
@@ -351,6 +350,15 @@ typedef struct
 } StateCtr;
 
 /* ---------------------------------------------------------
+ * Device Structures
+ * --------------------------------------------------------- */
+
+typedef struct
+{
+    FX_FLOAT m_DEVICE_FBK_Base_Gyro[6];	    ///< Base IMU data
+}DEVICE_RT;
+
+/* ---------------------------------------------------------
  * Arm Structures
  * --------------------------------------------------------- */
 
@@ -381,7 +389,6 @@ typedef struct
     FX_FLOAT m_ARM_FBK_Joint_SensorTor[7];      ///< Torque sensor feedback
     FX_FLOAT m_ARM_FBK_Joint_ExternalTorEst[7]; ///< External torque estimate
     FX_FLOAT m_ARM_FBK_Base_FNEst[6];           ///< Base force/torque estimate
-    FX_FLOAT m_ARM_FBK_Base_Gyro[6];            ///< Base IMU data
     FX_FLOAT m_ARM_FBK_Flange_FTSensor[6];      ///< Flange F/T sensor
     FX_INT32 m_ARM_FBK_Tag;                     ///< Feedback of user defined tag
 } ARM_OUT;
@@ -393,10 +400,12 @@ typedef struct
 {
     FX_FLOAT m_ARM_FBK_Joint_Tor[7];    ///< Joint torque feedback
     FX_FLOAT m_ARM_FBK_Joint_ExtPos[7]; ///< External encoder position
-    FX_INT8 m_ARM_FBK_Flange_DI;        ///< Flange DI signal
-    FX_INT8 m_ARM_FBK_LowSpdFlag;       ///< Low speed indicator
-    FX_INT8 m_ARM_FBK_TrajState;        ///< Trajectory execution state
-    FX_INT8 m_ARM_FBK_PD_CmdQuality;    ///< Real-time performance metrics of command transmission in PD mode[0,100]
+    FX_INT8  m_ARM_FBK_Joint_Temp[7];   ///< Joint motor temperature
+    FX_INT8  m_ARM_FBK_Flange_DI;        ///< Flange DI signal
+    FX_INT8  m_ARM_FBK_LowSpdFlag;       ///< Low speed indicator
+    FX_INT8  m_ARM_FBK_TrajState;        ///< Trajectory execution state
+    FX_INT8  m_ARM_FBK_PD_CmdQuality;    ///< Real-time performance metrics of command transmission in PD mode[0,100]
+    FX_INT8  pad[1];
 } ARM_GET;
 
 /**
@@ -435,6 +444,8 @@ typedef struct
 {
     FX_FLOAT m_HEAD_FBK_Joint_Tor[3];
     FX_FLOAT m_HEAD_FBK_Joint_ExtPos[3];
+    FX_INT8  m_HEAD_FBK_Joint_Temp[3];   ///< Joint motor temperature
+    FX_INT8  pad[1];
 } HEAD_GET;
 typedef struct
 {
@@ -490,7 +501,6 @@ typedef struct
     FX_FLOAT m_BODY_FBK_Joint_Pos[6];
     FX_FLOAT m_BODY_FBK_Joint_Vel[6];
     FX_FLOAT m_BODY_FBK_Joint_SensorTor[6];
-    FX_FLOAT m_BODY_FBK_Base_Gyro[6];
     FX_INT32 m_BODY_FBK_Tag;
 } BODY_OUT;
 
@@ -498,9 +508,9 @@ typedef struct
 {
     FX_FLOAT m_BODY_FBK_Joint_Tor[6];
     FX_FLOAT m_BODY_FBK_Joint_ExtPos[6];
+    FX_INT8  m_BODY_FBK_Joint_Temp[6];   ///< Joint motor temperature
     FX_INT8 m_BODY_FBK_TrajState;
     FX_INT8 m_BODY_FBK_PD_CmdQuality; ///< Real-time performance metrics of command transmission in PD mode
-    FX_INT8 m_pad[2];
 } BODY_GET;
 
 typedef struct
@@ -636,6 +646,7 @@ typedef struct
 typedef struct
 {
     FX_INT32 m_RT_FrameSerial;
+    DEVICE_RT m_DEVICE;
     HEAD_RT m_HEAD;
     ARM_RT m_ARMS[2];
     HAND_RT m_HANDS[2];
