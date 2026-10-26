@@ -16,11 +16,8 @@ from gento_dual_arm.engine import Engine
 BASE = Path(__file__).resolve().parents[4]
 ROOT = next(p for p in (BASE, BASE/'tianji-robot-SDK')
             if (p/'PYTHON_SDK/GentoRobot.py').is_file())
-HELPERS = next(p for p in (BASE/'ros2_ws/real_test', ROOT/'real_test', ROOT.parent/'real_test')
-               if (p/'dual_arm_control.py').is_file())
-sys.path.insert(0, str(HELPERS))
 sys.path.insert(0, str(ROOT))
-import dual_arm_control as helpers
+from gento_dual_arm import dual_arm_control as helpers
 from PYTHON_SDK.GentoRobot import FX_InvKineSolverParams
 
 

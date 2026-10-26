@@ -5,7 +5,8 @@ workspace_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(dirname -- "$workspace_dir")"
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<'HELP'
-Usage: ./run_real_robot.sh [--build] ip:=CONTROLLER_IPV4 [execute:=true] [name:=value ...]
+Usage: ./run_real_robot.sh [--build] [ip:=CONTROLLER_IPV4] [execute:=true] [name:=value ...]
+Default IP is configured in launch/dual_arm.launch.py (CONTROLLER_IP).
 Default: connected preview (execute:=false). No simulator or RViz is started.
 --build builds only gento_dual_arm before launching the bridge.
 Options are forwarded to ros2 launch gento_dual_arm dual_arm.launch.py.
@@ -25,22 +26,12 @@ if [[ "${1:-}" == "--build" ]]; then
     --build-base build_real --install-base install_real --symlink-install
   shift
 fi
-if [[ "$#" == 0 ]]; then
-  echo "Specify ip:=CONTROLLER_IPV4 to connect; use --help for examples." >&2
-  exit 1
-fi
 sdk_root="$project_dir/tianji-robot-SDK"
-controller_ip=""
 for argument in "$@"; do
   case "$argument" in
     sdk_root:=*) sdk_root="${argument#sdk_root:=}" ;;
-    ip:=*) controller_ip="${argument#ip:=}" ;;
   esac
 done
-if [[ -z "$controller_ip" ]]; then
-  echo "Required: ip:=CONTROLLER_IPV4" >&2
-  exit 1
-fi
 if [[ ! -f "$sdk_root/PYTHON_SDK/libGentoSDKPY.so" ]]; then
   echo "Missing SDK library: $sdk_root/PYTHON_SDK/libGentoSDKPY.so" >&2
   echo "Provide the hardware-compatible vendor library before starting." >&2

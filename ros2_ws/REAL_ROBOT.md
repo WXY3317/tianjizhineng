@@ -6,6 +6,18 @@
 
 ## 启动
 
+控制器 IP 在 `src/gento_dual_arm/launch/dual_arm.launch.py` 的 `CONTROLLER_IP` 中设置，当前为 `6.6.7.100`（沿用急停脚本地址，请按实际配置修改）。从工作空间目录构建并加载环境后，可直接启动：
+
+```bash
+source /opt/ros/humble/setup.bash
+source install_real/setup.bash
+ros2 launch gento_dual_arm dual_arm.launch.py
+# 临时覆盖 IP：
+ros2 launch gento_dual_arm dual_arm.launch.py ip:=6.6.7.190
+```
+
+默认 `execute:=false`。仓库中自动定位 SDK，独立部署时通过 `sdk_root:=SDK绝对路径` 或 `GENTO_SDK_ROOT` 指定。启动脚本也支持不传 IP：`./run_real_robot.sh --build`。
+
 需要 ROS 2 Humble、Python 3.10、colcon，以及匹配控制器固件和主机架构的原厂
 `tianji-robot-SDK/PYTHON_SDK/libGentoSDKPY.so`。主机应能访问控制器 IP。
 不要与仿真后台、Apex 或其他 SDK 客户端同时运行，避免反馈端口和控制权冲突。

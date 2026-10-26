@@ -1,15 +1,32 @@
 # 声明双臂控制参数并启动 Gento ROS 桥接节点。
+import os
+from pathlib import Path
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
+# 修改此处设置真机控制器地址；也可通过 ip:=... 临时覆盖。
+CONTROLLER_IP = '6.6.7.100'
+
+
+def default_sdk_root():
+    configured = os.environ.get('GENTO_SDK_ROOT')
+    if configured:
+        return str(Path(configured).expanduser())
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / 'tianji-robot-SDK'
+        if (candidate / 'PYTHON_SDK/GentoRobot.py').is_file():
+            return str(candidate)
+    return ''  # 独立部署时使用 sdk_root:=... 或 GENTO_SDK_ROOT。
+
 
 def generate_launch_description():
     defaults = {
-        'sdk_root': ('', str),
-        'ip': ('', str),
+        'sdk_root': (default_sdk_root(), str),
+        'ip': (CONTROLLER_IP, str),
         'execute': ('false', bool),
         'speed': ('5.0', float), 
         'acc': ('5.0', float),

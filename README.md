@@ -6,7 +6,7 @@
 | 目录 | 内容 |
 |---|---|
 | `ros2_ws/src/gento_dual_arm` | 双臂真机 ROS 2 控制功能包 |
-| `ros2_ws/real_test` | 单臂、双臂真机命令行脚本及共享校验函数 |
+| `ros2_ws/src/gento_dual_arm/REAL_TEST.md` | 包内单臂、双臂命令行测试说明 |
 | `tianji-robot-SDK` | Gento 原厂 SDK 与示例 |
 | `tianji_armSDK` | Marvin 原厂 SDK，保留供参考 |
 | `SG100_SDK_Publish` | SG100 原厂 SDK；当前双臂节点不控制灵巧手 |

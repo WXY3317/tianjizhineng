@@ -21,7 +21,7 @@ def stop_all(robot, ip, mask):
 
 def main():
     try:
-        root = Path(__file__).resolve().parents[2] / 'tianji-robot-SDK'
+        root = Path(__file__).resolve().parent / 'tianji-robot-SDK'
         sys.path.insert(0, str(root))
         from PYTHON_SDK.GentoRobot import GentoRobot, FXObjMask
 

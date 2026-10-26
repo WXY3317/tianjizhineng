@@ -7,14 +7,12 @@ import sys
 import time
 from pathlib import Path
 
-# Locate the SDK from the workspace or a legacy SDK-adjacent layout.
-base = Path(__file__).resolve().parent.parent
-sdk_root = next((p for p in (base, base / 'tianji-robot-SDK', base.parent / 'tianji-robot-SDK')
-                 if (p / 'PYTHON_SDK/GentoRobot.py').is_file()), None)
-if sdk_root is None:
-    raise ImportError('Cannot find PYTHON_SDK in the SDK or repository tianji-robot-SDK directory')
-sys.path.insert(0, str(sdk_root))
-from PYTHON_SDK.GentoRobot import GentoRobot, FX_InvKineSolverParams, FXStateType
+from .sdk_loader import load_sdk
+
+_sdk = load_sdk()
+GentoRobot = _sdk.GentoRobot
+FX_InvKineSolverParams = _sdk.FX_InvKineSolverParams
+FXStateType = _sdk.FXStateType
 
 
 def check(ret, operation):

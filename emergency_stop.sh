@@ -1,1 +1,2 @@
-python3 ros2_ws/real_test/emergency_stop.py
+#!/usr/bin/env bash
+exec python3 "$(dirname -- "${BASH_SOURCE[0]}")/emergency_stop.py" "$@"

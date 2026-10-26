@@ -7,11 +7,11 @@
 
 - `gento_dual_arm`：单 SDK 连接的双臂控制节点，以及一次性目标发布器。
 
-控制节点复用 `ros2_ws/real_test/dual_arm_control.py` 中的限位读取、轨迹规划/校验函数；将原来一次执行后退出的流程改为持续发布反馈、接收目标、非阻塞等待运动完成的状态机。启动时加载一次模型，连接保持到节点退出。**需要保留 SDK 的 `PYTHON_SDK`、对应动态库及辅助脚本目录 `ros2_ws/real_test`**（也兼容旧版 SDK 内或 SDK 同级的 `real_test`），`sdk_root` 指向仓库绝对路径。没有连接、启动或测试过真实硬件。
+控制节点复用包内 `dual_arm_control.py` 的限位读取、轨迹规划和校验函数。单臂、双臂命令行入口分别为 `ros2 run gento_dual_arm arm_control` 和 `ros2 run gento_dual_arm dual_arm_control`，详见 [测试说明](src/gento_dual_arm/REAL_TEST.md)。运行需要原厂 SDK 的 `PYTHON_SDK` 和匹配动态库；节点通过 `sdk_root` 指定 SDK 目录，命令行工具独立部署时通过 `GENTO_SDK_ROOT` 指定。
 
 ## 构建与启动
 
-先准备与本机 CPU/系统匹配的 `PYTHON_SDK/libGentoSDKPY.so`（或适用平台动态库），并确认固件兼容。工作空间位于 `/home/wxy/code/tianji/ros2_ws`，包含 `real_test` 真机脚本目录，与 `tianji-robot-SDK` 同级。执行：
+先准备与本机 CPU/系统匹配的 `PYTHON_SDK/libGentoSDKPY.so`（或适用平台动态库），并确认固件兼容。工作空间位于 `/home/wxy/code/tianji/ros2_ws`，与 `tianji-robot-SDK` 同级。执行：
 
 ```bash
 source /opt/ros/humble/setup.bash

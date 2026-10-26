@@ -1,10 +1,8 @@
 # ROS 节点入口：读取启动参数，连接控制模块，订阅目标并发布状态和反馈。
-import importlib
 import ipaddress
 import json
 import math
 from pathlib import Path
-import sys
 from types import SimpleNamespace
 
 import rclpy
@@ -58,14 +56,9 @@ class Bridge(Node):
         if self.get_parameter('use_sim_time').value:
             raise ValueError('use_sim_time is not supported for this real hardware node')
         root = Path(self.c.sdk_root).expanduser().resolve()
-        helpers_dir = next((p for p in (root.parent/'ros2_ws/real_test', root/'real_test', root.parent/'real_test')
-                            if (p/'dual_arm_control.py').is_file()), None)
-        if helpers_dir is None or not (root/'PYTHON_SDK/GentoRobot.py').is_file():
-            raise ValueError('sdk_root must contain PYTHON_SDK/GentoRobot.py and ros2_ws/real_test must be available')
-        sys.path.insert(0, str(root))
-        sys.path.insert(0, str(helpers_dir))
-        h = importlib.import_module('dual_arm_control')
-        sdk = importlib.import_module('PYTHON_SDK.GentoRobot')
+        from .sdk_loader import load_sdk
+        sdk = load_sdk(root)
+        from . import dual_arm_control as h
         robot = sdk.GentoRobot()
         self.engine = Engine(robot, h, bind_native_ik(robot, sdk), self.c)
         self.engine.connect()

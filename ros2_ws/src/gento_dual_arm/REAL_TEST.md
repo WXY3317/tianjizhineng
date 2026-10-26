@@ -1,9 +1,9 @@
-所有命令均从仓库根目录执行；本目录位于 `ros2_ws/real_test`，SDK 保留在仓库根目录的 `tianji-robot-SDK`。
+单臂、双臂脚本已合并到 `gento_dual_arm` 功能包。构建后加载 `ros2_ws/install_real/setup.bash`。SDK 默认从仓库定位，独立部署时设置 `GENTO_SDK_ROOT`。
 
 ## 全部软件急停
 
 ```bash
-python3 ros2_ws/real_test/emergency_stop.py
+python3 emergency_stop.py
 ```
 
 运行后立即连接固定 IP `6.6.7.100` 的控制器并调用 `emergency_stop(FXObjMask.OBJ_ALL_FLAG)`，请求停止双臂、头部、躯干和升降机构，不需要 `--execute`。脚本检查返回掩码，全部确认时退出码为 0，连接或部分急停失败时为 1，中断时为 130；不会复位错误或恢复运动。需要与控制器匹配的 SDK 动态库，不依赖 ROS 2。
@@ -18,13 +18,13 @@ python3 ros2_ws/real_test/emergency_stop.py
 
 ```bash
 # 只读当前左臂关节角和末端位姿
-python3 ros2_ws/real_test/arm_control.py --ip 6.6.7.190 --arm 0
+ros2 run gento_dual_arm arm_control --ip 6.6.7.190 --arm 0
 
 # 预览：左臂第一个关节相对当前位置增加 1 度
-python3 ros2_ws/real_test/arm_control.py --ip 6.6.7.190 --arm 0 --delta 1 0 0 0 0 0 0
+ros2 run gento_dual_arm arm_control --ip 6.6.7.190 --arm 0 --delta 1 0 0 0 0 0 0
 
 # 执行同一相对动作（以本次运行读到的位置为起点）
-python3 ros2_ws/real_test/arm_control.py --ip 6.6.7.190 --arm 0 --delta 1 0 0 0 0 0 0 --execute
+ros2 run gento_dual_arm arm_control --ip 6.6.7.190 --arm 0 --delta 1 0 0 0 0 0 0 --execute
 ```
 
 - `--arm 0/1`：左臂/右臂，每次只操作一只手臂。
@@ -58,14 +58,14 @@ PYTHONPATH="$PWD/ros2_ws/src/gento_dual_arm:$PYTHONPATH" python3 -m pytest \
 
 ```bash
 # 读取双臂当前关节角与 TCP，不运动
-python3 ros2_ws/real_test/dual_arm_control.py --ip 6.6.7.190
+ros2 run gento_dual_arm dual_arm_control --ip 6.6.7.190
 
 # 预览：左右臂的第一关节分别增加 1 度
-python3 ros2_ws/real_test/dual_arm_control.py --ip 6.6.7.190 \
+ros2 run gento_dual_arm dual_arm_control --ip 6.6.7.190 \
   --delta 1 0 0 0 0 0 0  1 0 0 0 0 0 0
 
 # 真机执行上述双臂增量动作
-python3 ros2_ws/real_test/dual_arm_control.py --ip 6.6.7.190 \
+ros2 run gento_dual_arm dual_arm_control --ip 6.6.7.190 \
   --delta 1 0 0 0 0 0 0  1 0 0 0 0 0 0 --execute
 ```
 

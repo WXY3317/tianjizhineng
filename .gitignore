@@ -22,8 +22,7 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 
-# 仿真运行状态和验证日志
-.marvin_mesh_sim*.lock
+# 本地验证产物
 ros2_ws/artifacts/
 
 # 系统文件
@@ -35,7 +34,7 @@ Thumbs.db
 *.dll
 *.so
 
-# SDK 随附的运行库（保留以便直接运行仿真）
+# SDK 随附的运行库
 !tianji_armSDK/SDK_PYTHON/*.so
 !tianji_armSDK/SDK_PYTHON/*.dll
 !tianji-robot-SDK/PYTHON_SDK/*.so

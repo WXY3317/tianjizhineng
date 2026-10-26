@@ -5,7 +5,7 @@ import ipaddress
 import sys
 import time
 
-from arm_control import GentoRobot, FXStateType, check, feedback, finite, fk, validate_target
+from .arm_control import GentoRobot, FXStateType, check, feedback, finite, fk, validate_target
 
 BOTH_ARMS = 3
 
