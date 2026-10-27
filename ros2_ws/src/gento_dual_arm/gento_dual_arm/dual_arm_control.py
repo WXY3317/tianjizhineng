@@ -10,12 +10,16 @@ from .arm_control import GentoRobot, FXStateType, check, feedback, finite, fk, v
 BOTH_ARMS = 3
 
 
-def read_limits(robot, arm):
+def read_limits(robot, arm, checkpoint=None):
     limits = []
     for joint in range(7):
         pair = []
         for suffix in ('LimitNeg', 'LimitPos'):
+            if checkpoint is not None:
+                checkpoint()
             ret, value = robot.param_get_float(f'R.A{arm}.L{joint}.BASIC.{suffix}')
+            if checkpoint is not None:
+                checkpoint()
             check(ret, f'读取 arm{arm} joint{joint + 1} {suffix}')
             pair.append(value)
         limits.append(pair)

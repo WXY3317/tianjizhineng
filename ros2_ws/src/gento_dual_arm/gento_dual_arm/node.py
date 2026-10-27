@@ -2,12 +2,15 @@
 import ipaddress
 import json
 import math
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
 import rclpy
 from rclpy.node import Node
-from rclpy.executors import SingleThreadedExecutor
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from rcl_interfaces.msg import ParameterDescriptor
 from sensor_msgs.msg import JointState
@@ -16,7 +19,7 @@ from std_msgs.msg import Empty, String
 
 from .conversions import BODY_JOINT_NAMES, JOINT_NAMES, body_target, finite, joint_target, pose_matrix, quaternion
 from .diagnostics import joint_errors
-from .engine import Engine
+from .engine import Engine, STREAM_PERIOD
 from .native_ik import bind_native_ik
 
 DEFAULTS = {
@@ -25,6 +28,10 @@ DEFAULTS = {
     'max_delta': 5.0, 'timeout': 60.0, 'tolerance': 0.2,
     'publish_rate': 20.0, 'command_max_age': 1.0,
     'sdk_length_to_m': 0.001,
+    'trajectory_log_dir': '~/.ros/gento_trajectories',
+    'cartesian_execution': 'trajectory', 'cartesian_path_tolerance': 0.005,
+    'cartesian_speed': 0.01, 'cartesian_angular_speed': 0.1,
+    'cartesian_joint_speed': 5.0, 'cartesian_joint_acc': 10.0,
     'left_frame': 'left_arm_sdk_base', 'right_frame': 'right_arm_sdk_base',
 }
 
@@ -33,6 +40,7 @@ class Bridge(Node):
     def __init__(self):
         super().__init__('gento_dual_arm')
         self.engine = None
+        self.diagnostic_writer = ThreadPoolExecutor(max_workers=1, thread_name_prefix='trajectory-log')
         try:
             self.setup()
         except BaseException:
@@ -49,6 +57,10 @@ class Bridge(Node):
         self.c.ip = str(ipaddress.IPv4Address(self.c.ip))
         numeric = [self.c.speed, self.c.acc, self.c.plan_speed, self.c.plan_acc, self.c.max_delta,
                    self.c.timeout, self.c.tolerance, self.c.publish_rate, self.c.command_max_age, self.c.sdk_length_to_m]
+        numeric += [self.c.cartesian_speed, self.c.cartesian_angular_speed,
+                    self.c.cartesian_joint_speed, self.c.cartesian_joint_acc, self.c.cartesian_path_tolerance]
+        if self.c.cartesian_execution not in ('trajectory', 'stream'):
+            raise ValueError('cartesian_execution must be trajectory or stream')
         finite(numeric)
         if min(numeric) <= 0 or max(self.c.speed, self.c.acc) > 10 or not all(0.01 <= x <= 0.1 for x in (self.c.plan_speed, self.c.plan_acc)):
             raise ValueError('Positive parameters required; speed/acc <=10%, plan ratios in [0.01,0.1]')
@@ -82,19 +94,19 @@ class Bridge(Node):
         self.status_pub = self.create_publisher(String, '~/status', QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.errors_pub = self.create_publisher(String, '~/joint_errors', QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.create_subscription(JointState, '~/body/target_joints', self.on_body, qos)
-        self.pending_poses = {}
-        self.pose_pair_stamp = None
         for arm, side in enumerate(('left', 'right')):
             self.create_subscription(JointState, f'~/{side}/target_joints',
                                      lambda msg, a=arm: self.on_joints(a, msg), qos)
             self.create_subscription(PoseStamped, f'~/{side}/target_pose',
                                      lambda msg, a=arm: self.on_pose(a, msg), qos)
-        self.create_subscription(Empty, '~/stop', self.on_stop, qos)
+        self.stop_group = MutuallyExclusiveCallbackGroup()
+        self.create_subscription(Empty, '~/stop', self.on_stop, qos, callback_group=self.stop_group)
         self.create_subscription(Empty, '~/reset_error', self.on_reset_error, qos)
         for obj, side in ((0, 'left'), (1, 'right'), (3, 'body')):
             self.create_subscription(Empty, f'~/{side}/reset_error',
                                      lambda msg, o=obj: self.on_object_reset(o, msg), qos)
         self.accept_after = self.get_clock().now().nanoseconds
+        self.stream_timer = self.create_timer(STREAM_PERIOD, self.stream_tick)
         self.timer = self.create_timer(1/self.c.publish_rate, self.tick)
         self.errors_timer = self.create_timer(1.0, self.publish_errors)
         if startup_error is None:
@@ -105,11 +117,49 @@ class Bridge(Node):
                         source='startup', recovery_stage=self.engine.recovery_stage,
                         stop_requested=self.engine.recovery_stop_requested)
 
+    def flush_trajectory_diagnostic(self, outcome, reason=''):
+        diagnostic = self.engine.trajectory_diagnostic
+        if diagnostic is None:
+            return
+        self.engine.trajectory_diagnostic = None
+        future = self.diagnostic_writer.submit(diagnostic.save, outcome, reason)
+        def written(result):
+            try:
+                path = result.result()
+                if outcome == 'fault':
+                    self.get_logger().info('Trajectory diagnostic: ' + path)
+                else:
+                    self.get_logger().debug('Trajectory diagnostic saved: ' + path)
+            except Exception as exc:
+                self.get_logger().error(f'Trajectory diagnostic write failed: {exc}')
+        future.add_done_callback(written)
+
+    def destroy_node(self):
+        if self.engine is not None:
+            self.flush_trajectory_diagnostic('shutdown')
+        self.diagnostic_writer.shutdown(wait=True)
+        return super().destroy_node()
+
     def status(self, state, **details):
         msg = String()
         msg.data = json.dumps({'state': state, **details}, ensure_ascii=False)
         self.status_pub.publish(msg)
-        self.get_logger().info(msg.data)
+        summary = state
+        if state == 'running':
+            arms = details.get('moving_arms')
+            if arms is not None:
+                summary += ' arms=' + ','.join(('left', 'right')[a] for a in arms)
+            elif details.get('group'):
+                summary += ' group=' + details['group']
+        if details.get('reason'):
+            summary += ': ' + str(details['reason'])
+        # rclpy Humble binds severity to the source call site: use separate lines.
+        if state == 'fault':
+            self.get_logger().error(summary)
+        elif state in ('rejected', 'stopped'):
+            self.get_logger().warning(summary)
+        else:
+            self.get_logger().info(summary)
 
     def stamp_check(self, stamp):
         value = stamp.sec*1_000_000_000 + stamp.nanosec
@@ -125,11 +175,12 @@ class Bridge(Node):
             state, details = (self.engine.start_body(**kwargs) if body else self.engine.start(**kwargs))
             self.status(state, **details)
         except Exception as exc:
+            if not self.engine.active:
+                self.flush_trajectory_diagnostic('fault' if self.engine.faulted else 'rejected', str(exc))
             self.status('fault' if self.engine.faulted else 'rejected', reason=str(exc))
         finally:
             # Drop commands received during planning/upload, even if DDS delivers them later.
             self.accept_after = self.get_clock().now().nanoseconds
-            self.clear_pose_pair()
 
     def on_joints(self, arm, msg):
         def convert():
@@ -147,59 +198,53 @@ class Bridge(Node):
             return {'target': body_target(msg.name, msg.position)}
         self.command(convert, body=True)
 
-    def clear_pose_pair(self):
-        self.pending_poses = {}
-        self.pose_pair_stamp = None
-
     def on_pose(self, arm, msg):
-        try:
+        def convert():
             self.stamp_check(msg.header.stamp)
             if msg.header.frame_id != self.frames[arm]:
                 raise ValueError(f'Expected frame {self.frames[arm]}, no TF conversion is performed')
-            pose_matrix(msg.pose, self.c.sdk_length_to_m)
-            stamp = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
-            if self.pose_pair_stamp is not None and stamp < self.pose_pair_stamp:
-                raise ValueError('Older pose target rejected; send both arms with an identical fresh timestamp')
-            if stamp != self.pose_pair_stamp:
-                self.clear_pose_pair()
-                self.pose_pair_stamp = stamp
-            self.pending_poses[arm] = msg
-            if len(self.pending_poses) < 2:
-                self.status('waiting_for_pair', received_arm=arm, stamp_ns=stamp)
-                return
-            pair = [self.pending_poses[a] for a in (0, 1)]
-            self.clear_pose_pair()
-        except Exception as exc:
-            self.clear_pose_pair()
-            self.status('rejected', reason=str(exc))
-            return
-
-        def convert():
-            # Revalidate freshness of both messages before planning.
-            for pose in pair:
-                self.stamp_check(pose.header.stamp)
-            return {'matrices': [pose_matrix(p.pose, self.c.sdk_length_to_m) for p in pair]}
+            return {'arm': arm, 'target_matrix': pose_matrix(msg.pose, self.c.sdk_length_to_m)}
         self.command(convert)
 
     def on_stop(self, msg):
-        self.clear_pose_pair()
+        # Dedicated callback group: never touch the SDK or shared command state here.
+        self.engine.cancel_requested.set()
+
+    def stream_tick(self):
         try:
-            self.engine.stop(force=True)
-            self.status('stopped', reason='Stop latched; clear cause then request reset_error or restart')
+            if self.engine.stream_tick() == 'stopped':
+                self.flush_trajectory_diagnostic('stopped', 'Stop requested')
+                self.accept_after = self.get_clock().now().nanoseconds
+                self.status('stopped', reason='Stop latched; reset required')
         except Exception as exc:
-            self.status('fault', reason=str(exc))
-        self.accept_after = self.get_clock().now().nanoseconds
+            try:
+                self.engine.stop(force=True)
+            except Exception as stop_exc:
+                self.get_logger().error(str(stop_exc))
+            self.flush_trajectory_diagnostic('fault', str(exc))
+            self.status('fault', reason=str(exc), tracking=self.engine.last_tracking_sample)
+        finally:
+            self.rearm_stream_timer()
+
+    def rearm_stream_timer(self):
+        # Rearm relative to the deadline, rather than waiting for another fixed 20 ms tick.
+        stream = self.engine.cartesian_stream
+        delay = STREAM_PERIOD
+        if self.engine.active and stream is not None:
+            count = next(iter(stream['plans'].values()))[1]
+            if stream['index'] < count:
+                delay = max(0.000001, stream['next'] - time.monotonic())
+        self.stream_timer.timer_period_ns = max(1, math.ceil(delay * 1e9))
+        self.stream_timer.reset()
 
     def on_object_reset(self, obj, msg):
         self.reset_request_count += 1
         request_id = self.reset_request_count
         group = {0: 'left', 1: 'right', 3: 'body'}[obj]
-        self.get_logger().info(f'Received {group}/reset_error request #{request_id}')
         if self.engine.active:
             self.status('rejected', source='object_reset_topic', request_id=request_id,
                         group=group, reason='Motion active; stop before requesting error reset')
             return
-        self.clear_pose_pair()
         self.timer.cancel()
         try:
             details = self.engine.reset_object_error(obj)
@@ -215,15 +260,14 @@ class Bridge(Node):
     def on_reset_error(self, msg):
         self.reset_request_count += 1
         request_id = self.reset_request_count
-        self.get_logger().info(f'Received reset_error topic request #{request_id}')
         if self.engine.active:
             self.status('rejected', reason='Motion active; stop before requesting error reset',
                         source='reset_error_topic', request_id=request_id)
             return
-        self.clear_pose_pair()
         self.timer.cancel()
         try:
             self.engine.reset_errors()
+            self.engine.check_cancel()
             self.timer.reset()
             self.status('ready', reason='Errors reset; POSITION confirmed; send a fresh target',
                         source='reset_error_topic', request_id=request_id)
@@ -247,10 +291,6 @@ class Bridge(Node):
         self.errors_pub.publish(msg)
 
     def tick(self):
-        if self.pose_pair_stamp is not None:
-            if self.get_clock().now().nanoseconds - self.pose_pair_stamp > self.c.command_max_age * 1e9:
-                self.clear_pose_pair()
-                self.status('rejected', reason='Unpaired pose target expired; resend both arms')
         try:
             data = self.engine.robot.get_rt_dict()
             joints, matrices = self.engine.sample(data)
@@ -284,20 +324,22 @@ class Bridge(Node):
                 msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w = quaternion(matrix)
                 self.pose_pubs[arm].publish(msg)
             group = self.engine.motion_group
-            if self.engine.poll(joints, body_joints):
+            if self.engine.poll(joints, body_joints, matrices):
                 self.accept_after = self.get_clock().now().nanoseconds
-                self.status('completed', group=group)
+                self.flush_trajectory_diagnostic('completed')
+                self.status('completed', group=group, **self.engine.motion_metrics)
         except Exception as exc:
             self.timer.cancel()  # Do not publish stale feedback or auto-recover a broken link.
             try: self.engine.stop()
             except Exception as stop_exc: self.get_logger().error(str(stop_exc))
-            self.status('fault', reason=str(exc))
+            self.flush_trajectory_diagnostic('fault', str(exc))
+            self.status('fault', reason=str(exc), tracking=self.engine.last_tracking_sample)
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = None
-    executor = SingleThreadedExecutor()
+    executor = MultiThreadedExecutor(num_threads=2)
     try:
         node = Bridge()
         executor.add_node(node)
@@ -306,8 +348,10 @@ def main(args=None):
         pass
     finally:
         if node is not None:
-            for timer in (node.timer, node.errors_timer):
+            node.engine.cancel_requested.set()
+            for timer in (node.timer, node.errors_timer, node.stream_timer):
                 timer.cancel()
+            executor.shutdown()
             try:
                 node.engine.close()
             except Exception as exc:

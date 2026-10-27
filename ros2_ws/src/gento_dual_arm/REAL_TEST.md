@@ -55,7 +55,7 @@ ros2 launch gento_dual_arm dual_arm.launch.py ip:=6.6.7.100
 | `/gento_dual_arm/status` | `std_msgs/msg/String` | JSON 状态及原因或规划结果 |
 | `/gento_dual_arm/joint_errors` | `std_msgs/msg/String` | JSON 对象错误类型、各轴伺服故障码及说明 |
 
-状态包括 `ready`、`waiting_for_pair`、`running`、`completed`、`rejected`、`stopped`、`fault`。反馈默认 20 Hz；同步 SDK 调用期间可能延迟，TCP 不是外部传感器测量结果。
+状态包括 `ready`、`running`、`completed`、`rejected`、`stopped`、`fault`。反馈默认 20 Hz；同步 SDK 调用期间可能延迟，TCP 不是外部传感器测量结果。
 
 ### 目标格式与运动方式
 
@@ -78,7 +78,7 @@ right_joint_1 right_joint_2 right_joint_3 right_joint_4 right_joint_5 right_join
 
 ### 发布目标、查看反馈与停止
 
-使用一次性发布器自动填写新时间戳；末端目标会自动填入相同时间戳。以下大写变量是占位符，需要替换成根据当前反馈确定的数值：
+使用一次性发布器自动填写新时间戳；末端位姿目标可单臂独立发送。以下大写变量是占位符，需要替换成根据当前反馈确定的数值：
 
 ```bash
 # 分别发送左臂或右臂 7 个绝对关节角，单位 rad；待完成后再发下一条。
@@ -86,8 +86,9 @@ ros2 run gento_dual_arm send_target --left-joints L1 L2 L3 L4 L5 L6 L7
 ros2 run gento_dual_arm send_target --right-joints R1 R2 R3 R4 R5 R6 R7
 
 # 每只手臂依次为 x y z qx qy qz qw
-ros2 run gento_dual_arm send_target --poses \
-  LX LY LZ LQX LQY LQZ LQW RX RY RZ RQX RQY RQZ RQW
+ros2 run gento_dual_arm send_target --left-pose LX LY LZ LQX LQY LQZ LQW
+# 等待 completed 后，才可发送下一条目标
+ros2 run gento_dual_arm send_target --right-pose RX RY RZ RQX RQY RQZ RQW
 
 ros2 topic echo /gento_dual_arm/joint_states
 ros2 topic echo /gento_dual_arm/left/tcp_pose

@@ -7,7 +7,9 @@
 #include <cassert>
 #include <cstdarg>
 #include <math.h>
+#include <cmath>
 #include <mutex>
+#include "TrajectoryUploadWait.h"
 
 #define FX_COMM_MAX_TIMEOUT 2000
 
@@ -4793,6 +4795,36 @@ int FX_L1_Config_DisableSoftLimit(FXObjType obj_type, unsigned char axis_mask)
     return FUNC_RET_SUCCESS;
 }
 
+// Confirm controller feedback, rather than assuming ten 1-ms sleeps are enough.
+static int FX_WaitTrajectoryUpload(FXObjType obj_type, int arm, int expected,
+                                   unsigned int points, const char* stage)
+{
+    using Clock = std::chrono::steady_clock;
+    const auto started = Clock::now();
+    int observed = -1;
+    const auto result = gento_upload::wait_for_confirmation(
+        [&]() {
+            observed = RobotCtrl::GetIns()->m_RobotSG.m_ARMS[arm].m_ARM_GET.m_ARM_FBK_TrajState;
+            return observed == expected;
+        },
+        [&]() {
+            return FX_L0_System_GetLinkState() == 1 &&
+                   RobotCtrl::GetIns()->m_RobotRT.m_ARMS[arm].m_ARM_State.m_CurState == ARM_STATE_POSITION;
+        },
+        []() { return Clock::now(); },
+        []() { CUtility::UniMilliSleep(1); },
+        std::chrono::milliseconds(FX_COMM_MAX_TIMEOUT));
+    if (result == gento_upload::WaitResult::confirmed) return FUNC_RET_SUCCESS;
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now()-started).count();
+    _FX_ERRO("Trajectory upload %s: object=%s points=%u expected_state=%d observed_state=%d elapsed_ms=%lld timeout_ms=%d",
+             stage, _FX_ObjType2Str(obj_type), points, expected, observed,
+             static_cast<long long>(elapsed), FX_COMM_MAX_TIMEOUT);
+    fflush(stdout); // Surface the failure stage immediately through ROS launch pipes.
+    if (result == gento_upload::WaitResult::interrupted)
+        return FX_L0_System_GetLinkState() != 1 ? FUNC_RET_LINK_LOST : FUNC_RET_INVALID_CONDITION;
+    return FUNC_RET_OPERATION_TIMEOUT;
+}
+
 int FX_L1_Config_SetTraj(FXObjType obj_type, unsigned int point_num, double *point_data)
 {
     if (FX_ROBOT_TYPE == FX_ROBOT_NULL)
@@ -4801,6 +4833,15 @@ int FX_L1_Config_SetTraj(FXObjType obj_type, unsigned int point_num, double *poi
         return FUNC_RET_INVALID_ROBOT_TYPE;
     }
 
+    if (point_data == nullptr || point_num < 5 || point_num > 5000)
+    {
+        _FX_ERRO("%s: trajectory requires 5..5000 points and non-null point_data (points=%u)", __FUNCTION__, point_num);
+        return FUNC_RET_INVALID_INPUT_ARG;
+    }
+    for (unsigned int i = 0; i < point_num * 7; ++i)
+    {
+        if (!std::isfinite(point_data[i])) return FUNC_RET_INVALID_INPUT_ARG;
+    }
     int runtime_ret = 0;
     int try_count = 0;
     unsigned int full_frame_num = point_num / 50;
@@ -4840,17 +4881,8 @@ ARM0_TRY_AGAIN1:
             goto ARM0_TRY_AGAIN1;
         }        
         
-        int wait_count = 10;
-        do
-        {
-            CUtility::UniMilliSleep(1);
-            wait_count--;
-            if (wait_count == 0)
-            {
-                _FX_ERRO("%s: %s processes the operation Runtime_InitTraj timeout", __FUNCTION__, _FX_ObjType2Str(obj_type));
-                return FUNC_RET_OPERATION_TIMEOUT;
-            }
-        } while (RobotCtrl::GetIns()->m_RobotSG.m_ARMS[0].m_ARM_GET.m_ARM_FBK_TrajState != 1);
+        runtime_ret = FX_WaitTrajectoryUpload(obj_type, 0, 1, point_num, "initialize");
+        if (runtime_ret != FUNC_RET_SUCCESS) return runtime_ret;
         // SetTraj
         while(full_frame_count < full_frame_num)
         {
@@ -4897,17 +4929,8 @@ ARM0_TRY_AGAIN3:
                 goto ARM0_TRY_AGAIN3;
             }
         }
-        wait_count = 10;
-        do
-        {
-            CUtility::UniMilliSleep(1);
-            wait_count--;
-            if (wait_count == 0)
-            {
-                _FX_ERRO("%s: %s processes the operation Runtime_SetTraj timeout", __FUNCTION__, _FX_ObjType2Str(obj_type));
-                return FUNC_RET_OPERATION_TIMEOUT;
-            }
-        } while (RobotCtrl::GetIns()->m_RobotSG.m_ARMS[0].m_ARM_GET.m_ARM_FBK_TrajState != 2);
+        runtime_ret = FX_WaitTrajectoryUpload(obj_type, 0, 2, point_num, "complete");
+        if (runtime_ret != FUNC_RET_SUCCESS) return runtime_ret;
 
         _FX_INFO("%s: %s set a trajectory with %d points success", __FUNCTION__, _FX_ObjType2Str(obj_type), point_num);
         return FUNC_RET_SUCCESS;
@@ -4943,17 +4966,8 @@ ARM1_TRY_AGAIN1:
             goto ARM1_TRY_AGAIN1;
         }  
 
-        int wait_count = 10;
-        do
-        {
-            CUtility::UniMilliSleep(1);
-            wait_count--;
-            if (wait_count == 0)
-            {
-                _FX_ERRO("%s: %s processes the operation Runtime_InitTraj timeout", __FUNCTION__, _FX_ObjType2Str(obj_type));
-                return FUNC_RET_OPERATION_TIMEOUT;
-            }
-        } while (RobotCtrl::GetIns()->m_RobotSG.m_ARMS[1].m_ARM_GET.m_ARM_FBK_TrajState != 1);
+        runtime_ret = FX_WaitTrajectoryUpload(obj_type, 1, 1, point_num, "initialize");
+        if (runtime_ret != FUNC_RET_SUCCESS) return runtime_ret;
         // SetTraj
         while(full_frame_count < full_frame_num)
         {
@@ -5000,17 +5014,8 @@ ARM1_TRY_AGAIN3:
                 goto ARM1_TRY_AGAIN3;
             }
         }
-        wait_count = 10;
-        do
-        {
-            CUtility::UniMilliSleep(1);
-            wait_count--;
-            if (wait_count == 0)
-            {
-                _FX_ERRO("%s: %s processes the operation Runtime_SetTraj timeout", __FUNCTION__, _FX_ObjType2Str(obj_type));
-                return FUNC_RET_OPERATION_TIMEOUT;
-            }
-        } while (RobotCtrl::GetIns()->m_RobotSG.m_ARMS[1].m_ARM_GET.m_ARM_FBK_TrajState != 2);
+        runtime_ret = FX_WaitTrajectoryUpload(obj_type, 1, 2, point_num, "complete");
+        if (runtime_ret != FUNC_RET_SUCCESS) return runtime_ret;
 
         _FX_INFO("%s: %s set a trajectory with %d points success", __FUNCTION__, _FX_ObjType2Str(obj_type), point_num);
         return FUNC_RET_SUCCESS;

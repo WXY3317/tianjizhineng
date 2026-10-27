@@ -86,7 +86,7 @@ ARMHF 默认输出到 `ros2_ws/artifacts/gento-sdk/armhf/`。工具链及 sysroo
 | 发布 | `/gento_dual_arm/full_joint_states` | `sensor_msgs/msg/JointState` | 头部、躯干、双臂合并关节角，rad |
 | 发布 | `/gento_dual_arm/left/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 左臂 FK 位姿，**m + 四元数** |
 | 发布 | `/gento_dual_arm/right/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 右臂 FK 位姿，**m + 四元数** |
-| 发布 | `/gento_dual_arm/status` | `std_msgs/msg/String` | JSON 状态：ready / waiting_for_pair / running / completed / rejected / stopped / fault |
+| 发布 | `/gento_dual_arm/status` | `std_msgs/msg/String` | JSON 状态：ready / running / completed / rejected / stopped / fault |
 | 发布 | `/gento_dual_arm/joint_errors` | `std_msgs/msg/String` | JSON 对象错误类型、各轴伺服故障码及说明 |
 | 订阅 | `/gento_dual_arm/body/target_joints` | `sensor_msgs/msg/JointState` | 躯干 6 个绝对关节目标，rad |
 | 订阅 | `/gento_dual_arm/left/target_joints` | `sensor_msgs/msg/JointState` | 左臂 7 个绝对关节目标，rad |
@@ -103,7 +103,6 @@ ARMHF 默认输出到 `ros2_ws/artifacts/gento-sdk/armhf/`。工具链及 sysroo
 | `state` | 含义 |
 |---|---|
 | `ready` | 连接、错误复位和位置模式设置完成，等待目标 |
-| `waiting_for_pair` | 已收到一臂位姿，等待另一臂相同时间戳的目标 |
 | `running` | 双臂轨迹启动成功，附带 `group`（`arms` 或 `body`）、`joints_deg`（目标角，度）；双臂另有 `points`（轨迹点数） |
 | `completed` | 当前动作组到位持续 0.5 秒并保持 POSITION；双臂还检查轨迹完成 |
 | `rejected` | 目标校验或规划失败，`reason` 说明原因 |
@@ -138,9 +137,7 @@ std_msgs/Header header
 geometry_msgs/Pose pose
 ```
 
-只移动一臂时，另一臂填写当前 TCP，仍需成对发送。
-
-目标分别发送到左右两个话题，必须给这一对消息填写**完全相同的 `header.stamp`**（sec 和 nanosec 均相同）。节点收齐同一时间戳的双臂目标才规划；只收到一臂时报告 `waiting_for_pair`，不运动。不同时戳不会混合执行，更新的一组替换旧的未配对目标；超过 `command_max_age` 未配齐会拒绝并清空。发布顺序不限。`send_target --poses` 会自动在两个话题填入同一个时间戳。
+左右臂目标独立接收，无需发送另一臂位姿；另一臂保持当前关节角。每条命令独立校验时间戳。运动期间不接受其他目标，需等 completed 后再发送。旧的 `--poses` 参数会明确报错，请改用 `--left-pose` 或 `--right-pose`。
 
 - 左臂目标的 `header.frame_id` 默认必须为 `left_arm_sdk_base`。
 - 右臂目标的 `header.frame_id` 默认必须为 `right_arm_sdk_base`。
@@ -148,7 +145,7 @@ geometry_msgs/Pose pose
 - 位置为米；姿态为单位四元数 `x,y,z,w`，不能把 XYZABC 的欧拉角直接填入四元数。
 - `sdk_length_to_m` 默认 `0.001`，按 SDK 模型长度为毫米设置。现场必须确认模型单位；若模型已用米，设为 `1.0`。
 - 使用 SDK 初始化后的工具定义，不另外设置夹爪 TCP。工具或基坐标不匹配时应先完成标定/配置。
-- 两臂目标按时间戳配对后，以当前关节角作为各自 IK 参考。IK 失败、超限或 FK 回代误差过大时拒绝目标。成功后仍执行 **MoveJ 关节轨迹**，不是 MoveL，不保证末端直线或两手相对位姿不变。
+- 末端目标采用位置直线插补和姿态 SLERP，逐点 IK 使用上一点解作为参考；整条规划通过后按 50 Hz 下发。另一臂跳过 IK、不下发指令。
 
 ## 发布目标
 
@@ -162,8 +159,9 @@ ros2 run gento_dual_arm send_target --left-joints L1 L2 L3 L4 L5 L6 L7
 ros2 run gento_dual_arm send_target --right-joints R1 R2 R3 R4 R5 R6 R7
 
 # 左 7 个、右 7 个：各自为 x y z qx qy qz qw（米、四元数）。
-ros2 run gento_dual_arm send_target --poses \
-  LX LY LZ LQX LQY LQZ LQW RX RY RZ RQX RQY RQZ RQW
+ros2 run gento_dual_arm send_target --left-pose LX LY LZ LQX LQY LQZ LQW
+# 等待 completed 后，才可发送下一条目标
+ros2 run gento_dual_arm send_target --right-pose RX RY RZ RQX RQY RQZ RQW
 ```
 
 上述 `L1` 等是占位符，不是可直接执行的数值。建议第一次把收到的当前关节角或当前 TCP 原样作为目标，核对话题、单位和坐标系；发布有效目标会执行运动。`send_target` 只确认发布，不代表控制器接受或完成；查看状态话题。

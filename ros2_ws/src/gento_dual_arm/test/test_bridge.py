@@ -32,6 +32,7 @@ class DualRobot:
         self.body_positions = [0.] * 6
         self.targets = {}
         self.start_mask = 3
+        self.traj_states = [0, 0]
 
     def link(self, *args): return 1
     def reset_error(self, arm, timeout):
@@ -44,7 +45,7 @@ class DualRobot:
     def param_get_float(self, name): return 0, (-180 if name.endswith('Neg') else 180)
     def current_state(self, arm): return self.states[arm]
     def get_rt_dict(self): return {'arms': [{'fb': {'fb_pos': q}} for q in self.positions], 'body': {'fb_pos': self.body_positions}, 'head': {'fb_pos': [10., -5., 999.]}}
-    def get_sg_dict(self): return {'arms': [{'get': {'traj_state': 0}}] * 2}
+    def get_sg_dict(self): return {'arms': [{'get': {'traj_state': state}, 'set': {'vel_ratio': 5., 'acc_ratio': 5.}} for state in self.traj_states]}
     def forward_kinematics(self, arm, q): return [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]
     def plan_joints(self, arm, start, target, *args): return start + target, 2
     def switch_to_position_mode(self, arm, *args):
@@ -54,15 +55,21 @@ class DualRobot:
     def config_set_traj(self, arm, points, count):
         self.calls.append(('upload', arm))
         self.targets[arm] = points[-7:]
+        self.traj_states[arm] = 2
         return 0
     def runtime_set_joint_pos_cmd(self, obj, positions):
-        self.calls.append(('body_command', obj))
-        self.body_positions = list(positions)
+        if obj in (0, 1):
+            self.calls.append(('arm_command', obj))
+            self.positions[obj] = list(positions)
+        else:
+            self.calls.append(('body_command', obj))
+            self.body_positions = list(positions)
         return 0
     def runtime_run_traj(self, mask):
         self.calls.append(('run', mask))
         for arm in (0, 1):
             if mask & (1 << arm):
+                self.traj_states[arm] = 0
                 self.positions[arm] = list(self.targets[arm])
         return self.start_mask & mask
     def switch_to_idle(self, arm, *args):
@@ -77,8 +84,9 @@ class DualRobot:
 
 
 def engine():
-    config = SimpleNamespace(ip='127.0.0.1', speed=5., acc=5., plan_speed=.05,
-                             plan_acc=.05, max_delta=5., timeout=60., tolerance=.2, sdk_length_to_m=.001)
+    config = SimpleNamespace(cartesian_execution='stream', ip='127.0.0.1', speed=5., acc=5., plan_speed=.05,
+                             plan_acc=.05, max_delta=5., timeout=60., tolerance=.2, sdk_length_to_m=.001, cartesian_speed=.01, cartesian_angular_speed=.1,
+                             cartesian_joint_speed=5., cartesian_joint_acc=10.)
     e = Engine(DualRobot(), helpers, FX_InvKineSolverParams, config)
     e.connect()
     e.robot.calls.clear()
@@ -178,6 +186,7 @@ def test_ik_error_code_rejected():
     e = engine()
     e.robot.inverse_kinematics = lambda *args: -1010
     matrix = e.robot.forward_kinematics(0, [0] * 7)
+    matrix[0][3] = 1.
     with pytest.raises(ValueError): e.start(matrices=[matrix, matrix])
     assert not e.robot.calls
     e.close()
@@ -186,13 +195,13 @@ def test_ik_error_code_rejected():
 def test_pose_targets_use_ik():
     e = engine()
     def solve(arm, p):
-        for i in range(7): p.m_Output_RetJoint[i] = 1.
+        for i in range(7): p.m_Output_RetJoint[i] = p.m_Input_IK_RefJoint[i]
         return p
     e.robot.inverse_kinematics = solve
     matrix = e.robot.forward_kinematics(0, [0] * 7)
     state, detail = e.start(matrices=[matrix, matrix])
-    assert state == 'running'
-    assert detail['joints_deg'] == [[1.] * 7] * 2
+    assert state == 'completed'
+    assert detail['joints_deg'] == [[0.] * 7] * 2
     e.close()
 
 
@@ -204,7 +213,7 @@ def test_ros_topics_and_stamps():
     from geometry_msgs.msg import PoseStamped
     from gento_dual_arm.node import Bridge
     import time
-    rclpy.init(args=['--ros-args', '-p', f'sdk_root:={ROOT}', '-p', 'ip:=127.0.0.1'], domain_id=231)
+    rclpy.init(args=['--ros-args', '-p', f'sdk_root:={ROOT}', '-p', 'ip:=127.0.0.1', '-p', 'cartesian_execution:=stream'], domain_id=231)
     fake = DualRobot()
     sdk = importlib.import_module('PYTHON_SDK.GentoRobot')
     executor = SingleThreadedExecutor()
@@ -251,21 +260,25 @@ def test_ros_topics_and_stamps():
         assert not bridge.engine.active
         # Stamped pose target traverses ROS serialization and the IK path.
         def solve(arm, p):
-            return p  # zero target and fake identity FK
+            for i in range(7):
+                p.m_Output_RetJoint[i] = p.m_Input_IK_RefJoint[i]
+            p.m_Output_RetJoint[0] = p.m_Input_IK_TargetTCP[3]
+            return p
         fake.inverse_kinematics = solve
+        fake.forward_kinematics = lambda arm, q: [[1,0,0,q[0]], [0,1,0,0], [0,0,1,0], [0,0,0,1]]
         target = [PoseStamped(), PoseStamped()]
         stamp = client.get_clock().now().to_msg()
         for arm, pose in enumerate(target):
             pose.header.stamp = stamp
             pose.header.frame_id = bridge.frames[arm]
             pose.pose.orientation.w = 1.
+            pose.pose.position.x = .002
         old_count = sum('running' in s for s in statuses)
         pose_pubs[0].publish(target[0])
         until = time.monotonic() + .15
         while time.monotonic() < until:
             executor.spin_once(timeout_sec=.01)
-        assert sum('running' in s for s in statuses) == old_count
-        pose_pubs[1].publish(target[1])
+        # A left pose alone starts planning; no right target is needed.
         deadline = time.monotonic()+5
         while time.monotonic() < deadline and sum('running' in s for s in statuses) == old_count:
             executor.spin_once(timeout_sec=.05)
@@ -274,31 +287,21 @@ def test_ros_topics_and_stamps():
         while bridge.engine.active and time.monotonic() < deadline:
             executor.spin_once(timeout_sec=.05)
         assert not bridge.engine.active
-        # Different timestamps never mix into one motion. Latest pair replaces old.
-        with patch.object(bridge.engine, 'start', return_value=('running', {})) as start:
-            first, second = PoseStamped(), PoseStamped()
-            first.header.frame_id, second.header.frame_id = bridge.frames
-            first.pose.orientation.w = second.pose.orientation.w = 1.
-            first.header.stamp = client.get_clock().now().to_msg()
-            bridge.on_pose(0, first)
-            second.header.stamp = client.get_clock().now().to_msg()
-            bridge.on_pose(1, second)
-            start.assert_not_called()
-            first.header.stamp = second.header.stamp
-            bridge.on_pose(0, first)  # Right-first pairing works too.
-            start.assert_called_once()
-            assert not bridge.pending_poses
-        # An unmatched target expires and cannot pair with later commands.
-        first.header.stamp = client.get_clock().now().to_msg()
-        bridge.on_pose(0, first)
-        bridge.c.command_max_age = .001
-        time.sleep(.005)
-        bridge.tick()
-        assert not bridge.pending_poses
-        bridge.c.command_max_age = 1.
+        # Each pose callback independently forwards its own arm and matrix.
+        with patch.object(bridge.engine, 'start', return_value=('completed', {})) as start:
+            for arm in (0, 1):
+                pose = PoseStamped()
+                pose.header.frame_id = bridge.frames[arm]
+                pose.pose.orientation.w = 1.
+                pose.header.stamp = client.get_clock().now().to_msg()
+                bridge.on_pose(arm, pose)
+                assert start.call_args.kwargs['arm'] == arm
+                assert 'target_matrix' in start.call_args.kwargs
+            assert start.call_count == 2
         # Zero/old timestamps cannot cause movement.
         with pytest.raises(ValueError): bridge.stamp_check(JointState().header.stamp)
-        assert sum(call == ('run', 1) for call in fake.calls) == 2
+        assert sum(call == ('run', 1) for call in fake.calls) == 1
+        left_before_right = list(fake.positions[0])
         right_pub = client.create_publisher(JointState, '/gento_dual_arm/right/target_joints', 1)
         deadline = time.monotonic() + 5
         while not right_pub.get_subscription_count() and time.monotonic() < deadline:
@@ -312,7 +315,7 @@ def test_ros_topics_and_stamps():
         while ('run', 2) not in fake.calls and time.monotonic() < deadline:
             executor.spin_once(timeout_sec=.05)
         assert ('run', 2) in fake.calls
-        assert fake.positions[0] == [0.] * 7
+        assert fake.positions[0] == left_before_right
         deadline = time.monotonic() + 5
         while bridge.engine.active and time.monotonic() < deadline:
             executor.spin_once(timeout_sec=.05)
@@ -390,6 +393,7 @@ def test_invalid_ik_flags_rejected_before_upload(field):
         return p
     e.robot.inverse_kinematics = solve
     matrix = e.robot.forward_kinematics(0, [0.] * 7)
+    matrix[0][3] = 1.
     with pytest.raises(ValueError):
         e.start(matrices=[matrix, matrix])
     assert not e.robot.calls
@@ -646,11 +650,9 @@ def test_startup_fault_keeps_reset_subscription_and_recovers():
             bridge.publish_errors()
             import json
             assert json.loads(publish.call_args.args[0].data)['available'] is False
-        bridge.pending_poses[0] = Pose()
         fake.reset_error = original
         bridge.on_reset_error(Empty())
         assert not bridge.engine.faulted and not bridge.timer.is_canceled()
-        assert not bridge.pending_poses
         with pytest.raises(ValueError): bridge.stamp_check(JointState().header.stamp)
         assert not any(call[0] == 'run' for call in fake.calls if isinstance(call, tuple))
     finally:
@@ -777,3 +779,802 @@ def test_group_reset_attempts_all_error_objects_before_reporting_failure():
     assert e.robot.calls == [('reset', 0), ('reset', 1), ('reset', 3)]
     assert e.faulted
     e.close()
+
+
+def cartesian_robot(e):
+    references = [[], []]
+    def fk(arm, q):
+        return [[1, 0, 0, q[0]], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+    def ik(arm, p):
+        references[arm].append(list(p.m_Input_IK_RefJoint))
+        p.m_Output_RetJoint[0] = p.m_Input_IK_TargetTCP[3]
+        return p
+    e.robot.forward_kinematics = fk
+    e.robot.inverse_kinematics = ik
+    e.robot.plan_joints = lambda *args: pytest.fail('Cartesian path must not use joint PTP')
+    goal = fk(0, [1.]*7)
+    return goal, references
+
+
+def test_cartesian_preplans_and_passes_previous_ik_reference():
+    e = engine()
+    goal, references = cartesian_robot(e)
+    state, details = e.start(matrices=[goal, goal])
+    assert state == 'running'
+    assert details['points'] == [51, 51]
+    assert not e.robot.calls  # no uploading or starting the controller trajectory player
+    plans = e.cartesian_stream['plans']
+    for arm in (0, 1):
+        points, count = plans[arm]
+        path = [list(points[i*7:(i+1)*7]) for i in range(count)]
+        assert references[arm] == path[:-1]
+        assert path[-1] == [1., 0., 0., 0., 0., 0., 0.]
+    e.close()
+
+
+def test_cartesian_midpath_failure_never_uploads():
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    original = e.robot.inverse_kinematics
+    def fail(arm, p):
+        if p.m_Input_IK_TargetTCP[3] > .4:
+            return -1
+        return original(arm, p)
+    e.robot.inverse_kinematics = fail
+    with pytest.raises(ValueError, match='IK failed'):
+        e.start(matrices=[goal, goal])
+    assert not e.robot.calls
+    assert not e.active
+    e.close()
+
+
+def test_cartesian_rotation_uses_shortest_arc():
+    from gento_dual_arm.cartesian import interpolate
+    start = [[1,0,0,0], [0,1,0,0], [0,0,1,0], [0,0,0,1]]
+    goal = [[-1,0,0,10], [0,-1,0,20], [0,0,1,30], [0,0,0,1]]
+    middle = interpolate(start, goal, .5)
+    assert [middle[i][3] for i in range(3)] == [5,10,15]
+    assert middle[0][0] == pytest.approx(0, abs=1e-12)
+    assert middle[1][0] == pytest.approx(1)
+
+
+@pytest.mark.parametrize('failure', ['jump', 'capacity', 'timeout'])
+def test_cartesian_rejects_invalid_plan_before_upload(failure):
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    if failure == 'jump':
+        original = e.robot.inverse_kinematics
+        def jump(arm, p):
+            p = original(arm, p)
+            p.m_Output_RetJoint[0] += 1.
+            return p
+        e.robot.inverse_kinematics = jump
+    elif failure == 'capacity':
+        e.robot.max_point = 20
+    else:
+        e.c.timeout = .5
+    with pytest.raises(ValueError):
+        e.start(matrices=[goal, goal])
+    assert not e.robot.calls
+    e.close()
+
+
+def test_cartesian_holds_stationary_arm_without_ik():
+    e = engine()
+    goal, references = cartesian_robot(e)
+    hold = e.robot.forward_kinematics(1, e.robot.positions[1])
+    _, details = e.start(matrices=[goal, hold])
+    assert details['moving_arms'] == [0]
+    assert references[0] and not references[1]
+    assert details['joints_deg'][1] == [0.]*7
+    e.close()
+
+
+def test_cartesian_cancel_during_ik_prevents_execution():
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    original = e.robot.inverse_kinematics
+    def cancel(arm, p):
+        e.cancel_requested.set()
+        return original(arm, p)
+    e.robot.inverse_kinematics = cancel
+    with pytest.raises(ValueError, match='cancelled'):
+        e.start(matrices=[goal, goal])
+    assert not e.robot.calls
+    assert e.stream_tick() == 'stopped'
+    assert e.faulted
+    e.close()
+
+
+def test_cartesian_retimes_rate_excess():
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    e.c.cartesian_joint_speed = .5
+    _, detail = e.start(matrices=[goal, goal])
+    assert detail['points'][0] > 51
+    e.close()
+
+
+def test_cartesian_stream_50hz_no_burst_and_cancel():
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    with patch('gento_dual_arm.engine.time.monotonic', return_value=100.):
+        e.start(matrices=[goal, goal])
+        e.stream_tick()
+        assert len(e.robot.calls) == 2
+        e.stream_tick()
+        assert len(e.robot.calls) == 2
+    with patch('gento_dual_arm.engine.time.monotonic', return_value=100.02):
+        e.stream_tick()
+        assert len(e.robot.calls) == 4
+        assert e.cartesian_stream['index'] == 2
+        assert not e.poll(e.robot.positions)
+        e.cancel_requested.set()
+        assert e.stream_tick() == 'stopped'
+        assert e.cartesian_stream is None and not e.active
+        assert e.robot.calls[-1] == ('stop', 11)
+    e.close()
+
+
+def test_stop_during_blocking_upload_prevents_joint_trajectory_start():
+    e = engine()
+    def upload(*args):
+        e.cancel_requested.set()
+        return 0
+    e.robot.config_set_traj = upload
+    with pytest.raises(ValueError, match='cancelled'):
+        e.start(arm=0, target=[1.]*7)
+    assert ('run', 1) not in e.robot.calls
+    assert ('stop', 11) in e.robot.calls
+    e.close()
+
+
+def test_cartesian_final_point_waits_for_settling_without_stall():
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    with patch('gento_dual_arm.engine.time.monotonic', return_value=100.):
+        e.start(matrices=[goal, goal])
+    for index in range(51):
+        with patch('gento_dual_arm.engine.time.monotonic', return_value=100. + index*.02001):
+            e.stream_tick()
+    e.robot.positions = [[1.,0,0,0,0,0,0]]*2
+    with patch('gento_dual_arm.engine.time.monotonic', return_value=101.1):
+        e.stream_tick()
+        assert not e.poll(e.robot.positions)
+    with patch('gento_dual_arm.engine.time.monotonic', return_value=101.7):
+        e.stream_tick()
+        assert e.poll(e.robot.positions)
+    assert e.cartesian_stream is None
+    e.close()
+
+
+def test_cartesian_stalled_stream_rejected():
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    with patch('gento_dual_arm.engine.time.monotonic', return_value=100.):
+        e.start(matrices=[goal, goal])
+        e.stream_tick()
+    with patch('gento_dual_arm.engine.time.monotonic', return_value=100.2):
+        with pytest.raises(RuntimeError, match='stalled'):
+            e.stream_tick()
+    e.close()
+
+
+def test_ros_stop_callback_runs_during_blocked_default_group():
+    import threading
+    import rclpy
+    from rclpy.executors import MultiThreadedExecutor
+    from std_msgs.msg import Empty
+    from gento_dual_arm.node import Bridge
+    sdk = importlib.import_module('PYTHON_SDK.GentoRobot')
+    fake = DualRobot()
+    rclpy.init(args=['--ros-args', '-p', f'sdk_root:={ROOT}', '-p', 'ip:=127.0.0.1'], domain_id=232)
+    executor = MultiThreadedExecutor(num_threads=2)
+    bridge = client = None
+    entered, observed = threading.Event(), threading.Event()
+    try:
+        with patch.object(sdk, 'GentoRobot', return_value=fake):
+            bridge = Bridge()
+        bridge.timer.cancel()
+        bridge.errors_timer.cancel()
+        bridge.stream_timer.cancel()
+        fake.calls.clear()
+        def block():
+            entered.set()
+            if bridge.engine.cancel_requested.wait(3.):
+                observed.set()
+            timer.cancel()
+        timer = bridge.create_timer(.01, block)
+        client = rclpy.create_node('stop_concurrency_client')
+        pub = client.create_publisher(Empty, '/gento_dual_arm/stop', 10)
+        executor.add_node(bridge)
+        executor.add_node(client)
+        worker = threading.Thread(target=executor.spin)
+        worker.start()
+        assert entered.wait(2.)
+        import time
+        until = time.monotonic() + 2.
+        while not pub.get_subscription_count() and time.monotonic() < until:
+            time.sleep(.01)
+        pub.publish(Empty())
+        assert observed.wait(2.)
+        assert not fake.calls  # stop callback never calls SDK concurrently
+    finally:
+        if bridge is not None:
+            bridge.engine.cancel_requested.set()
+        executor.shutdown()
+        if 'worker' in locals(): worker.join(timeout=3.)
+        if bridge is not None:
+            bridge.engine.close()
+            bridge.destroy_node()
+        if client is not None: client.destroy_node()
+        rclpy.shutdown()
+
+
+def test_pending_stop_prevents_recovery():
+    e = engine()
+    e.cancel_requested.set()
+    with pytest.raises(ValueError, match='cancelled'):
+        e.reset_errors()
+    assert e.faulted and e.recovery_stage != 'ready'
+    assert not e.robot.calls
+    assert e.stream_tick() == 'stopped'
+    e.close()
+
+
+@pytest.mark.parametrize('operation', ['switch_to_idle', 'reset_error', 'init_single_arm_config',
+                                       'param_get_float', 'switch_to_position_mode', 'get_rt_dict'])
+def test_stop_interrupts_recovery_before_next_step(operation):
+    e = engine()
+    if operation == 'reset_error':
+        e.robot.states[0] = 100
+    calls = []
+    original = getattr(e.robot, operation)
+    def interrupted(*args):
+        calls.append(args)
+        result = original(*args)
+        e.cancel_requested.set()
+        return result
+    setattr(e.robot, operation, interrupted)
+    with pytest.raises((ValueError, RuntimeError), match='cancelled'):
+        e.reset_errors()
+    assert len(calls) == 1
+    assert e.faulted and e.recovery_stage != 'ready'
+    assert e.recovery_stop_requested
+    assert ('stop', 11) in e.robot.calls
+    e.close()
+
+
+def test_delayed_stream_waits_from_sdk_completion():
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    with patch('gento_dual_arm.engine.time.monotonic', return_value=100.):
+        e.start(matrices=[goal, goal])
+        e.stream_tick()
+    with patch('gento_dual_arm.engine.time.monotonic', side_effect=[100.08, 100.09]):
+        e.stream_tick()
+    assert e.cartesian_stream['index'] == 2
+    for now in (100.091, 100.10, 100.109):
+        with patch('gento_dual_arm.engine.time.monotonic', return_value=now):
+            e.stream_tick()
+            assert e.cartesian_stream['index'] == 2
+    with patch('gento_dual_arm.engine.time.monotonic', return_value=100.111):
+        e.stream_tick()
+        assert e.cartesian_stream['index'] == 3
+    e.close()
+
+
+@pytest.mark.parametrize('drift', [.1, -.1])
+def test_cartesian_entry_drift_rejects_before_first_command(drift):
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    e.start(matrices=[goal, goal])
+    e.robot.positions[0][0] = drift
+    with pytest.raises(RuntimeError, match='entry exceeds rate limits'):
+        e.stream_tick()
+    assert not e.robot.calls
+    e.close()
+
+
+def test_cartesian_small_entry_correction_is_checked_with_next_segment():
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    e.start(matrices=[goal, goal])
+    e.robot.positions[0][0] = .0001
+    e.stream_tick()
+    assert e.cartesian_stream['index'] == 1
+    assert e.robot.calls == [('arm_command', 0), ('arm_command', 1)]
+    e.close()
+
+
+@pytest.mark.parametrize('arm', [0, 1])
+def test_single_pose_plans_only_selected_arm(arm):
+    e = engine()
+    goal, references = cartesian_robot(e)
+    state, detail = e.start(arm=arm, target_matrix=goal)
+    assert state == 'running'
+    assert detail['moving_arms'] == [arm]
+    assert detail['run_mask'] == 1 << arm
+    assert references[arm] and not references[1-arm]
+    assert detail['joints_deg'][1-arm] == [0.]*7
+    e.stream_tick()
+    assert e.robot.calls == [('arm_command', arm)]
+    with pytest.raises(RuntimeError, match='Busy'):
+        e.start(arm=1-arm, target_matrix=goal)
+    e.close()
+
+
+def test_single_pose_rejects_invalid_argument_combinations():
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    for kwargs in ({'target_matrix': goal}, {'arm': 2, 'target_matrix': goal},
+                   {'arm': 0, 'target_matrix': goal, 'target': [0.]*7}):
+        with pytest.raises(ValueError):
+            e.start(**kwargs)
+    assert not e.robot.calls
+    e.close()
+
+
+@pytest.mark.parametrize('side', ['left', 'right'])
+def test_send_single_pose_cli(side):
+    from unittest.mock import MagicMock
+    from builtin_interfaces.msg import Time
+    from gento_dual_arm import send_target
+    fake_node = MagicMock()
+    fake_node.create_publisher.return_value.get_subscription_count.return_value = 1
+    fake_node.get_clock.return_value.now.return_value.to_msg.return_value = Time(sec=123)
+    values = ['0.1', '0.2', '0.3', '0', '0', '0', '1']
+    with patch.object(sys, 'argv', ['send_target', f'--{side}-pose', *values]), \
+            patch.object(send_target.rclpy, 'init'), \
+            patch.object(send_target.rclpy, 'shutdown'), \
+            patch.object(send_target.rclpy, 'create_node', return_value=fake_node), \
+            patch.object(send_target.time, 'monotonic', side_effect=range(20)):
+        send_target.main()
+    args = fake_node.create_publisher.call_args.args
+    assert args[1] == f'/gento_dual_arm/{side}/target_pose'
+    msg = fake_node.create_publisher.return_value.publish.call_args.args[0]
+    assert msg.header.frame_id == f'{side}_arm_sdk_base'
+    assert msg.header.stamp.sec == 123
+    assert msg.pose.position.y == .2 and msg.pose.orientation.w == 1.
+
+
+def test_legacy_paired_pose_cli_rejected_before_publishing():
+    from gento_dual_arm import send_target
+    with patch.object(sys, 'argv', ['send_target', '--poses', *(['0']*14)]), \
+            patch.object(send_target.rclpy, 'init') as init:
+        with pytest.raises(SystemExit):
+            send_target.main()
+        init.assert_not_called()
+
+
+def test_deadline_rearming_avoids_halving_rate_with_sdk_overhead():
+    from unittest.mock import MagicMock
+    from gento_dual_arm.node import Bridge
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    clock = [100.]
+    original = e.robot.runtime_set_joint_pos_cmd
+    def send(arm, q):
+        clock[0] += .001  # Each SDK call takes 1 ms, which used to miss the next tick.
+        return original(arm, q)
+    e.robot.runtime_set_joint_pos_cmd = send
+    harness = SimpleNamespace(engine=e, stream_timer=MagicMock())
+    send_times = []
+    with patch('gento_dual_arm.engine.time.monotonic', side_effect=lambda: clock[0]):
+        _, details = e.start(matrices=[goal, goal])
+        for _ in range(51):
+            e.stream_tick()
+            send_times.append(clock[0])
+            clock[0] += .0002  # Work between send completion and rearming the timer.
+            Bridge.rearm_stream_timer(harness)
+            clock[0] += harness.stream_timer.timer_period_ns / 1e9
+        assert e.cartesian_stream['index'] == 51
+        assert harness.stream_timer.reset.call_count == 51
+        intervals = [b-a for a, b in zip(send_times, send_times[1:])]
+        assert min(intervals) >= .02
+        assert max(intervals) < .02201  # 20 ms + two SDK calls, without an extra 20 ms tick.
+        stats = e.motion_metrics['cartesian_stream']
+        assert stats['actual_hz'] == pytest.approx(1/.022, abs=.01)
+        assert stats['sent_points'] == 51
+        assert stats['max_interval_s'] == pytest.approx(.022, abs=1e-6)
+        assert details['cartesian_plan']['planned_duration_s'] == 1.
+        assert details['cartesian_plan']['retime_count'] == 0
+    e.close()
+
+
+def test_cartesian_status_explains_automatic_retiming():
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    e.c.cartesian_joint_speed = .5
+    _, detail = e.start(matrices=[goal, goal])
+    info = detail['cartesian_plan']
+    assert info['retime_count'] > 0
+    assert info['planned_duration_s'] == (detail['points'][0]-1)/50
+    assert info['target_hz'] == 50
+    e.close()
+
+
+@pytest.mark.parametrize('constraint', ['joint_speed', 'joint_acceleration'])
+def test_retime_logs_constraint_joint_value_and_limit(constraint):
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    if constraint == 'joint_speed':
+        e.c.cartesian_joint_speed = .5
+    else:
+        e.c.cartesian_joint_acc = 1.
+    logged = []
+    e.on_retime = logged.append
+    _, detail = e.start(arm=0, target_matrix=goal)
+    info = detail['cartesian_plan']
+    assert logged == info['retime_events']
+    assert len(logged) == info['retime_count'] > 0
+    for attempt, event in enumerate(logged, 1):
+        assert event['constraint'] == constraint
+        assert event['arm'] == 'left' and event['arm_id'] == 0
+        assert event['joint'] == 1 and event['point_index'] >= 1
+        assert event['magnitude'] == abs(event['value']) > event['limit']
+        assert event['unit'] == ('deg/s' if constraint == 'joint_speed' else 'deg/s^2')
+        assert event['attempt'] == attempt and event['will_retry']
+        assert event['next_duration_s'] > event['duration_s']
+    e.close()
+
+
+def test_retime_failure_still_logs_last_attempt():
+    from gento_dual_arm.cartesian import RateExceeded
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    logged = []
+    e.on_retime = logged.append
+    failure = RateExceeded(1, 25, 'joint_speed', [5.1]+[0.]*6, 5.)
+    failure.time_scale = 1.04
+    with patch('gento_dual_arm.cartesian._sample', side_effect=failure):
+        with pytest.raises(RateExceeded, match='joint1.*joint_speed.*limit='):
+            e.start(arm=1, target_matrix=goal)
+    assert len(logged) == 6
+    assert logged[-1]['arm'] == 'right'
+    assert logged[-1]['will_retry'] is False
+    assert 'next_duration_s' not in logged[-1]
+    assert not e.robot.calls
+    e.close()
+
+
+@pytest.mark.parametrize('constraint,limit', [('joint_speed', 1.8), ('joint_acceleration', 5.)])
+def test_peak_retiming_avoids_doubling_for_small_excess(constraint, limit):
+    e = engine()
+    goal, references = cartesian_robot(e)
+    if constraint == 'joint_speed':
+        e.c.cartesian_joint_speed = limit
+    else:
+        e.c.cartesian_joint_acc = limit
+    _, detail = e.start(arm=0, target_matrix=goal)
+    info = detail['cartesian_plan']
+    assert info['retime_count'] == 1
+    assert 1. < info['planned_duration_s'] < 1.3
+    event = info['retime_events'][0]
+    assert event['constraint'] == constraint
+    assert event['magnitude'] > event['limit']
+    assert event['time_scale'] < 1.3
+    # Both full sampling passes must finish, not stop at their first limit crossing.
+    assert len(references[0]) == 50 + detail['points'][0] - 1
+    for peak in info['peaks'].values():
+        assert peak['magnitude'] <= peak['limit']
+    e.close()
+
+
+def test_full_path_ik_failure_is_not_hidden_by_an_earlier_speed_excess():
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    e.c.cartesian_joint_speed = .5
+    original = e.robot.inverse_kinematics
+    def fail_late(arm, p):
+        if p.m_Input_IK_TargetTCP[3] > .9:
+            return -1011
+        return original(arm, p)
+    e.robot.inverse_kinematics = fail_late
+    logged = []
+    e.on_retime = logged.append
+    with pytest.raises(ValueError, match='-1011'):
+        e.start(arm=0, target_matrix=goal)
+    assert not logged and not e.robot.calls
+    e.close()
+
+
+def test_proportional_retiming_still_enforces_capacity_and_timeout():
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    e.c.cartesian_joint_speed = .00001
+    logged = []
+    e.on_retime = logged.append
+    with pytest.raises(ValueError, match='capacity or motion timeout'):
+        e.start(arm=0, target_matrix=goal)
+    assert len(logged) == 1
+    assert logged[0]['next_duration_s'] > e.c.timeout
+    assert not e.robot.calls
+    e.close()
+
+
+@pytest.mark.parametrize('arm', [0, 1])
+def test_cartesian_controller_playback_uses_whole_preplanned_path(arm):
+    e = engine()
+    e.c.cartesian_execution = 'trajectory'
+    goal, references = cartesian_robot(e)
+    e.robot.runtime_set_joint_pos_cmd = lambda *args: pytest.fail('Playback must not send independent position targets')
+    state, detail = e.start(arm=arm, target_matrix=goal)
+    assert state == 'running' and detail['cartesian_execution'] == 'trajectory'
+    assert references[arm] and not references[1-arm]
+    assert e.robot.calls == [('upload', arm), ('run', 1 << arm)]
+    assert e.cartesian_stream is None and e.cartesian_tracking is not None
+    # Completion must wait for the controller to finish playback, even at the goal.
+    e.robot.get_sg_dict = lambda: {'arms': [{'get': {'traj_state': 3}, 'set': {'vel_ratio': 5., 'acc_ratio': 5.}}]*2}
+    assert not e.poll(e.robot.positions)
+    e.robot.get_sg_dict = lambda: {'arms': [{'get': {'traj_state': 0}, 'set': {'vel_ratio': 5., 'acc_ratio': 5.}}]*2}
+    with patch('gento_dual_arm.engine.time.monotonic', side_effect=[0., 0., 1., 1.]):
+        assert not e.poll(e.robot.positions)
+        assert e.poll(e.robot.positions)
+    assert e.motion_metrics['cartesian_tracking']['max_line_error_m'][arm] < 1e-9
+    e.close()
+
+
+def test_cartesian_playback_cancel_during_upload_never_starts():
+    e = engine()
+    e.c.cartesian_execution = 'trajectory'
+    goal, _ = cartesian_robot(e)
+    def upload(*args):
+        e.cancel_requested.set()
+        return 0
+    e.robot.config_set_traj = upload
+    with pytest.raises(ValueError, match='cancelled'):
+        e.start(arm=0, target_matrix=goal)
+    assert ('run', 1) not in e.robot.calls and ('stop', 11) in e.robot.calls
+    assert not e.active
+    e.close()
+
+
+def test_cartesian_feedback_detects_cross_track_error():
+    e = engine()
+    e.c.cartesian_execution = 'trajectory'
+    e.c.cartesian_path_tolerance = .005
+    goal, _ = cartesian_robot(e)
+    original = e.robot.forward_kinematics
+    def fk(arm, q):
+        matrix = original(arm, q)
+        matrix[1][3] = q[1]
+        return matrix
+    e.robot.forward_kinematics = fk
+    e.start(arm=0, target_matrix=goal)
+    e.robot.positions[0][1] = 6.  # 6 mm perpendicular deviation.
+    with pytest.raises(RuntimeError, match='departed Cartesian line: 0.006000'):
+        e.poll(e.robot.positions)
+    e.stop()
+    assert ('stop', 11) in e.robot.calls
+    e.close()
+
+
+def test_cartesian_feedback_detects_overshoot_beyond_segment():
+    e = engine()
+    e.c.cartesian_execution = 'trajectory'
+    e.c.cartesian_path_tolerance = .005
+    goal, _ = cartesian_robot(e)
+    e.start(arm=0, target_matrix=goal)
+    e.robot.positions[0][0] = 8.  # Target is 1 mm; overshoot is 7 mm.
+    with pytest.raises(RuntimeError, match='departed Cartesian line: 0.007000'):
+        e.poll(e.robot.positions)
+    e.close()
+
+
+def test_trajectory_diagnostics_keep_fault_sample_and_plan_without_runtime_io(tmp_path):
+    import json
+    e = engine()
+    e.c.cartesian_execution = 'trajectory'
+    e.c.trajectory_log_dir = str(tmp_path / 'traces')
+    goal, _ = cartesian_robot(e)
+    original = e.robot.forward_kinematics
+    def fk(arm, q):
+        matrix = original(arm, q)
+        matrix[1][3] = q[1]
+        return matrix
+    e.robot.forward_kinematics = fk
+    _, detail = e.start(arm=0, target_matrix=goal)
+    e.robot.get_sg_dict = lambda: {'arms': [{'get': {'traj_state': 3},
+                                             'set': {'vel_ratio': 5., 'acc_ratio': 5.}}]*2}
+    assert not Path(detail['trajectory_log']).exists()
+    e.robot.positions[0] = [.5, 6., 0., 0., 0., 0., 0.]
+    with pytest.raises(RuntimeError, match='departed Cartesian line') as failure:
+        e.poll(e.robot.positions)
+    snapshot = e.last_tracking_sample['arms']['0']
+    assert snapshot['line_error_vector_m'] == pytest.approx([0., .006, 0.])
+    assert snapshot['traj_state'] == 3 and snapshot['controller_set']['vel_ratio'] == 5.
+    diagnostic = e.trajectory_diagnostic
+    e.stop()
+    assert not Path(detail['trajectory_log']).exists()
+    saved = diagnostic.save('fault', str(failure.value))
+    data = json.loads(Path(saved).read_text())
+    assert data['outcome'] == 'fault' and 'departed' in data['reason']
+    assert len(data['planned_joints_deg']['0']) == detail['points'][0]
+    assert data['planned_tcp_positions_m']['0'][-1] == [.001, 0., 0.]
+    assert data['samples'][0]['unix_ns'] > 0 and data['samples'][0]['elapsed_s'] >= 0
+    sample = data['samples'][0]['arms']['0']
+    assert len(sample['nominal_error_deg']) == 7
+    assert 0 <= sample['nearest_joint_vector_index'] < detail['points'][0]
+    assert sample['per_joint_nearest_indices'][1] is None  # Stationary joints have no inferred progress.
+    e.close()
+
+
+def test_busy_rejection_does_not_flush_live_diagnostic():
+    from unittest.mock import MagicMock
+    from gento_dual_arm.node import Bridge
+    node = SimpleNamespace(engine=SimpleNamespace(active=True, faulted=False),
+                           flush_trajectory_diagnostic=MagicMock(), status=MagicMock(),
+                           get_clock=MagicMock())
+    def busy():
+        raise ValueError('Busy')
+    Bridge.command(node, busy)
+    node.flush_trajectory_diagnostic.assert_not_called()
+    node.status.assert_called_once_with('rejected', reason='Busy')
+
+
+def test_cartesian_respects_slow_controller_joint_instead_of_only_global_limit():
+    e = engine()
+    e.c.cartesian_joint_speed = 20.
+    e.c.cartesian_joint_acc = 25.
+    e.c.max_delta = 60.
+    original = e.robot.param_get_float
+    def param(name):
+        if name.endswith('VelMax'):
+            return 0, (20. if '.L3.' in name else 500.)
+        if name.endswith('AccMax'):
+            return 0, 1000.
+        return original(name)
+    e.robot.param_get_float = param
+    def fk(arm, q):
+        return [[1,0,0,q[3]/2], [0,1,0,0], [0,0,1,0], [0,0,0,1]]
+    def ik(arm, p):
+        x = p.m_Input_IK_TargetTCP[3]
+        p.m_Output_RetJoint[0] = 10*x
+        p.m_Output_RetJoint[3] = 2*x
+        return p
+    e.robot.forward_kinematics = fk
+    e.robot.inverse_kinematics = ik
+    goal = fk(0, [0,0,0,2,0,0,0])
+    _, detail = e.start(arm=0, target_matrix=goal)
+    info = detail['cartesian_plan']
+    assert info['controller_limits'][0]['speed'][3] == pytest.approx(.9)
+    assert info['retime_count'] > 0
+    event = info['retime_events'][0]
+    assert event['joint'] == 4 and event['limit'] == pytest.approx(.9)
+    # Joint1 has a larger absolute speed; joint4 has the higher normalized violation.
+    assert info['peaks']['joint_speed']['joint'] == 4
+    points, count = e.cartesian_stream['plans'][0]
+    assert max(abs(points[i*7+3]-points[(i-1)*7+3])*50 for i in range(1,count)) <= .9
+    assert e.c.cartesian_joint_speed == 20.
+    e.close()
+
+
+@pytest.mark.parametrize('invalid', [0., -1., float('nan')])
+def test_invalid_controller_rating_rejects_cartesian_motion(invalid):
+    e = engine()
+    goal, _ = cartesian_robot(e)
+    original = e.robot.param_get_float
+    e.robot.param_get_float = lambda name: (0, invalid) if name.endswith('VelMax') else original(name)
+    with pytest.raises(ValueError):
+        e.start(arm=0, target_matrix=goal)
+    assert not e.robot.calls
+    e.close()
+
+
+def test_controller_ratio_change_during_upload_prevents_start():
+    e = engine()
+    e.c.cartesian_execution = 'trajectory'
+    goal, _ = cartesian_robot(e)
+    original = e.robot.config_set_traj
+    def upload(*args):
+        ret = original(*args)
+        e.robot.get_sg_dict = lambda: {'arms': [{'get': {'traj_state': 0},
+                                                'set': {'vel_ratio': 2.5, 'acc_ratio': 5.}}]*2}
+        return ret
+    e.robot.config_set_traj = upload
+    with pytest.raises(RuntimeError, match='vel_ratio changed since planning'):
+        e.start(arm=0, target_matrix=goal)
+    assert ('run', 1) not in e.robot.calls and ('stop', 11) in e.robot.calls
+    e.close()
+
+
+def test_controller_ratio_change_during_playback_is_detected():
+    e = engine()
+    e.c.cartesian_execution = 'trajectory'
+    goal, _ = cartesian_robot(e)
+    e.start(arm=0, target_matrix=goal)
+    e.robot.get_sg_dict = lambda: {'arms': [{'get': {'traj_state': 3},
+                                            'set': {'vel_ratio': 5., 'acc_ratio': 2.5}}]*2}
+    with pytest.raises(RuntimeError, match='acc_ratio changed during Cartesian execution'):
+        e.poll(e.robot.positions)
+    e.stop()
+    assert ('stop', 11) in e.robot.calls
+    e.close()
+
+
+def test_upload_timeout_is_reported_once_and_never_starts(tmp_path):
+    e = engine()
+    e.c.cartesian_execution = 'trajectory'
+    e.c.trajectory_log_dir = str(tmp_path)
+    goal, _ = cartesian_robot(e)
+    events, calls = [], []
+    e.on_upload = events.append
+    def timeout(*args):
+        calls.append(args)
+        return -10
+    e.robot.config_set_traj = timeout
+    with pytest.raises(RuntimeError, match=r'upload failed: SDK=-10, points=51'):
+        e.start(arm=0, target_matrix=goal)
+    assert len(calls) == 1  # No blind retry of a partly uploaded trajectory.
+    assert [event['phase'] for event in events] == ['begin', 'failed']
+    assert events[-1]['sdk_return'] == -10 and events[-1]['after']['traj_state'] == 0
+    assert e.faulted and not e.active
+    assert ('run', 1) not in e.robot.calls and ('stop', 11) in e.robot.calls
+    assert e.trajectory_diagnostic.data['uploads'][-1]['sdk_return'] == -10
+    assert len(e.trajectory_diagnostic.data['planned_joints_deg']['0']) == 51
+    e.close()
+
+
+@pytest.mark.parametrize('unconfirmed', [0, 1, 3, 6])
+def test_success_return_without_ready_feedback_does_not_start(unconfirmed):
+    e = engine()
+    e.c.cartesian_execution = 'trajectory'
+    goal, _ = cartesian_robot(e)
+    def incomplete_upload(*args):
+        e.robot.traj_states[0] = unconfirmed
+        return 0
+    e.robot.config_set_traj = incomplete_upload
+    with pytest.raises(RuntimeError, match='upload not confirmed before start'):
+        e.start(arm=0, target_matrix=goal)
+    assert ('run', 1) not in e.robot.calls and ('stop', 11) in e.robot.calls
+    e.close()
+
+
+def test_second_arm_upload_failure_never_starts_first_arm():
+    e = engine()
+    e.c.cartesian_execution = 'trajectory'
+    goal, _ = cartesian_robot(e)
+    original = e.robot.config_set_traj
+    def upload(arm, points, count):
+        return -10 if arm == 1 else original(arm, points, count)
+    e.robot.config_set_traj = upload
+    with pytest.raises(RuntimeError, match='arm1 upload failed'):
+        e.start(matrices=[goal, goal])
+    assert ('upload', 0) in e.robot.calls
+    assert not any(call[0] == 'run' for call in e.robot.calls)
+    assert ('stop', 11) in e.robot.calls
+    e.close()
+
+
+def test_connect_enables_sdk_warning_and_error_diagnostics():
+    from gento_dual_arm.engine import SDK_LOG_MASK
+    e = engine()
+    captured = []
+    def link(*args):
+        captured.append(args)
+        return 1
+    e.robot.link = link
+    e.connect()
+    assert captured[0][-1] == SDK_LOG_MASK
+    assert SDK_LOG_MASK & (1 << 2) and SDK_LOG_MASK & (1 << 3)
+    e.close()
+
+
+def test_console_status_is_concise_but_status_topic_keeps_diagnostics():
+    import json
+    from unittest.mock import MagicMock
+    from gento_dual_arm.node import Bridge
+    logger = MagicMock()
+    node = SimpleNamespace(status_pub=MagicMock(), get_logger=lambda: logger)
+    details = {'moving_arms': [0], 'joints_deg': [[0.]*7]*2,
+               'cartesian_plan': {'planned_duration_s': 6.1, 'retime_events': [{'large': 'diagnostics'}]}}
+    Bridge.status(node, 'running', **details)
+    logger.info.assert_called_once_with('running arms=left')
+    payload = json.loads(node.status_pub.publish.call_args.args[0].data)
+    assert payload['joints_deg'] == details['joints_deg']
+    assert payload['cartesian_plan']['retime_events'] == details['cartesian_plan']['retime_events']
+    Bridge.status(node, 'fault', reason='upload timeout', tracking={'large': 'diagnostics'})
+    logger.error.assert_called_once_with('fault: upload timeout')
+    Bridge.status(node, 'completed', cartesian_tracking={'max_line_error_m': {'0': .0005}})
+    logger.info.assert_called_with('completed')
