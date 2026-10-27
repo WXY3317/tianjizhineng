@@ -2652,14 +2652,14 @@ FX_INT32 CAxisJointPln::OnPln(Vect8 startp, Vect8 stopp, FX_DOUBLE vel_ratio, FX
 		vr = 1;
 	}
 
-	FX_DOUBLE ar = vel_ratio;
-	if (acc_ratio < 0.01)
+	FX_DOUBLE ar = acc_ratio;
+	if (ar < 0.01)
 	{
-		acc_ratio = 0.01;
+		ar = 0.01;
 	}
-	if (acc_ratio > 1)
+	if (ar > 1)
 	{
-		acc_ratio = 1;
+		ar = 1;
 	}
 
 	FX_DOUBLE t_max = 0;
@@ -2675,7 +2675,8 @@ FX_INT32 CAxisJointPln::OnPln(Vect8 startp, Vect8 stopp, FX_DOUBLE vel_ratio, FX
 			dsp = -dsp;
 		}
 		m_Pln_Len[i] = dsp;
-		if (dsp < 0.1)
+		// Only a stationary axis skips velocity/acceleration planning.
+		if (dsp == 0)
 		{
 			m_Pln_Type[i] = 0;
 		}
@@ -2741,9 +2742,11 @@ FX_INT32 CAxisJointPln::OnPln(Vect8 startp, Vect8 stopp, FX_DOUBLE vel_ratio, FX
 		}
 	}
 
+	// A repeated target is a valid hold trajectory, not a joint-limit error.
+	// Keep a positive duration so OnCut never divides by zero.
 	if (t_max_axis_num == -1)
 	{
-		return 0;
+		t_max = m_ts;
 	}
 
 	for (i = 0; i < m_dof; i++)

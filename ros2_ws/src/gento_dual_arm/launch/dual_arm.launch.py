@@ -9,7 +9,7 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 # 修改此处设置真机控制器地址；也可通过 ip:=... 临时覆盖。
-CONTROLLER_IP = '6.6.7.100'
+CONTROLLER_IP = '6.6.7.190'
 
 
 def default_sdk_root():
@@ -27,18 +27,17 @@ def generate_launch_description():
     defaults = {
         'sdk_root': (default_sdk_root(), str),
         'ip': (CONTROLLER_IP, str),
-        'execute': ('false', bool),
-        'speed': ('5.0', float), 
+        'speed': ('5.0', float),
         'acc': ('5.0', float),
-        'plan_speed': ('0.05', float), 
+        'plan_speed': ('0.05', float),
         'plan_acc': ('0.05', float),
-        'max_delta': ('5.0', float), 
-        'timeout': ('60.0', float), 
+        'max_delta': ('60.0', float),
+        'timeout': ('60.0', float),
         'tolerance': ('0.2', float),
-        'publish_rate': ('20.0', float), 
+        'publish_rate': ('20.0', float),
         'command_max_age': ('1.0', float),
         'sdk_length_to_m': ('0.001', float),
-        'left_frame': ('left_arm_sdk_base', str), 
+        'left_frame': ('left_arm_sdk_base', str),
         'right_frame': ('right_arm_sdk_base', str),
     }
     declarations = [DeclareLaunchArgument(k, default_value=v) for k, (v, _) in defaults.items()]

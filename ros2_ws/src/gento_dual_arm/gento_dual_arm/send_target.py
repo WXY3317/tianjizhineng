@@ -6,27 +6,36 @@ import time
 import rclpy
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import PoseStamped
-from .conversions import JOINT_NAMES, finite, pose_matrix
+from .conversions import BODY_JOINT_NAMES, JOINT_NAMES, finite, pose_matrix
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('--joints', nargs=14, type=float, help='Left 7 then right 7 absolute angles in radians')
+    group.add_argument('--left-joints', nargs=7, type=float, help='Seven absolute left arm angles in radians')
+    group.add_argument('--right-joints', nargs=7, type=float, help='Seven absolute right arm angles in radians')
     group.add_argument('--poses', nargs=14, type=float, help='Left x y z qx qy qz qw then right; metres, unit quaternions')
+    group.add_argument('--body', nargs=6, type=float, help='Six absolute body joint angles in radians')
     parser.add_argument('--prefix', default='/gento_dual_arm')
     parser.add_argument('--left-frame', default='left_arm_sdk_base')
     parser.add_argument('--right-frame', default='right_arm_sdk_base')
     args = parser.parse_args()
-    finite(args.joints if args.joints is not None else args.poses)
+    finite(next(values for values in (args.left_joints, args.right_joints, args.body, args.poses) if values is not None))
     rclpy.init(args=[])
     node = rclpy.create_node('gento_send_target')
     try:
-        if args.joints is not None:
+        if args.body is not None:
             msg = JointState()
-            msg.name, msg.position = JOINT_NAMES, args.joints
+            msg.name, msg.position = BODY_JOINT_NAMES, args.body
             messages = [msg]
-            topics = ['target_joints']
+            topics = ['body/target_joints']
+        elif args.left_joints is not None or args.right_joints is not None:
+            msg = JointState()
+            arm = 0 if args.left_joints is not None else 1
+            msg.name = JOINT_NAMES[arm*7:(arm+1)*7]
+            msg.position = args.left_joints if arm == 0 else args.right_joints
+            messages = [msg]
+            topics = ['left/target_joints' if arm == 0 else 'right/target_joints']
         else:
             messages = [PoseStamped(), PoseStamped()]
             for arm, pose in enumerate(messages):

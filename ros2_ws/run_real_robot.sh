@@ -5,9 +5,9 @@ workspace_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(dirname -- "$workspace_dir")"
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<'HELP'
-Usage: ./run_real_robot.sh [--build] [ip:=CONTROLLER_IPV4] [execute:=true] [name:=value ...]
+Usage: ./run_real_robot.sh [--build] [ip:=CONTROLLER_IPV4] [name:=value ...]
 Default IP is configured in launch/dual_arm.launch.py (CONTROLLER_IP).
-Default: connected preview (execute:=false). No simulator or RViz is started.
+Connects and publishes feedback. Valid targets execute directly.
 --build builds only gento_dual_arm before launching the bridge.
 Options are forwarded to ros2 launch gento_dual_arm dual_arm.launch.py.
 HELP

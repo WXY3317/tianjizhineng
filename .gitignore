@@ -13,7 +13,6 @@ ros2_ws/log/
 
 # SDK 内的编译日志
 tianji-robot-SDK/log/
-tianji_armSDK/log/
 
 # Python
 __pycache__/
@@ -35,14 +34,9 @@ Thumbs.db
 *.so
 
 # SDK 随附的运行库
-!tianji_armSDK/SDK_PYTHON/*.so
-!tianji_armSDK/SDK_PYTHON/*.dll
 !tianji-robot-SDK/PYTHON_SDK/*.so
 !tianji-robot-SDK/PYTHON_SDK/*.dll
 
-# SG100 SDK 发布包的运行库
-!SG100_SDK_Publish/lib/*/*.so
-!SG100_SDK_Publish/lib/*/*.dll
 
 # 真机独立 ROS 2 构建产物
 ros2_ws/build_real/

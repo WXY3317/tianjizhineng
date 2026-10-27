@@ -3,6 +3,15 @@
 import math
 
 JOINT_NAMES = [f'{side}_joint_{i}' for side in ('left', 'right') for i in range(1, 8)]
+BODY_JOINT_NAMES = [f'body_joint_{i}' for i in range(1, 7)]
+
+
+def body_target(names, positions):
+    if len(names) != 6 or len(set(names)) != 6 or set(names) != set(BODY_JOINT_NAMES) or len(positions) != 6:
+        raise ValueError('Expected exactly body_joint_1..6 and six absolute positions')
+    finite(positions)
+    values = dict(zip(names, positions))
+    return [math.degrees(values[name]) for name in BODY_JOINT_NAMES]
 
 
 def finite(values):
@@ -10,12 +19,15 @@ def finite(values):
         raise ValueError('Non-finite numeric input')
 
 
-def joint_target(names, positions):
-    if len(names) != 14 or len(set(names)) != 14 or set(names) != set(JOINT_NAMES) or len(positions) != 14:
-        raise ValueError('Expected exactly the 14 named left_joint_1..7/right_joint_1..7 joints')
+def joint_target(arm, names, positions):
+    if arm not in (0, 1):
+        raise ValueError('Arm index must be 0 or 1')
+    expected = JOINT_NAMES[arm*7:(arm+1)*7]
+    if len(names) != 7 or len(set(names)) != 7 or set(names) != set(expected) or len(positions) != 7:
+        raise ValueError(f'Expected exactly the seven joints: {expected}')
     finite(positions)
     values = dict(zip(names, positions))
-    return [[math.degrees(values[n]) for n in JOINT_NAMES[a*7:(a+1)*7]] for a in (0, 1)]
+    return [math.degrees(values[name]) for name in expected]
 
 
 def pose_matrix(pose, scale):
