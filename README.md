@@ -1,15 +1,22 @@
 # 天机双臂机器人真机控制（real 分支）
 
 通过 ROS 2 话题连接实体控制器，读取双臂关节反馈和 TCP 位姿，并控制躯干 6 个关节，
-调用 Gento SDK 完成 FK/IK、关节轨迹规划及执行。
+control 负责路径和时间规划，driver 通过唯一 SDK 连接提供点级 FK/IK 与受保护的执行。
 
 | 目录 | 内容 |
 |---|---|
-| `ros2_ws/src/gento_dual_arm` | 双臂真机 ROS 2 控制功能包 |
-| `ros2_ws/src/gento_dual_arm/REAL_TEST.md` | 包内单臂、双臂命令行测试说明 |
+| `ros2_ws/src/gento_driver` | 唯一 SDK、原始读写与独立执行保护 |
+| `ros2_ws/src/gento_control` | 运动任务、路径规划与执行管理 |
+| `ros2_ws/src/gento_feedback` | 反馈汇总、诊断和轨迹记录 |
+| `ros2_ws/src/gento_interfaces` | ROS 查询服务和轨迹 Action 定义 |
+| `ros2_ws/README.md` | 启动部署、常用命令与功能包说明 |
 | `tianji-robot-SDK` | Gento 原厂 SDK 与示例 |
 
+功能包职责、启动方式及新命令见 [工作空间说明](ros2_ws/README.md)。
+
 ## 启动
+
+分开启动使用 `./run_feedback_only.sh --build`（驱动和反馈）加另一终端的 `./run_control_only.sh`；一并启动使用 `./run_real_robot.sh --build`。两种方式都会初始化驱动并开放控制接口，详见工作空间说明。
 
 ROS 节点每次连接成功后自动清除双臂与躯干错误、确认 IDLE，并切换到 POSITION。收到合法目标后执行运动；启动不下发目标或回零。
 
@@ -24,8 +31,7 @@ cd ros2_ws
 ./run_real_robot.sh ip:=6.6.7.190
 ```
 
-话题格式、坐标系、目标发布和停止示例见 [双臂真机使用说明](ros2_ws/REAL_ROBOT.md)，
-完整参数见 [工作空间说明](ros2_ws/README.md)。
+话题格式、坐标系、目标发布和停止示例见 [工作空间说明](ros2_ws/README.md)。
 
 本分支已移除仿真功能包及启动脚本；仿真代码保留在其他分支。
 当前接口没有碰撞检测，尚未进行硬件联调。
@@ -41,7 +47,7 @@ Gento SDK 保留其随附的许可证与说明。
 
 
 急停：
-ros2 topic pub --once /gento_dual_arm/stop std_msgs/msg/Empty '{}'
+ros2 topic pub --once /gento_driver/stop std_msgs/msg/Empty '{}'
 
 ## 状态恢复与退出流程
 

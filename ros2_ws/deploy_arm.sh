@@ -15,7 +15,7 @@ import sys
 workspace = Path(sys.argv[1])
 project = workspace.parent
 parser = argparse.ArgumentParser(prog='deploy_arm.sh', description='Cross-build ARM64 SDK and deploy the project via SSH; never starts robot control.')
-parser.add_argument('--host', default='192.168.2.120')
+parser.add_argument('--host', default='tianji', help='SSH host or configured alias')
 parser.add_argument('--user', default='nvidia')
 parser.add_argument('--remote-dir', default='/home/nvidia/wxy/tianjizhineng')
 parser.add_argument('--ros-distro', default='humble')
@@ -79,6 +79,26 @@ def remote_script(script):
 # Read-only preflight: ensure the destination really is ARM64 before transferring.
 setup = f'/opt/ros/{args.ros_distro}/setup.bash'
 preflight = 'test "$(uname -m)" = aarch64\ncommand -v rsync >/dev/null\n'
+preflight += r"""python3 - <<'CHECK_ROBOT_PROCESSES'
+import sys
+from pathlib import Path
+executables = ('/gento_driver/bridge', '/gento_control/control', '/gento_feedback/feedback',
+               '/gento_dual_arm/bridge', '/gento_driver/arm_control', '/gento_driver/dual_arm_control')
+active = []
+for process in Path('/proc').iterdir():
+    if not process.name.isdigit():
+        continue
+    try:
+        args = [arg.decode(errors='replace') for arg in (process / 'cmdline').read_bytes().split(bytes([0])) if arg]
+    except OSError:
+        continue
+    if any(arg.endswith(executables) for arg in args):
+        active.append(process.name + ': ' + ' '.join(args))
+if active:
+    sys.exit('Stop robot nodes before deploying; no process was stopped automatically:\n' + '\n'.join(active))
+print('No running robot nodes detected')
+CHECK_ROBOT_PROCESSES
+"""
 if not args.skip_remote_build:
     preflight += f'test -f {shlex.quote(setup)}\ncommand -v colcon >/dev/null\n'
 print('1/4 Verify remote ARM64 environment', flush=True)
@@ -111,7 +131,8 @@ assert hashlib.sha256(data).hexdigest() == {digest!r}, 'Library SHA256 mismatch'
 header = data[:20]
 assert header[:4] == bytes([127, 69, 76, 70]) and header[4:6] == bytes([2, 1]) and struct.unpack_from('<H', header, 18)[0] == 183, 'Not ARM64 ELF'
 dll = ctypes.CDLL(str(p))
-for name in ('FX_L1_State_ResetError', 'FX_L1_Runtime_SetJointPosCmd', 'FX_L1_Kinematics_InverseKinematics'):
+for name in ('FX_L1_State_ResetError', 'FX_L1_Runtime_SetJointPosCmd', 'FX_L1_Kinematics_InverseKinematics',
+             'FX_L1_Runtime_SetSpeedRatio', 'FX_L1_Config_SetTraj', 'FX_L1_Runtime_RunTraj'):
     getattr(dll, name)
 os.replace(p, {remote_library!r})
 print('ARM64 SDK checksum, architecture and loading verified')
@@ -120,11 +141,36 @@ remote_script('python3 - <<\'VERIFY_ARM_SDK\'\n' + verify + 'VERIFY_ARM_SDK\n')
 
 if not args.skip_remote_build:
     print('4/4 Build ROS package on ARM64 host (no robot connection)', flush=True)
+    # rsync intentionally keeps unrelated files; retire only known removed implementations.
+    obsolete = ['src/gento_dual_arm',
+                'build_real/gento_dual_arm',
+                'install_real/gento_dual_arm',
+                'build/gento_dual_arm',
+                'install/gento_dual_arm',
+                'src/gento_driver/gento_driver/arm_control.py',
+                'src/gento_driver/gento_driver/dual_arm_control.py',
+                'src/gento_driver/gento_driver/cartesian.py',
+                'src/gento_driver/gento_driver/trajectory_diagnostics.py',
+                'src/gento_driver/gento_driver/diagnostics.py',
+                'install_real/gento_driver/lib/gento_driver/arm_control',
+                'install_real/gento_driver/lib/gento_driver/dual_arm_control']
+    cleanup = f'''import shutil, uuid
+from pathlib import Path
+workspace = Path({(remote_dir + '/ros2_ws')!r})
+archive = workspace / 'artifacts' / ('retired-split-' + uuid.uuid4().hex[:8])
+for relative in {obsolete!r}:
+    source = workspace / relative
+    if source.exists() or source.is_symlink():
+        destination = archive / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(destination))
+'''
+    remote_script("python3 - <<'RETIRE_REMOVED_MODULES'\n" + cleanup + 'RETIRE_REMOVED_MODULES\n')
     remote_script(f'''source {shlex.quote(setup)}
 cd {shlex.quote(remote_dir + '/ros2_ws')}
-colcon --log-base log_real build --base-paths src --packages-select gento_dual_arm --build-base build_real --install-base install_real --symlink-install
+colcon --log-base log_real build --base-paths src --packages-up-to gento_driver --build-base build_real --install-base install_real --symlink-install
 source install_real/setup.bash
-ros2 launch gento_dual_arm dual_arm.launch.py --show-args
+ros2 launch gento_driver dual_arm.launch.py --show-args
 ''')
 print(('Dry run finished. ' if args.dry_run else 'Deployment complete. ') + remote + ':' + remote_dir)
 print('No controller connection, error reset, mode switch, or motion was requested.')

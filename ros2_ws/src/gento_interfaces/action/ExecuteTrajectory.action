@@ -1,0 +1,16 @@
+string session_id
+string task_id
+sensor_msgs/JointState start_state
+trajectory_msgs/JointTrajectory[] trajectories
+# Expected speed/acceleration percentages, two values per trajectory in matching order.
+float64[] controller_ratios
+uint8[] line_objects
+geometry_msgs/Pose[] line_starts
+geometry_msgs/Pose[] line_goals
+---
+bool success
+string message
+string details
+---
+string state
+float64 progress

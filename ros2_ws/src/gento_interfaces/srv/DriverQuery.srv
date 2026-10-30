@@ -1,0 +1,8 @@
+string session_id
+string operation
+string payload
+---
+bool success
+string session_id
+string result
+string error
