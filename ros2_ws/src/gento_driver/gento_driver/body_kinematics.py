@@ -19,6 +19,10 @@ from scipy.spatial.transform import Rotation
 # J3/J4 signed bounds must come from the controller (the drawing is unsigned).
 _CAPS_DEG = (11.0, 50.0, None, None, 30.0, 170.0)
 _DEFAULT_CORD = Path(__file__).resolve().parent / "data" / "luna_body.Cord"
+# The controller's R.A{0,1}.L0.DH.D is 158.6 mm on this robot. SDK FK starts
+# before arm joint 1 by this distance along SDK +Z; Cord LA_J1/RA_J1 are at
+# the joint pivots. Move the SDK base back from each pivot along its local Z.
+_SDK_BASE_TO_ARM_J1_MM = 158.6
 
 
 def _array(value, shape, name):
@@ -90,7 +94,9 @@ def _load_chain(path):
     mounts = {}
     for arm, joint in ((0, "LA_J1"), (1, "RA_J1")):
         if nodes.get("BD_FL", (None,))[0] == "BD_J6" and nodes.get(joint, (None,))[0] == "BD_FL":
-            mounts[arm] = nodes["BD_FL"][1] @ nodes[joint][1]
+            joint_to_sdk_base = np.eye(4)
+            joint_to_sdk_base[2, 3] = -_SDK_BASE_TO_ARM_J1_MM
+            mounts[arm] = nodes["BD_FL"][1] @ nodes[joint][1] @ joint_to_sdk_base
     return tuple(chain), agv_to_base, mounts
 
 
@@ -183,7 +189,7 @@ class LunaBodyKinematics:
         return self._fk(np.deg2rad(q)).tolist()
 
     def arm_bases_in_body(self, joints_deg):
-        """T_body_base_LA_J1 and T_body_base_RA_J1, in mm, from measured torso angles."""
+        """T_body_base_SDK_base for each arm, in mm, from measured torso angles."""
         if len(self._arm_mounts) != 2:
             raise ValueError("Arm mounting frames are missing from the Cord model")
         q = _array(joints_deg, (6,), "joints_deg")

@@ -31,8 +31,13 @@ def test_zero_pose_base_and_joint_six_tip(model):
 
 def test_arm_mounts_follow_torso_and_match_cord_geometry(model):
     left, right = map(np.array, model.arm_bases_in_body([0]*6))
-    assert left[:3, 3] == pytest.approx([0, 214.6, 1156.5])
-    assert right[:3, 3] == pytest.approx([0, -214.6, 1156.5])
+    assert left[:3, 3] == pytest.approx([0, 56.0, 1156.5])
+    assert right[:3, 3] == pytest.approx([0, -56.0, 1156.5])
+    # Zero-joint SDK flange FK is +773.6 mm along its Z axis. The corrected
+    # base places that flange at the MJCF l_ee centre, 829.6 mm from BD_J6.
+    sdk_flange = np.eye(4)
+    sdk_flange[2, 3] = 773.6
+    assert (left @ sdk_flange)[:3, 3] == pytest.approx([0, 829.6, 1156.5])
     moved = np.array(model.arm_bases_in_body([0, 20, 0, 0, 0, 0])[0])
     assert np.linalg.norm(moved[:3, 3] - left[:3, 3]) > 10
 
