@@ -10,7 +10,7 @@ Default IP is configured in src/gento_driver/launch/dual_arm.launch.py (CONTROLL
 Connects and publishes feedback. Valid targets execute directly.
 Use start_control:=false to start driver + feedback with control enabled,
 then start ./run_control_only.sh in another terminal.
---build builds driver, control and feedback packages before launch.
+--build builds driver, control, feedback and scene packages before launch.
 Options are forwarded to ros2 launch gento_driver dual_arm.launch.py.
 HELP
   exit 0
@@ -24,7 +24,7 @@ fi
 source "$ros_setup"
 cd "$workspace_dir"
 if [[ "${1:-}" == "--build" ]]; then
-  colcon --log-base log_real build --base-paths src --packages-up-to gento_driver \
+  colcon --log-base log_real build --base-paths src --packages-up-to gento_driver scene \
     --build-base build_real --install-base install_real --symlink-install
   shift
 fi

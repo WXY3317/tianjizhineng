@@ -137,3 +137,15 @@ ros2 topic pub --once /gento_control/reset_error std_msgs/msg/Empty '{}'
 # 左臂清错；右臂、躯干分别将 left 替换为 right、body
 ros2 topic pub --once /gento_control/left/reset_error std_msgs/msg/Empty '{}'
 ```
+
+## 6. MQTT 视觉目标场景
+
+独立 `scene` 包默认订阅 MQTT `/vision_targe`，从
+`/gento_feedback/body/tcp_pose` 取得实时 `T_body_base_BD_J6`，再向
+`/gento_control/left/target_pose` 或 `/gento_control/right/target_pose`
+发布 `body_base` 下的目标。`position1`、`position2` 按顺序执行；
+每个目标在 `BD_J6` 下的 Y 为正选择左臂，为负选择右臂。两点共用
+`orientation`；全零 `position2` 占位会跳过。状态见 `/scene/status`。
+可用 `./run_real_robot.sh start_scene:=true` 随真机程序启动，或单独
+`ros2 launch scene scene.launch.py`；默认不启动场景节点。
+MQTT JSON 格式见 `ros2_ws/src/scene/README.md`。

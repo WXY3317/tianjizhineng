@@ -84,9 +84,11 @@ def generate_launch_description():
     return LaunchDescription(declarations + [
         DeclareLaunchArgument('start_feedback', default_value='true', description='Start feedback relay without SDK access'),
         DeclareLaunchArgument('start_mqtt_feedback', default_value='true', description='Mirror BD_J6 arm poses to MQTT'),
+        DeclareLaunchArgument('start_scene', default_value='false', description='Run the MQTT vision target scene'),
         DeclareLaunchArgument('mqtt_host', default_value='127.0.0.1'),
         DeclareLaunchArgument('mqtt_port', default_value='1883'),
         DeclareLaunchArgument('mqtt_topic_prefix', default_value='gento/feedback'),
+        DeclareLaunchArgument('vision_mqtt_topic', default_value='/vision_targe'),
         DeclareLaunchArgument('start_control', default_value='true', description='Start control node when enable_control is true'),
         Node(package='gento_driver', executable='bridge',
                                                  name='gento_driver', output='screen', parameters=[params]),
@@ -99,6 +101,12 @@ def generate_launch_description():
                  'mqtt_port': ParameterValue(LaunchConfiguration('mqtt_port'), value_type=int),
                  'mqtt_topic_prefix': ParameterValue(LaunchConfiguration('mqtt_topic_prefix'), value_type=str)}],
              condition=IfCondition(LaunchConfiguration('start_mqtt_feedback'))),
+        Node(package='scene', executable='vision_targets', name='scene_vision_targets',
+             output='screen', parameters=[{
+                 'mqtt_host': ParameterValue(LaunchConfiguration('mqtt_host'), value_type=str),
+                 'mqtt_port': ParameterValue(LaunchConfiguration('mqtt_port'), value_type=int),
+                 'mqtt_topic': ParameterValue(LaunchConfiguration('vision_mqtt_topic'), value_type=str)}],
+             condition=IfCondition(LaunchConfiguration('start_scene'))),
         GroupAction(condition=IfCondition(LaunchConfiguration('enable_control')), actions=[
             Node(package='gento_control', executable='control', name='gento_control',
                  output='screen', condition=IfCondition(LaunchConfiguration('start_control')))])])
