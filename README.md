@@ -1,7 +1,8 @@
-# 天机双臂机器人真机控制（real 分支）
+# 天机机器人 ROS 2 真机控制
 
-通过 ROS 2 话题连接实体控制器，读取双臂关节反馈和 TCP 位姿，并控制躯干 6 个关节，
-control 负责路径和时间规划，driver 通过唯一 SDK 连接提供点级 FK/IK 与受保护的执行。
+通过 ROS 2 Humble 连接实体控制器，读取双臂、躯干和头部反馈，控制双臂及六轴躯干。
+driver 独占 SDK 连接，control 规划轨迹，feedback 发布位姿和状态；独立的 `scene`
+包可将 MQTT 视觉目标转换为双臂运动目标。
 
 | 目录 | 内容 |
 |---|---|
@@ -9,6 +10,8 @@ control 负责路径和时间规划，driver 通过唯一 SDK 连接提供点级
 | `ros2_ws/src/gento_control` | 运动任务、路径规划与执行管理 |
 | `ros2_ws/src/gento_feedback` | 反馈汇总、诊断和轨迹记录 |
 | `ros2_ws/src/gento_interfaces` | ROS 查询服务和轨迹 Action 定义 |
+| `ros2_ws/src/scene` | MQTT `/vision_target` 视觉目标转换和顺序执行 |
+| `ros2_ws/src/gripper` | 左右夹爪的 RS485 ROS 接口 |
 | `ros2_ws/README.md` | 启动部署、常用命令与功能包说明 |
 | `tianji-robot-SDK` | Gento 原厂 SDK 与示例 |
 
@@ -16,12 +19,16 @@ control 负责路径和时间规划，driver 通过唯一 SDK 连接提供点级
 
 ## 启动
 
-分开启动使用 `./run_feedback_only.sh --build`（驱动和反馈）加另一终端的 `./run_control_only.sh`；一并启动使用 `./run_real_robot.sh --build`。两种方式都会初始化驱动并开放控制接口，详见工作空间说明。
+一并启动真机控制使用 `ros2_ws/run_real_robot.sh`；分开启动可用
+`run_feedback_only.sh` 加 `run_control_only.sh`。场景节点可单独使用
+`run_scene.sh`，或在真机启动时传入 `start_scene:=true`。场景默认关闭。
+具体命令见 [工作空间说明](ros2_ws/README.md)。
 
-ROS 节点每次连接成功后自动清除双臂与躯干错误、确认 IDLE，并切换到 POSITION。收到合法目标后执行运动；启动不下发目标或回零。
+真机控制模式启动时会对处于 ERROR 的对象清错、确认 IDLE，再切换到 POSITION。
+收到合法目标后执行运动；启动本身不下发目标或回零。
 
-需要 ROS 2 Humble、Python 3.10、colcon，以及与真机固件和主机架构匹配的 SDK 动态库。
-将 IP 替换为实际控制器地址：
+需要 ROS 2 Humble、Python 3.10、colcon、`paho-mqtt`，以及与固件和主机架构匹配的 SDK 动态库。
+下面的 IP 是机器人控制器地址，不是 tianji 主机的 SSH 地址：
 
 ```bash
 cd ros2_ws
@@ -29,25 +36,39 @@ cd ros2_ws
 ./run_real_robot.sh --build ip:=6.6.7.190
 # 后续连接；收到合法目标后直接执行
 ./run_real_robot.sh ip:=6.6.7.190
+
+# 另一终端：接收 MQTT 视觉目标并发布双臂目标
+./run_scene.sh
 ```
 
-话题格式、坐标系、目标发布和停止示例见 [工作空间说明](ros2_ws/README.md)。
+双臂位姿目标使用固定在躯干第 1 轴中心的 `body_base`；`BD_J6` 是随躯干运动的
+第 6 轴坐标系。左、右法兰相对这两个坐标系的反馈分别在
+`/gento_feedback/{left,right}/tcp_pose_body_base` 和 `.../tcp_pose_bd_j6`。
+控制器 DH 中臂 SDK 基座到第 1 轴的 158.6 mm 偏移已计入安装变换。
+话题格式和坐标变换见 [ROS 2 话题说明](ROS2_TOPICS.md)。
 
-本分支已移除仿真功能包及启动脚本；仿真代码保留在其他分支。
-当前接口没有碰撞检测，尚未进行硬件联调。
+MQTT Broker 在 tianji 的 `127.0.0.1:1883` 和 `192.168.2.121:1883` 提供服务。
+场景订阅 **`/vision_target`**；目标点在 `BD_J6` 下 Y 为正由左臂执行，为负由右臂执行，
+`position1` 完成后再执行 `position2`。消息格式见 [scene 说明](ros2_ws/src/scene/README.md)。
+
+当前控制接口没有碰撞检测；运行前应核对实机目标与路径。
 
 ## 获取代码
 
 ```bash
-git clone --branch real git@github.com:WXY3317/tianjizhineng.git
+git clone git@github.com:WXY3317/tianjizhineng.git
 cd tianjizhineng
+git switch feature/leg-j1-arm-targets
 ```
 
 Gento SDK 保留其随附的许可证与说明。
 
 
-急停：
+软件停止：
+
+```bash
 ros2 topic pub --once /gento_driver/stop std_msgs/msg/Empty '{}'
+```
 
 ## 状态恢复与退出流程
 

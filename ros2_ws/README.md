@@ -1,6 +1,7 @@
 # Gento 真机工作空间
 
-ROS 2 Humble 工作空间，提供双臂、躯干控制及关节和 TCP 反馈。三个业务节点独立运行，driver 独占唯一 SDK 连接。
+ROS 2 Humble 工作空间，提供双臂、躯干、夹爪控制，关节与法兰位姿反馈，
+以及 MQTT 视觉目标场景。driver 独占唯一 SDK 连接；control、feedback、scene 不直接连接 SDK。
 
 六轴躯干正逆解在 `gento_driver.body_kinematics` 中实现，使用躯干固定基座和第 6 关节 `BD_J6` 末端，支持控制器限位、J2 ±50°约束及接近当前关节角的选解。调用方式和离线示例见 [躯干运动学说明](src/gento_driver/BODY_KINEMATICS.md)。
 
@@ -10,15 +11,20 @@ ROS 2 Humble 工作空间，提供双臂、躯干控制及关节和 TCP 反馈�
 
 ```bash
 # 部署前先在远端按 Ctrl+C 退出机器人节点
-# 自动交叉编译 ARM64 SDK、同步并在远端编译四个包，不启动机器人
+# 自动交叉编译 ARM64 SDK、同步并在远端编译 driver 及其依赖，不启动机器人
 ./deploy_arm.sh --host tianji
 
 # 启动二选一；--build 表示先编译，后续启动可省略
 ./run_feedback_only.sh --build  # driver + feedback，开放执行接口，control 单独启动
-./run_real_robot.sh --build    # driver + feedback + control，允许控制
+./run_real_robot.sh --build    # driver + feedback + control，并构建 scene；允许控制
 
 # 临时覆盖参数
 ./run_real_robot.sh speed:=5.0 acc:=5.0 cartesian_angular_speed:=0.1
+
+# 场景节点单独启动，自动加载工作区环境；首次构建可加 --build
+./run_scene.sh
+# 或随真机程序一起启动场景（不再单独运行 run_scene.sh）
+./run_real_robot.sh start_scene:=true
 ```
 
 无需图形界面。`run_feedback_only.sh` 与 `run_real_robot.sh` 不能同时运行，也不要同时使用其他厂商客户端连接机器人。两个脚本都会执行恢复和 POSITION 初始化，等待 `ready` 后发送目标，启动不会自动回零。`run_feedback_only.sh` 仅表示不启动 control，并非只读模式。
@@ -34,6 +40,9 @@ ROS 2 Humble 工作空间，提供双臂、躯干控制及关节和 TCP 反馈�
 
 `run_control_only.sh --build` 可先编译控制包及其依赖。不要重复启动 control。
 两个终端须使用相同的 ROS_DOMAIN_ID 和可互通的 DDS 配置。只有 driver 建立 SDK 连接，control 通过 ROS 接口使用它。
+`run_scene.sh` 只启动视觉目标节点，不启动真机驱动；须确保 control 与 feedback 已运行。
+其默认 MQTT Broker 为本机 `127.0.0.1:1883`，也可传入
+`mqtt_host:=... mqtt_port:=... mqtt_topic:=...`。默认主题为 `/vision_target`。
 
 | SDK 构建脚本 | 用途 |
 | --- | --- |
@@ -52,6 +61,8 @@ source install_real/setup.bash
 ros2 topic echo --once /gento_feedback/left/tcp_pose
 ros2 topic echo --once /gento_feedback/right/tcp_pose
 ros2 topic echo --once /gento_feedback/body/tcp_pose
+ros2 topic echo --once /gento_feedback/left/tcp_pose_body_base
+ros2 topic echo --once /gento_feedback/left/tcp_pose_bd_j6
 ros2 topic echo --once /gento_feedback/full_joint_states
 ros2 topic echo /gento_control/status
 ```
@@ -94,11 +105,22 @@ ros2 topic pub --once /gento_control/left/target_joints sensor_msgs/msg/JointSta
 
 ```
 
-双臂位姿目标标准坐标系为固定在躯干第 1 轴中心的 `body_base`；程序使用当前躯干角度转换到 SDK 臂基座后逆解，不依赖设备 TF。`/gento_feedback/left|right/tcp_pose_body_base` 给出统一坐标反馈；`/gento_feedback/left|right/tcp_pose_bd_j6` 给出相对当前躯干末端 `BD_J6` 的位姿，仅用于反馈，不作为逆解目标。旧 `left|right/tcp_pose` 仍为各自 SDK 基座坐标。真机使用前须核准 Cord 安装坐标与 SDK 基座一致。躯干 `body/tcp_pose` 来自当前六轴反馈角的本地正解，末端为 `BD_J6`，不是外部测量。旧 `/gento_dual_arm/...` 话题已移除。
+双臂位姿目标标准坐标系为固定在躯干第 1 轴中心的 `body_base`；程序使用当前躯干角度转换到 SDK 臂基座后逆解，不依赖设备 TF。`/gento_feedback/left|right/tcp_pose_body_base` 给出统一坐标反馈；`/gento_feedback/left|right/tcp_pose_bd_j6` 给出相对当前躯干末端 `BD_J6` 的位姿，仅用于反馈，不作为逆解目标。旧 `left|right/tcp_pose` 仍为各自 SDK 基座坐标。安装变换包含控制器 DH 中 SDK 基座到第 1 轴中心的 158.6 mm 偏移；双臂零位法兰相对 `BD_J6` 的 Y 约为 ±0.8296 m。躯干 `body/tcp_pose` 来自当前六轴反馈角的本地正解，末端为 `BD_J6`，不是外部测量。旧 `/gento_dual_arm/...` 话题已移除。
 
 `BD_J6` 双臂反馈同时通过独立 MQTT 节点发往设备原有配置的 `127.0.0.1:1883`，主题为
 `gento/feedback/left/tcp_pose_bd_j6` 和 `gento/feedback/right/tcp_pose_bd_j6`。
-启动参数 `start_mqtt_feedback:=false` 可关闭；Broker 需由设备现有 MQTT 服务提供。
+启动参数 `start_mqtt_feedback:=false` 可关闭；tianji 的 Mosquitto 默认在
+`127.0.0.1:1883` 和 `192.168.2.121:1883` 提供局域网发布与订阅。
+
+### MQTT 视觉目标场景
+
+`scene` 默认订阅 MQTT `/vision_target`。消息使用米和 `xyzw` 单位四元数，
+`position1`、`position2` 是 `BD_J6` 下依次执行的目标，二者共用 `orientation`。
+每个目标的 Y > 0 选择左臂，Y < 0 选择右臂；全零 `position2` 为占位并跳过。
+节点使用实时 `/gento_feedback/body/tcp_pose` 将两点转换到 `body_base`，
+第一步收到 control 的 `completed` 后才发送第二步。MQTT retained 消息、
+过期躯干反馈和 Y = 0 的非占位目标会被拒绝。查看 `/scene/status` 了解处理结果。
+完整消息格式见 [scene 功能包说明](src/scene/README.md)。
 
 躯干位姿通过 `/gento_control/body/target_pose` 发送，`frame_id` 设为 `body_base`。该话题会逆解并**执行运动**；只预览逆解时使用 `/gento_control/body/preview_pose`，结果发布到 `/gento_control/body/ik_result` 并在 control 日志打印。以当前反馈位姿为起点修改目标，必须重新填写时间戳。逆解约束完整位置与朝向，并在 `max_delta` 和有效限位内优先接近当前关节角；J2 额外限制为 ±50°。关节角执行仍使用 `/gento_control/body/target_joints`。详见 [躯干话题用法](src/gento_driver/BODY_KINEMATICS.md#ros-话题反馈和控制)。
 
@@ -301,6 +323,7 @@ ros2 topic pub --once /right_gripper/command gripper/msg/GripperCommand '{action
 | `publish_rate` | 反馈发布频率 Hz，不改变轨迹的 50 Hz 采样周期 |
 | `sdk_length_to_m` | SDK 长度换算为米，默认 0.001（mm → m），不能用于调速 |
 | `trajectory_log_dir` | 轨迹记录目录，默认 `~/.ros/gento_trajectories`，空字符串关闭记录 |
+| `start_scene`、`vision_mqtt_topic` | 随真机启动 scene（默认关闭）及其 MQTT 主题（默认 `/vision_target`） |
 
 双臂位姿任务先做位置直线插值和姿态 SLERP，再以上一点关节解为参考逐点求 IK。完整路径通过限位、连续性、速度和加速度检查后，才上传关节轨迹执行，必要时自动延长时间。终点可达不代表保持指定姿态的整条直线路径可达。
 
@@ -314,6 +337,8 @@ ros2 topic pub --once /right_gripper/command gripper/msg/GripperCommand '{action
 | `gento_control` | 接收目标、路径和时间规划、Action 执行管理与心跳 |
 | `gento_feedback` | 汇总关节/TCP/错误反馈，诊断并记录轨迹 JSON |
 | `gento_interfaces` | 查询服务和轨迹 Action 定义，不运行节点 |
+| `scene` | MQTT 视觉目标解析、`BD_J6` 到 `body_base` 转换及双臂目标顺序发布 |
+| `gripper` | RS485 左右夹爪状态与控制 |
 
 control 通过 `/gento_driver/query` 查询、计算 IK/FK 和恢复，通过 `/gento_driver/execute` 提交轨迹，通过 `/gento_driver/heartbeat` 维持心跳。driver 发布 `/gento_driver/raw_state` 和 `/gento_driver/status`；feedback 整理为 `/gento_feedback/...`，结合 `/gento_control/plan` 和 `/gento_control/status` 保存记录。control、feedback 不直接连接 SDK。
 
@@ -322,5 +347,5 @@ driver 独立检查起点、限位、速度、模式、断链、超时、心跳�
 修改代码后可运行回归测试（先构建并加载环境）：
 
 ```bash
-python3 -m pytest src/gento_driver/test src/gento_control/test src/gento_feedback/test -q
+python3 -m pytest src/gento_driver/test src/gento_control/test src/gento_feedback/test src/scene/test -q
 ```

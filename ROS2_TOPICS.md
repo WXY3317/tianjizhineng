@@ -27,20 +27,21 @@ effort: []
 
 | 话题名称 | 消息类型 | 内容 |
 | --- | --- | --- |
-| `/gento_feedback/left/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 左臂 TCP 位姿，位置 m、姿态单位四元数，默认坐标系 `left_arm_sdk_base` |
-| `/gento_feedback/right/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 右臂 TCP 位姿，位置 m、姿态单位四元数，默认坐标系 `right_arm_sdk_base` |
+| `/gento_feedback/left/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 左臂 SDK 正解末端（当前未设置工具偏移，即法兰）位姿，位置 m、姿态单位四元数，默认坐标系 `left_arm_sdk_base` |
+| `/gento_feedback/right/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 右臂 SDK 正解末端（当前未设置工具偏移，即法兰）位姿，位置 m、姿态单位四元数，默认坐标系 `right_arm_sdk_base` |
 | `/gento_feedback/left/tcp_pose_body_base` | `geometry_msgs/msg/PoseStamped` | 左臂 TCP 在固定 `body_base` 中的位姿，位置 m |
 | `/gento_feedback/right/tcp_pose_body_base` | `geometry_msgs/msg/PoseStamped` | 右臂 TCP 在固定 `body_base` 中的位姿，位置 m |
 | `/gento_feedback/left/tcp_pose_bd_j6` | `geometry_msgs/msg/PoseStamped` | 左臂 TCP 相对当前 `BD_J6` 的位姿，位置 m、姿态单位四元数，仅反馈 |
 | `/gento_feedback/right/tcp_pose_bd_j6` | `geometry_msgs/msg/PoseStamped` | 右臂 TCP 相对当前 `BD_J6` 的位姿，位置 m、姿态单位四元数，仅反馈 |
 | `/gento_feedback/body/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 当前躯干六轴反馈角正解得到的 `BD_J6` 位姿，位置 m、姿态单位四元数，默认坐标系 `body_base` |
 
-同一组 `BD_J6` 位姿还由独立的 MQTT 节点发布到设备配置的 Broker `127.0.0.1:1883`：
+同一组 `BD_J6` 位姿还由独立的 MQTT 节点发布到 tianji 的 Broker `127.0.0.1:1883`：
 `gento/feedback/left/tcp_pose_bd_j6` 和 `gento/feedback/right/tcp_pose_bd_j6`。
 消息是 JSON，包含 `frame_id`、`stamp`（`sec`/`nanosec`）、`position`（米）和
 `orientation`（四元数 `x/y/z/w`）。MQTT 仅反馈，QoS 0，不保留旧位姿；
 Broker 暂不可用时节点自动重连。启动参数 `start_mqtt_feedback:=false` 可关闭，
 `mqtt_host`、`mqtt_port`、`mqtt_topic_prefix` 可覆盖连接和主题前缀。
+Broker 同时监听局域网地址 `192.168.2.121:1883`，允许局域网客户端无凭据发布和订阅。
 
 消息样例（左臂；右臂替换 `frame_id`）：
 
@@ -90,8 +91,9 @@ data: '{"state": "completed", "session_id": "session-001", "task_id": "task-001"
 
 双臂目标使用 `frame_id: body_base`。`body_base` 固定于躯干第 1 轴中心，轴方向与 AGV 平行；它不随第 1 关节旋转。
 控制节点使用当前躯干反馈角和 `luna_body.Cord` 的 `BD_J6 -> BD_FL -> LA_J1/RA_J1` 安装链，
-将目标转换到各自 SDK 基座后执行现有逆解。躯干在双臂执行期间若偏离起点超过 0.2°，驱动停止执行。
-真机执行前必须核准 Cord 的 `LA_J1/RA_J1` 与 SDK 逆解基座的原点和轴向一致。
+再沿 SDK 局部 Z 轴减去控制器 `R.A{0,1}.L0.DH.D = 158.6 mm`，得到各自 SDK 基座后执行现有逆解。
+这段偏移已用于位姿反馈和目标逆变换；全零位左臂法兰相对 `BD_J6` 的 Y 为约 0.8296 m。
+躯干在双臂执行期间若偏离起点超过 0.2°，驱动停止执行。
 旧 SDK 基坐标系目标仍可接收，用于兼容和核对；旧 TCP 反馈话题保持 SDK 坐标，新增的 `*_body_base` 话题用于统一坐标反馈。
 
 发布样例（左臂；数值仅说明格式，执行前应确认目标及路径）：
@@ -140,12 +142,32 @@ ros2 topic pub --once /gento_control/left/reset_error std_msgs/msg/Empty '{}'
 
 ## 6. MQTT 视觉目标场景
 
-独立 `scene` 包默认订阅 MQTT `/vision_target`，从
-`/gento_feedback/body/tcp_pose` 取得实时 `T_body_base_BD_J6`，再向
-`/gento_control/left/target_pose` 或 `/gento_control/right/target_pose`
-发布 `body_base` 下的目标。`position1`、`position2` 按顺序执行；
-每个目标在 `BD_J6` 下的 Y 为正选择左臂，为负选择右臂。两点共用
-`orientation`；全零 `position2` 占位会跳过。状态见 `/scene/status`。
-可用 `./run_real_robot.sh start_scene:=true` 随真机程序启动，或单独
-`./run_scene.sh`；默认不启动场景节点。
-MQTT JSON 格式见 `ros2_ws/src/scene/README.md`。
+独立 `scene` 包默认订阅 tianji Broker 的 **`/vision_target`**（含开头的 `/`）。
+可用 `./run_real_robot.sh start_scene:=true` 随真机程序启动，或在真机运行时
+另开终端执行 `./run_scene.sh`；默认不启动场景节点。脚本支持
+`mqtt_host:=... mqtt_port:=... mqtt_topic:=...`，首次构建使用 `./run_scene.sh --build`。
+
+输入是 UTF-8 JSON；示意图中不带引号的 `position1`、`position2`、`orientation`
+顶层键也可解析。坐标单位为米，姿态为 `BD_J6` 下的单位四元数 `x/y/z/w`：
+
+```json
+{
+  "position1": {"x": 0.12, "y": -0.08, "z": 0.39},
+  "position2": {"x": 0.10, "y": 0.15, "z": 0.35},
+  "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0}
+}
+```
+
+`position1`、`position2` 依次执行、共用 `orientation`。每个目标在 `BD_J6`
+下的 **Y > 0 选择左臂、Y < 0 选择右臂**；全零 `position2` 占位会跳过，
+其他 Y = 0 目标会被拒绝。上例先由右臂执行，再由左臂执行。
+节点使用新鲜的 `/gento_feedback/body/tcp_pose` 计算
+`T_body_base_target = T_body_base_BD_J6 × T_BD_J6_target`，然后向对应的
+`/gento_control/{left,right}/target_pose` 发布带当前时间戳的 `PoseStamped`。
+第一步收到 control 的 `completed` 状态后才发送第二步；执行中收到的新 MQTT
+目标会被忽略。MQTT retained 消息和过期躯干反馈不会触发运动。
+
+`/scene/status` 是 `std_msgs/msg/String`，`data` 为 JSON，含 `state`
+（如 `sent`、`step_completed`、`rejected`）、目标臂、剩余步数或拒绝原因。
+可用 `ros2 topic echo /scene/status` 查看；完整启动说明见
+[scene 功能包说明](ros2_ws/src/scene/README.md)。
