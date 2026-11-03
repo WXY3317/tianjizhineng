@@ -147,5 +147,5 @@ ros2 topic pub --once /gento_control/left/reset_error std_msgs/msg/Empty '{}'
 每个目标在 `BD_J6` 下的 Y 为正选择左臂，为负选择右臂。两点共用
 `orientation`；全零 `position2` 占位会跳过。状态见 `/scene/status`。
 可用 `./run_real_robot.sh start_scene:=true` 随真机程序启动，或单独
-`ros2 launch scene scene.launch.py`；默认不启动场景节点。
+`./run_scene.sh`；默认不启动场景节点。
 MQTT JSON 格式见 `ros2_ws/src/scene/README.md`。

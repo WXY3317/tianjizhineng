@@ -3,16 +3,17 @@
 启动真机驱动后，在另一个终端运行：
 
 ```bash
-source /opt/ros/humble/setup.bash
-source ~/wxy/tianjizhineng/ros2_ws/install_real/setup.bash
-ros2 launch scene scene.launch.py
+cd ~/wxy/tianjizhineng/ros2_ws
+./run_scene.sh
 ```
+
+首次构建或源码更新后使用 `./run_scene.sh --build`。脚本自动加载 ROS 和工作区环境。
 
 也可以在真机启动命令中传入 `start_scene:=true` 一起启动。此选项默认关闭；
 收到新 MQTT 目标后才会向双臂控制话题发布命令。
 
 默认订阅本机 Broker 的 MQTT 主题 **`/vision_targe`**（保留原拼写及开头的 `/`）。
-如需其他 Broker，可传入 `mqtt_host:=... mqtt_port:=... mqtt_topic:=...`。
+如需其他 Broker，可向脚本传入 `mqtt_host:=... mqtt_port:=... mqtt_topic:=...`。
 
 消息以 UTF-8 发送。支持标准 JSON，也兼容示意图里未加引号的三个顶层字段名：
 
