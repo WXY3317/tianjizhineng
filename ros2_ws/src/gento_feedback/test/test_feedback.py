@@ -6,7 +6,7 @@ from sensor_msgs.msg import JointState
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import String
 from rclpy.executors import SingleThreadedExecutor
-from gento_feedback.node import Feedback,segment_error,arm_pose_in_body
+from gento_feedback.node import Feedback,segment_error,arm_pose_in_body,pose_relative_to_frame
 
 
 def raw():
@@ -59,6 +59,15 @@ def test_arm_pose_in_body_composes_rotation_and_millimetre_translation():
     assert [result[0][j] for j in range(3)]==[0,-1,0]
 
 
+def test_arm_pose_relative_to_rotated_bd_j6():
+    # J6 has yaw 90 degrees, while the arm TCP is 100 mm along body X.
+    j6=[[0,-1,0,0],[1,0,0,0],[0,0,1,765],[0,0,0,1]]
+    tcp=[[1,0,0,.1],[0,1,0,0],[0,0,1,.765],[0,0,0,1]]
+    relative=pose_relative_to_frame(j6,tcp)
+    assert [relative[i][3] for i in range(3)]==pytest.approx([0,-.1,0])
+    assert [relative[0][j] for j in range(3)]==[0,1,0]
+
+
 def test_body_pose_uses_measured_matrix_stamp_and_fixed_mm_scale():
     from unittest.mock import MagicMock
     rclpy.init(args=[],domain_id=224)
@@ -76,6 +85,25 @@ def test_body_pose_uses_measured_matrix_stamp_and_fixed_mm_scale():
         assert message.pose.position.z==1.1
         assert abs(message.pose.orientation.z-2**-.5)<1e-10
         assert abs(message.pose.orientation.w-2**-.5)<1e-10
+    finally:
+        node.close();node.destroy_node();rclpy.shutdown()
+
+
+def test_bd_j6_arm_feedback_is_published_without_changing_control():
+    from unittest.mock import MagicMock
+    rclpy.init(args=[],domain_id=224)
+    node=Feedback()
+    try:
+        node.output_publishers['left/tcp_pose_bd_j6']=MagicMock()
+        source=raw()
+        source['config']['body_frame']='body_base'
+        source['body_matrix']=[[1,0,0,0],[0,1,0,0],[0,0,1,765],[0,0,0,1]]
+        source['arm_bases_in_body']=[[[1,0,0,0],[0,1,0,0],[0,0,1,1156.5],[0,0,0,1]]]*2
+        node.on_raw(String(data=json.dumps(source)))
+        message=node.output_publishers['left/tcp_pose_bd_j6'].publish.call_args[0][0]
+        assert message.header.frame_id=='BD_J6'
+        assert message.header.stamp.sec==123
+        assert message.pose.position.z==pytest.approx(.6915)
     finally:
         node.close();node.destroy_node();rclpy.shutdown()
 

@@ -31,6 +31,8 @@ effort: []
 | `/gento_feedback/right/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 右臂 TCP 位姿，位置 m、姿态单位四元数，默认坐标系 `right_arm_sdk_base` |
 | `/gento_feedback/left/tcp_pose_body_base` | `geometry_msgs/msg/PoseStamped` | 左臂 TCP 在固定 `body_base` 中的位姿，位置 m |
 | `/gento_feedback/right/tcp_pose_body_base` | `geometry_msgs/msg/PoseStamped` | 右臂 TCP 在固定 `body_base` 中的位姿，位置 m |
+| `/gento_feedback/left/tcp_pose_bd_j6` | `geometry_msgs/msg/PoseStamped` | 左臂 TCP 相对当前 `BD_J6` 的位姿，位置 m、姿态单位四元数，仅反馈 |
+| `/gento_feedback/right/tcp_pose_bd_j6` | `geometry_msgs/msg/PoseStamped` | 右臂 TCP 相对当前 `BD_J6` 的位姿，位置 m、姿态单位四元数，仅反馈 |
 | `/gento_feedback/body/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 当前躯干六轴反馈角正解得到的 `BD_J6` 位姿，位置 m、姿态单位四元数，默认坐标系 `body_base` |
 
 消息样例（左臂；右臂替换 `frame_id`）：

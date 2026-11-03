@@ -34,6 +34,17 @@ def arm_pose_in_body(base_mm, tcp_sdk, sdk_length_to_m):
     return result
 
 
+def pose_relative_to_frame(frame_mm, pose_m):
+    """Return a pose in the moving frame; frame origin is in millimetres."""
+    result=[[0.,0.,0.,0.] for _ in range(3)]+[[0.,0.,0.,1.]]
+    for i in range(3):
+        for j in range(3):
+            result[i][j]=sum(frame_mm[k][i]*pose_m[k][j] for k in range(3))
+        result[i][3]=sum(frame_mm[k][i]*(pose_m[k][3]-frame_mm[k][3]*.001)
+                         for k in range(3))
+    return result
+
+
 def quaternion(m):
     # Largest-component formulation, including rotations near 180 degrees.
     candidates=[1+m[0][0]+m[1][1]+m[2][2],1+m[0][0]-m[1][1]-m[2][2],
@@ -65,7 +76,8 @@ class Feedback(Node):
         for suffix in ('joint_states','body/joint_states','head/joint_states','full_joint_states'):
             self.output_publishers[suffix]=self.create_publisher(JointState,f'{prefix}/{suffix}',1)
         for suffix in ('left/tcp_pose','right/tcp_pose','left/tcp_pose_body_base',
-                       'right/tcp_pose_body_base','body/tcp_pose'):
+                       'right/tcp_pose_body_base','left/tcp_pose_bd_j6',
+                       'right/tcp_pose_bd_j6','body/tcp_pose'):
             self.output_publishers[suffix]=self.create_publisher(PoseStamped,f'{prefix}/{suffix}',1)
         for suffix in ('status','joint_errors'):
             self.output_publishers[suffix]=self.create_publisher(String,f'{prefix}/{suffix}',latched)
@@ -159,6 +171,14 @@ class Feedback(Node):
                     body_pose.pose.position.x,body_pose.pose.position.y,body_pose.pose.position.z=[body_matrix[i][3] for i in range(3)]
                     body_pose.pose.orientation.x,body_pose.pose.orientation.y,body_pose.pose.orientation.z,body_pose.pose.orientation.w=quaternion(body_matrix)
                     self.publish(f'{side}/tcp_pose_body_base',body_pose)
+                    if raw.get('body_matrix') is not None:
+                        j6_matrix=pose_relative_to_frame(raw['body_matrix'],body_matrix)
+                        j6_pose=PoseStamped()
+                        j6_pose.header.stamp=pose.header.stamp
+                        j6_pose.header.frame_id='BD_J6'
+                        j6_pose.pose.position.x,j6_pose.pose.position.y,j6_pose.pose.position.z=[j6_matrix[i][3] for i in range(3)]
+                        j6_pose.pose.orientation.x,j6_pose.pose.orientation.y,j6_pose.pose.orientation.z,j6_pose.pose.orientation.w=quaternion(j6_matrix)
+                        self.publish(f'{side}/tcp_pose_bd_j6',j6_pose)
             if raw.get('body_matrix') is not None:
                 pose=PoseStamped()
                 pose.header.stamp.sec=stamp['sec'];pose.header.stamp.nanosec=stamp['nanosec']
