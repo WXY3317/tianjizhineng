@@ -61,9 +61,9 @@ class Bridge(Node):
         if self.c.body_z_min_m>=self.c.body_z_max_m:
             raise ValueError('body_z_min_m must be less than body_z_max_m')
         if self.c.cartesian_execution!='trajectory': raise ValueError('Split execution requires controller trajectory playback')
-        frames=[self.c.left_frame,self.c.right_frame,self.c.body_frame]
-        if any(not isinstance(f,str) or not f.strip() for f in frames) or len(set(frames))!=3:
-            raise ValueError('Arm and body frame names must be nonempty and distinct')
+        frames=[self.c.left_frame,self.c.right_frame,self.c.body_frame,self.c.leg_j1_frame]
+        if any(not isinstance(f,str) or not f.strip() for f in frames) or len(set(frames))!=4:
+            raise ValueError('Arm, body and Leg_J1 frame names must be nonempty and distinct')
         self.body_geometry=LunaBodyKinematics()
         self.sdk_lock=threading.RLock()
         self.lock=threading.Lock()
@@ -124,6 +124,8 @@ class Bridge(Node):
         joints,matrices=self.engine.sample(data)
         body=self.engine.sample_body(data)
         body_matrix=self.body_geometry.forward(body)
+        arm_bases_in_body=self.body_geometry.arm_bases_in_body(body)
+        arm_bases_in_leg_j1=self.body_geometry.arm_bases_in_leg_j1(body)
         head=self.engine.sample_head(data)
         lines=self.active.get('lines',{}) if self.active else {}
         tracking=[tracking_sample(self.engine.robot,a,data['arms'][a]['fb'],joints[a],a in lines) for a in (0,1)]
@@ -134,7 +136,9 @@ class Bridge(Node):
             objects.append({'object_id':obj,'state':self.engine.robot.current_state(obj),
                             'error_code':source.get('state',{}).get('err',0)})
         return {'session_id':self.session,'sequence':self.sequence,'stamp':{'sec':stamp.sec,'nanosec':stamp.nanosec},
-                'joints':joints,'body':body,'body_matrix':body_matrix,'head':head,'matrices':matrices,'objects':objects,'tracking':tracking,
+                'joints':joints,'body':body,'body_matrix':body_matrix,
+                'arm_bases_in_body':arm_bases_in_body,'arm_bases_in_leg_j1':arm_bases_in_leg_j1,
+                'head':head,'matrices':matrices,'objects':objects,'tracking':tracking,
                 'controller':self.engine.robot.get_sg_dict(), 'config':vars(self.c),
                 'limits':getattr(self.engine,'limits',None),'body_limits':getattr(self.engine,'body_limits',None),
                 'active_task':self.active['goal'].task_id if self.active else None,
@@ -310,6 +314,8 @@ class Bridge(Node):
                 raise ValueError('Controlled object has a fault or unsupported mode')
             plans,lines=validate_goal(goal,snapshot,self.engine,self.get_clock().now().nanoseconds)
             self.active.update(plans=plans,lines=lines,max_error={a:0. for a in lines})
+            if 3 not in plans:
+                self.active['body_start']=list(snapshot['body'])
             self.engine.active=True
             if 3 in plans:
                 self.active['body_goal_matrix']=self.body_geometry.forward(plans[3][-1])
@@ -402,6 +408,8 @@ class Bridge(Node):
                     if time.monotonic()-active['started']>self.c.timeout: raise TimeoutError('Execution timeout')
                     if any(o['object_id'] in (0,1,3) and (o['state']==100 or o['error_code']) for o in raw['objects']):
                         raise RuntimeError('Controlled object fault during execution')
+                    if 'body_start' in active and max(abs(a-b) for a,b in zip(raw['body'],active['body_start']))>.2:
+                        raise RuntimeError('Body moved during arm execution; frame transform is stale')
                     done=True
                     for obj,points in active['plans'].items():
                         if self.engine.robot.current_state(obj)!=1: raise RuntimeError(f'object{obj} left POSITION')

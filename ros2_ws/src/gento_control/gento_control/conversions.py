@@ -43,6 +43,23 @@ def pose_matrix(pose, scale):
             [0, 0, 0, 1]]
 
 
+def body_target_to_sdk(body_target, sdk_base_in_body, sdk_length_to_m):
+    """Convert T_body_target (SDK length units) to T_sdk_base_target."""
+    if len(sdk_base_in_body) != 4 or any(len(row) != 4 for row in sdk_base_in_body):
+        raise ValueError('Invalid arm base transform')
+    finite(v for row in sdk_base_in_body for v in row)
+    # The torso geometry uses millimetres independently of the arm SDK scale.
+    scale = .001 / sdk_length_to_m
+    rotation = [[sdk_base_in_body[i][j] for j in range(3)] for i in range(3)]
+    translation = [sdk_base_in_body[i][3] * scale for i in range(3)]
+    result = [[0., 0., 0., 0.] for _ in range(3)] + [[0., 0., 0., 1.]]
+    for i in range(3):
+        for j in range(3):
+            result[i][j] = sum(rotation[k][i] * body_target[k][j] for k in range(3))
+        result[i][3] = sum(rotation[k][i] * (body_target[k][3] - translation[k]) for k in range(3))
+    return result
+
+
 def quaternion(m):
     # Branch on the largest component, stable also for rotations near 180 degrees.
     candidates = [1+m[0][0]+m[1][1]+m[2][2], 1+m[0][0]-m[1][1]-m[2][2],

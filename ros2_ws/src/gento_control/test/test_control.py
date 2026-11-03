@@ -97,3 +97,11 @@ def test_body_pose_ik_failure_never_returns_a_plan():
     planner=Planner(source,lambda *args:{'success':False,'joints_deg':None},threading.Event())
     with pytest.raises(ValueError,match='no feasible'):
         planner.body_pose(source['matrices'][0])
+
+
+def test_body_target_to_sdk_uses_full_rotation_and_translation():
+    from gento_control.conversions import body_target_to_sdk
+    base = [[0, -1, 0, 100], [1, 0, 0, 200], [0, 0, 1, 300], [0, 0, 0, 1]]
+    target = [[1, 0, 0, 100], [0, 1, 0, 300], [0, 0, 1, 300], [0, 0, 0, 1]]
+    actual = body_target_to_sdk(target, base, .001)
+    assert actual == [[0, 1, 0, 100], [-1, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]

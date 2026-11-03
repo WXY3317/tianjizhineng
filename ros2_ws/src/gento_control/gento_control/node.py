@@ -18,7 +18,7 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from std_msgs.msg import String, Empty
 from gento_interfaces.srv import DriverQuery
 from gento_interfaces.action import ExecuteTrajectory
-from .conversions import JOINT_NAMES,BODY_JOINT_NAMES,joint_target,body_target,pose_matrix,quaternion
+from .conversions import JOINT_NAMES,BODY_JOINT_NAMES,joint_target,body_target,pose_matrix,quaternion,body_target_to_sdk
 from .planning import Planner
 
 
@@ -158,8 +158,21 @@ class Control(Node):
             goals=snapshot['matrices']
             if kind=='pose':
                 expected=snapshot['config']['left_frame' if arm==0 else 'right_frame']
-                if msg.header.frame_id!=expected: raise ValueError(f'Expected frame {expected}; no TF conversion')
-                plans,goals,info=planner.cartesian(arm,pose_matrix(msg.pose,planner.c.sdk_length_to_m))
+                frame=msg.header.frame_id
+                if frame==expected:
+                    target=pose_matrix(msg.pose,planner.c.sdk_length_to_m)
+                elif (frame in (snapshot['config']['body_frame'],snapshot['config']['leg_j1_frame'])
+                      and snapshot['config']['enable_body_frame_arm_targets']):
+                    if snapshot['objects'][2]['state'] not in (0,1):
+                        raise ValueError('Body must be stationary for body-frame arm target')
+                    bases_key=('arm_bases_in_body' if frame==snapshot['config']['body_frame']
+                               else 'arm_bases_in_leg_j1')
+                    target=body_target_to_sdk(
+                        pose_matrix(msg.pose,planner.c.sdk_length_to_m),
+                        snapshot[bases_key][arm],planner.c.sdk_length_to_m)
+                else:
+                    raise ValueError(f'Expected frame {expected}; body-frame targets require explicit enablement')
+                plans,goals,info=planner.cartesian(arm,target)
                 lines=list(plans)
             elif kind=='joints':
                 if msg.velocity or msg.effort: raise ValueError('Position targets only')

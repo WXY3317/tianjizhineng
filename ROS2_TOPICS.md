@@ -77,6 +77,13 @@ data: '{"state": "completed", "session_id": "session-001", "task_id": "task-001"
 | `/gento_control/body/preview_pose` | `geometry_msgs/msg/PoseStamped` | 躯干逆解预览，不执行 |
 | `/gento_control/body/ik_result` | `std_msgs/msg/String` | 逆解结果 JSON，含 `joints_deg` 和 `joints_rad` |
 
+双臂目标可在启动时设置 `enable_body_frame_arm_targets:=true` 后使用 `frame_id: body_base` 或 `frame_id: Leg_J1`。
+`body_base` 固定于躯干第 1 轴中心，轴方向与 AGV 平行；`Leg_J1` 原点同在该轴中心，但轴方向随第 1 关节旋转。
+控制节点使用当前躯干反馈角和 `luna_body.Cord` 的 `BD_J6 -> BD_FL -> LA_J1/RA_J1` 安装链，
+将目标转换到各自 SDK 基座后执行现有逆解。躯干在双臂执行期间若偏离起点超过 0.2°，驱动停止执行。
+启用前必须在真机核准 Cord 的 `LA_J1/RA_J1` 与 SDK 逆解基座的原点和轴向一致；
+默认关闭该输入方式。现有 SDK 基坐标系目标与反馈接口仍可用于核对。
+
 发布样例（左臂；数值仅说明格式，执行前应确认目标及路径）：
 
 ```bash

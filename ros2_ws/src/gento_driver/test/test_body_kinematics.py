@@ -29,6 +29,18 @@ def test_zero_pose_base_and_joint_six_tip(model):
     assert np.array(model.agv_to_base) == pytest.approx(base)
 
 
+def test_arm_mounts_follow_torso_and_match_cord_geometry(model):
+    left, right = map(np.array, model.arm_bases_in_body([0]*6))
+    assert left[:3, 3] == pytest.approx([0, 214.6, 1156.5])
+    assert right[:3, 3] == pytest.approx([0, -214.6, 1156.5])
+    moved = np.array(model.arm_bases_in_body([0, 20, 0, 0, 0, 0])[0])
+    assert np.linalg.norm(moved[:3, 3] - left[:3, 3]) > 10
+    q = [7, 20, -8, 3, 0, 0]
+    leg = np.array(model.leg_j1_in_body(q))
+    for in_body, in_leg in zip(model.arm_bases_in_body(q), model.arm_bases_in_leg_j1(q)):
+        assert leg @ np.array(in_leg) == pytest.approx(np.array(in_body), abs=1e-8)
+
+
 def test_body_cartesian_line_from_zero_to_700_mm(model):
     start=model.forward([0]*6)
     target=model.forward([0,26.9165676,-53.8331352,26.9165676,0,0])

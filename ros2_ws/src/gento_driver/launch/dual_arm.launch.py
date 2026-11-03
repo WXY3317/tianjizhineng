@@ -72,6 +72,10 @@ def generate_launch_description():
         'right_frame': ('right_arm_sdk_base', str),
         # 躯干固定基座：原点在第 1 轴中心、轴方向与配置 AGV 平行；不做 TF 转换。
         'body_frame': ('body_base', str),
+        # 随躯干第 1 轴旋转的链接坐标系；默认不接受该帧下的双臂目标。
+        'leg_j1_frame': ('Leg_J1', str),
+        # 允许双臂目标使用 body_base；启用前须核准 Cord 中 LA_J1/RA_J1 与 SDK 基座一致。
+        'enable_body_frame_arm_targets': ('false', bool),
         # 躯干 BD_J6 位姿逆解目标在 body_base 中的高度范围，单位 m；上下限均包含。
         'body_z_min_m': ('0.55', float),
         'body_z_max_m': ('0.76', float),

@@ -87,7 +87,11 @@ def _load_chain(path):
     agv_to_base = np.eye(4)
     agv_to_base[:3, 3] = chain[0][:3, 3]
     chain[0][:3, 3] = 0
-    return tuple(chain), agv_to_base
+    mounts = {}
+    for arm, joint in ((0, "LA_J1"), (1, "RA_J1")):
+        if nodes.get("BD_FL", (None,))[0] == "BD_J6" and nodes.get(joint, (None,))[0] == "BD_FL":
+            mounts[arm] = nodes["BD_FL"][1] @ nodes[joint][1]
+    return tuple(chain), agv_to_base, mounts
 
 
 @dataclass(frozen=True)
@@ -116,7 +120,7 @@ class LunaBodyKinematics:
         # Geometry-only construction supports read-only FK without inventing
         # hardware limits. IK always requires explicit signed controller limits.
         self._bounds_deg = None
-        self._chain, self._agv_to_base = _load_chain(
+        self._chain, self._agv_to_base, self._arm_mounts = _load_chain(
             _DEFAULT_CORD if cord_path is None else cord_path)
         if joint_limits_deg is None:
             return
@@ -177,6 +181,29 @@ class LunaBodyKinematics:
         """
         q = _array(joints_deg, (6,), "joints_deg")
         return self._fk(np.deg2rad(q)).tolist()
+
+    def arm_bases_in_body(self, joints_deg):
+        """T_body_base_LA_J1 and T_body_base_RA_J1, in mm, from measured torso angles."""
+        if len(self._arm_mounts) != 2:
+            raise ValueError("Arm mounting frames are missing from the Cord model")
+        q = _array(joints_deg, (6,), "joints_deg")
+        body_tip = self._fk(np.deg2rad(q))
+        return [(body_tip @ self._arm_mounts[arm]).tolist() for arm in (0, 1)]
+
+    def leg_j1_in_body(self, joints_deg):
+        """T_body_base_BD_J1 after joint 1 rotation, in mm."""
+        q = _array(joints_deg, (6,), "joints_deg")
+        angle = np.deg2rad(q[0])
+        c, s = np.cos(angle), np.sin(angle)
+        rotation = np.array([[c, -s, 0, 0], [s, c, 0, 0],
+                             [0, 0, 1, 0], [0, 0, 0, 1]])
+        return (self._chain[0] @ rotation).tolist()
+
+    def arm_bases_in_leg_j1(self, joints_deg):
+        """T_BD_J1_LA_J1 and T_BD_J1_RA_J1, in mm."""
+        leg = np.asarray(self.leg_j1_in_body(joints_deg))
+        return [(np.linalg.inv(leg) @ np.asarray(base)).tolist()
+                for base in self.arm_bases_in_body(joints_deg)]
 
     def inverse(self, target_pose, reference_joints_deg, *, position_only=False,
                 position_tolerance_mm=0.1, orientation_tolerance_deg=0.01,

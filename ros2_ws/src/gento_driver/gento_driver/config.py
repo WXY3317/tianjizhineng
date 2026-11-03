@@ -10,6 +10,8 @@ DEFAULTS = {
     'cartesian_joint_speed': 5.0, 'cartesian_joint_acc': 10.0,
     'left_frame': 'left_arm_sdk_base', 'right_frame': 'right_arm_sdk_base',
     'body_frame': 'body_base',
+    'leg_j1_frame': 'Leg_J1',
+    'enable_body_frame_arm_targets': False,
     'body_z_min_m': 0.55, 'body_z_max_m': 0.76,
     'body_position_tolerance_mm': 1.0, 'body_orientation_tolerance_deg': 0.2,
 }
