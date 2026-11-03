@@ -1,0 +1,3 @@
+# Python caches generated when running SDK examples and tests.
+__pycache__/
+*.py[cod]
