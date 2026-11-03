@@ -18,7 +18,7 @@ class VisionTargets(Node):
         super().__init__('scene_vision_targets')
         self.declare_parameter('mqtt_host', '127.0.0.1')
         self.declare_parameter('mqtt_port', 1883)
-        self.declare_parameter('mqtt_topic', '/vision_targe')
+        self.declare_parameter('mqtt_topic', '/vision_target')
         self.declare_parameter('max_body_pose_age_s', .5)
         host = self.get_parameter('mqtt_host').value
         port = self.get_parameter('mqtt_port').value

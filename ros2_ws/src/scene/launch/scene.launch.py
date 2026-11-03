@@ -9,7 +9,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('mqtt_host', default_value='127.0.0.1'),
         DeclareLaunchArgument('mqtt_port', default_value='1883'),
-        DeclareLaunchArgument('mqtt_topic', default_value='/vision_targe'),
+        DeclareLaunchArgument('mqtt_topic', default_value='/vision_target'),
         Node(package='scene', executable='vision_targets', name='scene_vision_targets',
              output='screen', parameters=[{
                  'mqtt_host': LaunchConfiguration('mqtt_host'),

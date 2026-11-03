@@ -140,7 +140,7 @@ ros2 topic pub --once /gento_control/left/reset_error std_msgs/msg/Empty '{}'
 
 ## 6. MQTT 视觉目标场景
 
-独立 `scene` 包默认订阅 MQTT `/vision_targe`，从
+独立 `scene` 包默认订阅 MQTT `/vision_target`，从
 `/gento_feedback/body/tcp_pose` 取得实时 `T_body_base_BD_J6`，再向
 `/gento_control/left/target_pose` 或 `/gento_control/right/target_pose`
 发布 `body_base` 下的目标。`position1`、`position2` 按顺序执行；

@@ -88,7 +88,7 @@ def generate_launch_description():
         DeclareLaunchArgument('mqtt_host', default_value='127.0.0.1'),
         DeclareLaunchArgument('mqtt_port', default_value='1883'),
         DeclareLaunchArgument('mqtt_topic_prefix', default_value='gento/feedback'),
-        DeclareLaunchArgument('vision_mqtt_topic', default_value='/vision_targe'),
+        DeclareLaunchArgument('vision_mqtt_topic', default_value='/vision_target'),
         DeclareLaunchArgument('start_control', default_value='true', description='Start control node when enable_control is true'),
         Node(package='gento_driver', executable='bridge',
                                                  name='gento_driver', output='screen', parameters=[params]),

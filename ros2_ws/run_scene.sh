@@ -6,7 +6,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<'HELP'
 Usage: ./run_scene.sh [--build] [mqtt_host:=HOST] [mqtt_port:=PORT] [mqtt_topic:=TOPIC]
 Starts the vision MQTT scene only. Start ./run_real_robot.sh separately for robot control.
-Defaults: mqtt_host:=127.0.0.1 mqtt_port:=1883 mqtt_topic:=/vision_targe
+Defaults: mqtt_host:=127.0.0.1 mqtt_port:=1883 mqtt_topic:=/vision_target
 --build builds the scene package before launch.
 HELP
   exit 0
