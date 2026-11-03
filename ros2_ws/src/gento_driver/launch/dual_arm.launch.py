@@ -83,12 +83,22 @@ def generate_launch_description():
     params = {k: ParameterValue(LaunchConfiguration(k), value_type=t) for k, (_, t) in defaults.items()}
     return LaunchDescription(declarations + [
         DeclareLaunchArgument('start_feedback', default_value='true', description='Start feedback relay without SDK access'),
+        DeclareLaunchArgument('start_mqtt_feedback', default_value='true', description='Mirror BD_J6 arm poses to MQTT'),
+        DeclareLaunchArgument('mqtt_host', default_value='127.0.0.1'),
+        DeclareLaunchArgument('mqtt_port', default_value='1883'),
+        DeclareLaunchArgument('mqtt_topic_prefix', default_value='gento/feedback'),
         DeclareLaunchArgument('start_control', default_value='true', description='Start control node when enable_control is true'),
         Node(package='gento_driver', executable='bridge',
                                                  name='gento_driver', output='screen', parameters=[params]),
         Node(package='gento_feedback', executable='feedback', name='gento_feedback',
              output='screen', parameters=[{'trajectory_log_dir': ParameterValue(LaunchConfiguration('trajectory_log_dir'), value_type=str)}],
              condition=IfCondition(LaunchConfiguration('start_feedback'))),
+        Node(package='gento_feedback', executable='mqtt_feedback', name='gento_mqtt_feedback',
+             output='screen', parameters=[{
+                 'mqtt_host': ParameterValue(LaunchConfiguration('mqtt_host'), value_type=str),
+                 'mqtt_port': ParameterValue(LaunchConfiguration('mqtt_port'), value_type=int),
+                 'mqtt_topic_prefix': ParameterValue(LaunchConfiguration('mqtt_topic_prefix'), value_type=str)}],
+             condition=IfCondition(LaunchConfiguration('start_mqtt_feedback'))),
         GroupAction(condition=IfCondition(LaunchConfiguration('enable_control')), actions=[
             Node(package='gento_control', executable='control', name='gento_control',
                  output='screen', condition=IfCondition(LaunchConfiguration('start_control')))])])

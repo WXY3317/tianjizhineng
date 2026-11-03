@@ -7,6 +7,7 @@ from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import String
 from rclpy.executors import SingleThreadedExecutor
 from gento_feedback.node import Feedback,segment_error,arm_pose_in_body,pose_relative_to_frame
+from gento_feedback.mqtt_feedback import MqttFeedback,pose_payload
 
 
 def raw():
@@ -66,6 +67,38 @@ def test_arm_pose_relative_to_rotated_bd_j6():
     relative=pose_relative_to_frame(j6,tcp)
     assert [relative[i][3] for i in range(3)]==pytest.approx([0,-.1,0])
     assert [relative[0][j] for j in range(3)]==[0,1,0]
+
+
+def test_bd_j6_mqtt_payload_keeps_frame_stamp_and_si_units():
+    pose=PoseStamped()
+    pose.header.frame_id='BD_J6'
+    pose.header.stamp.sec=123
+    pose.header.stamp.nanosec=45
+    pose.pose.position.x=.12
+    pose.pose.orientation.w=1.
+    payload=json.loads(pose_payload(pose))
+    assert payload['frame_id']=='BD_J6'
+    assert payload['stamp']=={'sec':123,'nanosec':45}
+    assert payload['position']['x']==.12
+    assert payload['orientation']['w']==1.
+
+
+def test_mqtt_forward_only_publishes_bd_j6_feedback():
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    bridge=SimpleNamespace(connected=True,mqtt=MagicMock(),get_logger=MagicMock())
+    bridge.mqtt.publish.return_value.rc=0
+    pose=PoseStamped()
+    pose.header.frame_id='BD_J6'
+    pose.pose.orientation.w=1.
+    MqttFeedback.forward(bridge,'gento/feedback/left/tcp_pose_bd_j6',pose)
+    topic,payload=bridge.mqtt.publish.call_args.args
+    assert topic=='gento/feedback/left/tcp_pose_bd_j6'
+    assert json.loads(payload)['frame_id']=='BD_J6'
+    assert bridge.mqtt.publish.call_args.kwargs=={'qos':0,'retain':False}
+    pose.header.frame_id='body_base'
+    MqttFeedback.forward(bridge,topic,pose)
+    assert bridge.mqtt.publish.call_count==1
 
 
 def test_body_pose_uses_measured_matrix_stamp_and_fixed_mm_scale():

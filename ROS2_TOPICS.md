@@ -35,6 +35,13 @@ effort: []
 | `/gento_feedback/right/tcp_pose_bd_j6` | `geometry_msgs/msg/PoseStamped` | 右臂 TCP 相对当前 `BD_J6` 的位姿，位置 m、姿态单位四元数，仅反馈 |
 | `/gento_feedback/body/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 当前躯干六轴反馈角正解得到的 `BD_J6` 位姿，位置 m、姿态单位四元数，默认坐标系 `body_base` |
 
+同一组 `BD_J6` 位姿还由独立的 MQTT 节点发布到设备配置的 Broker `127.0.0.1:1883`：
+`gento/feedback/left/tcp_pose_bd_j6` 和 `gento/feedback/right/tcp_pose_bd_j6`。
+消息是 JSON，包含 `frame_id`、`stamp`（`sec`/`nanosec`）、`position`（米）和
+`orientation`（四元数 `x/y/z/w`）。MQTT 仅反馈，QoS 0，不保留旧位姿；
+Broker 暂不可用时节点自动重连。启动参数 `start_mqtt_feedback:=false` 可关闭，
+`mqtt_host`、`mqtt_port`、`mqtt_topic_prefix` 可覆盖连接和主题前缀。
+
 消息样例（左臂；右臂替换 `frame_id`）：
 
 ```yaml

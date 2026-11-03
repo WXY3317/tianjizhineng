@@ -96,6 +96,10 @@ ros2 topic pub --once /gento_control/left/target_joints sensor_msgs/msg/JointSta
 
 双臂位姿目标标准坐标系为固定在躯干第 1 轴中心的 `body_base`；程序使用当前躯干角度转换到 SDK 臂基座后逆解，不依赖设备 TF。`/gento_feedback/left|right/tcp_pose_body_base` 给出统一坐标反馈；`/gento_feedback/left|right/tcp_pose_bd_j6` 给出相对当前躯干末端 `BD_J6` 的位姿，仅用于反馈，不作为逆解目标。旧 `left|right/tcp_pose` 仍为各自 SDK 基座坐标。真机使用前须核准 Cord 安装坐标与 SDK 基座一致。躯干 `body/tcp_pose` 来自当前六轴反馈角的本地正解，末端为 `BD_J6`，不是外部测量。旧 `/gento_dual_arm/...` 话题已移除。
 
+`BD_J6` 双臂反馈同时通过独立 MQTT 节点发往设备原有配置的 `127.0.0.1:1883`，主题为
+`gento/feedback/left/tcp_pose_bd_j6` 和 `gento/feedback/right/tcp_pose_bd_j6`。
+启动参数 `start_mqtt_feedback:=false` 可关闭；Broker 需由设备现有 MQTT 服务提供。
+
 躯干位姿通过 `/gento_control/body/target_pose` 发送，`frame_id` 设为 `body_base`。该话题会逆解并**执行运动**；只预览逆解时使用 `/gento_control/body/preview_pose`，结果发布到 `/gento_control/body/ik_result` 并在 control 日志打印。以当前反馈位姿为起点修改目标，必须重新填写时间戳。逆解约束完整位置与朝向，并在 `max_delta` 和有效限位内优先接近当前关节角；J2 额外限制为 ±50°。关节角执行仍使用 `/gento_control/body/target_joints`。详见 [躯干话题用法](src/gento_driver/BODY_KINEMATICS.md#ros-话题反馈和控制)。
 
 `target_pose` 现在从当前 `BD_J6` 位姿到目标做位置直线插补和姿态 SLERP，沿同一逆解分支求出关节锚点，再生成 50 Hz 关节样本。下发前逐点检查正解位姿、关节限位、速度和加速度；driver 按时间顺序发送关节目标并监控实际末端到线段的偏差。`target_joints` 仍是单点关节目标，不走此直线规划。轨迹点由控制器跟踪，实机路径误差受 `cartesian_path_tolerance` 监控，不能把模型直线等同于物理上的零误差直线。
