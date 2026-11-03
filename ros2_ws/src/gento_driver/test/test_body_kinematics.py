@@ -35,10 +35,6 @@ def test_arm_mounts_follow_torso_and_match_cord_geometry(model):
     assert right[:3, 3] == pytest.approx([0, -214.6, 1156.5])
     moved = np.array(model.arm_bases_in_body([0, 20, 0, 0, 0, 0])[0])
     assert np.linalg.norm(moved[:3, 3] - left[:3, 3]) > 10
-    q = [7, 20, -8, 3, 0, 0]
-    leg = np.array(model.leg_j1_in_body(q))
-    for in_body, in_leg in zip(model.arm_bases_in_body(q), model.arm_bases_in_leg_j1(q)):
-        assert leg @ np.array(in_leg) == pytest.approx(np.array(in_body), abs=1e-8)
 
 
 def test_body_cartesian_line_from_zero_to_700_mm(model):

@@ -72,7 +72,7 @@ ros2 topic echo /gento_control/status
 ```bash
 # 左臂末端位姿：位置 m，姿态四元数
 ros2 topic pub --once /gento_control/left/target_pose geometry_msgs/msg/PoseStamped \
-"{header: {stamp: now, frame_id: left_arm_sdk_base},
+"{header: {stamp: now, frame_id: body_base},
   pose: {
     position: {x: 0.25, y: 0.25, z: 0.21},
     orientation: {x: -0.5523719707682738, y: 0.3977202702536071, z: -0.30106956732332846, w: 0.6678779141210726}
@@ -80,7 +80,7 @@ ros2 topic pub --once /gento_control/left/target_pose geometry_msgs/msg/PoseStam
 
 # 右臂末端位姿
 ros2 topic pub --once /gento_control/right/target_pose geometry_msgs/msg/PoseStamped \
-"{header: {stamp: now, frame_id: right_arm_sdk_base},
+"{header: {stamp: now, frame_id: body_base},
   pose: {
     position: {x: 0.31, y: -0.31, z: 0.21},
     orientation: {x: 0.631002025966013, y: 0.3239363696324344, z: 0.14142256111728738, w: 0.6905804304084884}
@@ -94,7 +94,7 @@ ros2 topic pub --once /gento_control/left/target_joints sensor_msgs/msg/JointSta
 
 ```
 
-双臂位姿分别使用 `left_arm_sdk_base`、`right_arm_sdk_base`，躯干位姿使用 `body_base`，不自动做 TF 变换。双臂 TCP 来自 SDK 正解；躯干 `body/tcp_pose` 来自当前六轴反馈角的本地正解，末端为 `BD_J6`，不是外部测量。旧 `/gento_dual_arm/...` 话题已移除。
+双臂位姿目标标准坐标系为固定在躯干第 1 轴中心的 `body_base`；程序使用当前躯干角度转换到 SDK 臂基座后逆解，不依赖设备 TF。`/gento_feedback/left|right/tcp_pose_body_base` 给出统一坐标反馈；旧 `left|right/tcp_pose` 仍为各自 SDK 基座坐标。真机使用前须核准 Cord 安装坐标与 SDK 基座一致。躯干 `body/tcp_pose` 来自当前六轴反馈角的本地正解，末端为 `BD_J6`，不是外部测量。旧 `/gento_dual_arm/...` 话题已移除。
 
 躯干位姿通过 `/gento_control/body/target_pose` 发送，`frame_id` 设为 `body_base`。该话题会逆解并**执行运动**；只预览逆解时使用 `/gento_control/body/preview_pose`，结果发布到 `/gento_control/body/ik_result` 并在 control 日志打印。以当前反馈位姿为起点修改目标，必须重新填写时间戳。逆解约束完整位置与朝向，并在 `max_delta` 和有效限位内优先接近当前关节角；J2 额外限制为 ±50°。关节角执行仍使用 `/gento_control/body/target_joints`。详见 [躯干话题用法](src/gento_driver/BODY_KINEMATICS.md#ros-话题反馈和控制)。
 

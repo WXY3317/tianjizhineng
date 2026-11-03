@@ -1,11 +1,12 @@
 import json
 import time
+import pytest
 import rclpy
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import String
 from rclpy.executors import SingleThreadedExecutor
-from gento_feedback.node import Feedback,segment_error
+from gento_feedback.node import Feedback,segment_error,arm_pose_in_body
 
 
 def raw():
@@ -48,6 +49,14 @@ def test_feedback_geometry_is_independent_of_driver():
     actual=[r[:] for r in start];actual[0][3]=5.;actual[1][3]=6.
     error,vector=segment_error(actual,start,end,.001)
     assert error==.006 and vector==[0.,.006,0.]
+
+
+def test_arm_pose_in_body_composes_rotation_and_millimetre_translation():
+    base=[[0,-1,0,100],[1,0,0,200],[0,0,1,300],[0,0,0,1]]
+    tcp=[[1,0,0,100],[0,1,0,0],[0,0,1,0],[0,0,0,1]]
+    result=arm_pose_in_body(base,tcp,.001)
+    assert [result[i][3] for i in range(3)]==pytest.approx([.1,.3,.3])
+    assert [result[0][j] for j in range(3)]==[0,-1,0]
 
 
 def test_body_pose_uses_measured_matrix_stamp_and_fixed_mm_scale():

@@ -190,21 +190,6 @@ class LunaBodyKinematics:
         body_tip = self._fk(np.deg2rad(q))
         return [(body_tip @ self._arm_mounts[arm]).tolist() for arm in (0, 1)]
 
-    def leg_j1_in_body(self, joints_deg):
-        """T_body_base_BD_J1 after joint 1 rotation, in mm."""
-        q = _array(joints_deg, (6,), "joints_deg")
-        angle = np.deg2rad(q[0])
-        c, s = np.cos(angle), np.sin(angle)
-        rotation = np.array([[c, -s, 0, 0], [s, c, 0, 0],
-                             [0, 0, 1, 0], [0, 0, 0, 1]])
-        return (self._chain[0] @ rotation).tolist()
-
-    def arm_bases_in_leg_j1(self, joints_deg):
-        """T_BD_J1_LA_J1 and T_BD_J1_RA_J1, in mm."""
-        leg = np.asarray(self.leg_j1_in_body(joints_deg))
-        return [(np.linalg.inv(leg) @ np.asarray(base)).tolist()
-                for base in self.arm_bases_in_body(joints_deg)]
-
     def inverse(self, target_pose, reference_joints_deg, *, position_only=False,
                 position_tolerance_mm=0.1, orientation_tolerance_deg=0.01,
                 max_joint_delta_deg=None, max_nfev=300, checkpoint=None,

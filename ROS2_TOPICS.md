@@ -29,6 +29,8 @@ effort: []
 | --- | --- | --- |
 | `/gento_feedback/left/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 左臂 TCP 位姿，位置 m、姿态单位四元数，默认坐标系 `left_arm_sdk_base` |
 | `/gento_feedback/right/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 右臂 TCP 位姿，位置 m、姿态单位四元数，默认坐标系 `right_arm_sdk_base` |
+| `/gento_feedback/left/tcp_pose_body_base` | `geometry_msgs/msg/PoseStamped` | 左臂 TCP 在固定 `body_base` 中的位姿，位置 m |
+| `/gento_feedback/right/tcp_pose_body_base` | `geometry_msgs/msg/PoseStamped` | 右臂 TCP 在固定 `body_base` 中的位姿，位置 m |
 | `/gento_feedback/body/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 当前躯干六轴反馈角正解得到的 `BD_J6` 位姿，位置 m、姿态单位四元数，默认坐标系 `body_base` |
 
 消息样例（左臂；右臂替换 `frame_id`）：
@@ -71,31 +73,30 @@ data: '{"state": "completed", "session_id": "session-001", "task_id": "task-001"
 
 | 话题名称 | 消息类型 | 内容 |
 | --- | --- | --- |
-| `/gento_control/left/target_pose` | `geometry_msgs/msg/PoseStamped` | 左臂绝对目标位姿，位置 m、姿态单位四元数，默认坐标系 `left_arm_sdk_base` |
-| `/gento_control/right/target_pose` | `geometry_msgs/msg/PoseStamped` | 右臂绝对目标位姿，位置 m、姿态单位四元数，默认坐标系 `right_arm_sdk_base` |
+| `/gento_control/left/target_pose` | `geometry_msgs/msg/PoseStamped` | 左臂绝对目标位姿，位置 m、姿态单位四元数，标准坐标系 `body_base` |
+| `/gento_control/right/target_pose` | `geometry_msgs/msg/PoseStamped` | 右臂绝对目标位姿，位置 m、姿态单位四元数，标准坐标系 `body_base` |
 | `/gento_control/body/target_pose` | `geometry_msgs/msg/PoseStamped` | 躯干 `BD_J6` 位姿目标，逆解后执行，默认坐标系 `body_base` |
 | `/gento_control/body/preview_pose` | `geometry_msgs/msg/PoseStamped` | 躯干逆解预览，不执行 |
 | `/gento_control/body/ik_result` | `std_msgs/msg/String` | 逆解结果 JSON，含 `joints_deg` 和 `joints_rad` |
 
-双臂目标可在启动时设置 `enable_body_frame_arm_targets:=true` 后使用 `frame_id: body_base` 或 `frame_id: Leg_J1`。
-`body_base` 固定于躯干第 1 轴中心，轴方向与 AGV 平行；`Leg_J1` 原点同在该轴中心，但轴方向随第 1 关节旋转。
+双臂目标使用 `frame_id: body_base`。`body_base` 固定于躯干第 1 轴中心，轴方向与 AGV 平行；它不随第 1 关节旋转。
 控制节点使用当前躯干反馈角和 `luna_body.Cord` 的 `BD_J6 -> BD_FL -> LA_J1/RA_J1` 安装链，
 将目标转换到各自 SDK 基座后执行现有逆解。躯干在双臂执行期间若偏离起点超过 0.2°，驱动停止执行。
-启用前必须在真机核准 Cord 的 `LA_J1/RA_J1` 与 SDK 逆解基座的原点和轴向一致；
-默认关闭该输入方式。现有 SDK 基坐标系目标与反馈接口仍可用于核对。
+真机执行前必须核准 Cord 的 `LA_J1/RA_J1` 与 SDK 逆解基座的原点和轴向一致。
+旧 SDK 基坐标系目标仍可接收，用于兼容和核对；旧 TCP 反馈话题保持 SDK 坐标，新增的 `*_body_base` 话题用于统一坐标反馈。
 
 发布样例（左臂；数值仅说明格式，执行前应确认目标及路径）：
 
 ```bash
 ros2 topic pub --once /gento_control/left/target_pose geometry_msgs/msg/PoseStamped \
-"{header: {stamp: now, frame_id: left_arm_sdk_base},
+"{header: {stamp: now, frame_id: body_base},
   pose: {
     position: {x: 0.25, y: 0.25, z: 0.21},
     orientation: {x: -0.5523719707682738, y: 0.3977202702536071, z: -0.30106956732332846, w: 0.6678779141210726}
   }}"
 ```
 
-右臂替换话题为 `/gento_control/right/target_pose`，默认坐标系替换为 `right_arm_sdk_base`。目标必须带新鲜时间戳，不自动做 TF 转换。
+右臂替换话题为 `/gento_control/right/target_pose`，仍使用 `body_base`。目标必须带新鲜时间戳；程序内用当前躯干角度转换，无需设备发布 TF。
 
 躯干逆解执行使用 `/gento_control/body/target_pose`，`frame_id: body_base`；只预览时使用 `/gento_control/body/preview_pose`，结果在 `/gento_control/body/ik_result`。`body_base` 固定在第 1 轴中心、轴方向与配置 AGV 平行；末端为第 6 关节坐标系 `BD_J6`，不包含其后的 391.5 mm 安装偏移。目标和反馈均表示 `T_B_BD_J6`；当前配置全零位的位置为 `[0, 0, 765]` mm（ROS 消息为 `[0, 0, 0.765]` m）。先读取 `/gento_feedback/body/tcp_pose`，以实际当前位置和朝向填写目标并刷新时间戳，不要把示例中的手臂位置直接用于躯干。
 

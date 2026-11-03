@@ -34,8 +34,8 @@ def main():
     group.add_argument('--poses', nargs=14, type=float, help='Left x y z qx qy qz qw then right; metres, unit quaternions')
     group.add_argument('--body', nargs=6, type=float, help='Six absolute body joint angles in radians')
     parser.add_argument('--prefix', default='/gento_control')
-    parser.add_argument('--left-frame', default='left_arm_sdk_base')
-    parser.add_argument('--right-frame', default='right_arm_sdk_base')
+    parser.add_argument('--left-frame', default='body_base')
+    parser.add_argument('--right-frame', default='body_base')
     args = parser.parse_args()
     if args.poses is not None:
         parser.error('--poses is no longer supported: use --left-pose or --right-pose; wait for completed before commanding the other arm')
