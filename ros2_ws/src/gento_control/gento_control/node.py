@@ -42,6 +42,7 @@ class Control(Node):
         latched=QoSProfile(depth=1,durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.status_pub=self.create_publisher(String,'/gento_control/status',latched)
         self.plan_pub=self.create_publisher(String,'/gento_control/plan',latched)
+        self.body_ik_pub=self.create_publisher(String,'/gento_control/body/ik_result',latched)
         self.lock=threading.Lock()
         self.cancel=threading.Event()
         self.busy=False
@@ -61,6 +62,7 @@ class Control(Node):
                 lambda msg,a=arm:self.submit('joints',a,msg),1))
         self.subs.append(self.create_subscription(JointState,f'{prefix}/body/target_joints',lambda m:self.submit('body',3,m),1))
         self.subs.append(self.create_subscription(PoseStamped,f'{prefix}/body/target_pose',lambda m:self.submit('body_pose',3,m),1))
+        self.subs.append(self.create_subscription(PoseStamped,f'{prefix}/body/preview_pose',lambda m:self.submit('body_pose_preview',3,m),1))
         self.subs.append(self.create_subscription(Empty,f'{prefix}/reset_error',lambda _:self.reset(),1))
         for obj,side in ((0,'left'),(1,'right'),(3,'body')):
             self.subs.append(self.create_subscription(Empty,f'{prefix}/{side}/reset_error',lambda _,o=obj:self.reset(o),1))
@@ -114,7 +116,7 @@ class Control(Node):
                 # RPC timeout does not cancel work in the driver. Keep the task slot
                 # reserved until the reply arrives, or until this node shuts down.
                 response=self.wait(future,timeout=None,interruptible=False)
-        else:response=self.wait(future)
+        else:response=self.wait(future,timeout=120. if operation=='body_cartesian' else 5.)
         if not response.success: raise ValueError(response.error)
         if operation in ('snapshot','reset','object_reset'): self.session=response.session_id
         result=json.loads(response.result or 'null')
@@ -143,7 +145,7 @@ class Control(Node):
         handle=None
         submitted=False
         try:
-            body_task=kind in ('body','body_pose')
+            body_task=kind in ('body','body_pose','body_pose_preview')
             snapshot_payload={'include_arm_limits':False} if body_task else None
             snapshot=self.rpc('snapshot',snapshot_payload)
             self.check_stamp(msg)
@@ -162,11 +164,29 @@ class Control(Node):
             elif kind=='joints':
                 if msg.velocity or msg.effort: raise ValueError('Position targets only')
                 plans,info=planner.joint(arm,joint_target(arm,msg.name,msg.position))
-            elif kind=='body_pose':
+            elif kind in ('body_pose','body_pose_preview'):
                 expected=snapshot['config']['body_frame']
                 if msg.header.frame_id!=expected:raise ValueError(f'Expected frame {expected}; no TF conversion')
                 # The torso model always uses mm, independently of arm SDK units.
-                plans,info=planner.body_pose(pose_matrix(msg.pose,.001))
+                matrix=pose_matrix(msg.pose,.001)
+                plans,info=(planner.body_cartesian(matrix) if kind=='body_pose'
+                            else planner.body_pose(matrix))
+                if kind=='body_pose_preview':
+                    joints=plans[3][0]
+                    result={'task_id':self.task_id,'session_id':self.session,
+                            'target_stamp':{'sec':msg.header.stamp.sec,
+                                            'nanosec':msg.header.stamp.nanosec},
+                            'frame_id':expected,'tip_frame':'BD_J6',
+                            'reference_joints_deg':snapshot['body'],
+                            'joints_deg':joints,
+                            'joints_rad':[math.radians(q) for q in joints],
+                            'ik':info['body_ik']}
+                    self.body_ik_pub.publish(String(data=json.dumps(result)))
+                    self.get_logger().info('Body IK preview: joints_deg=%s joints_rad=%s' %
+                                           (result['joints_deg'],result['joints_rad']))
+                    self.status('previewed',joints_deg=joints,joints_rad=result['joints_rad'])
+                    return
+                lines=[3]
             else:
                 if msg.velocity or msg.effort: raise ValueError('Position targets only')
                 plans={3:[body_target(msg.name,msg.position)]}
@@ -203,8 +223,10 @@ class Control(Node):
                 settings=snapshot['controller']['body']['set'] if obj==3 else planner.cartesian_rate_limits[obj]
                 goal.controller_ratios.extend([settings['vel_ratio'],settings['acc_ratio']])
             goal.line_objects=lines
-            goal.line_starts=[as_pose(snapshot['matrices'][a],planner.c.sdk_length_to_m) for a in lines]
-            goal.line_goals=[as_pose(goals[a],planner.c.sdk_length_to_m) for a in lines]
+            goal.line_starts=[as_pose(snapshot['body_matrix'],.001) if a==3 else
+                              as_pose(snapshot['matrices'][a],planner.c.sdk_length_to_m) for a in lines]
+            goal.line_goals=[as_pose(info['body_target_matrix'],.001) if a==3 else
+                             as_pose(goals[a],planner.c.sdk_length_to_m) for a in lines]
             self.plan_pub.publish(String(data=json.dumps({'task_id':self.task_id,'session_id':self.session,
                 'plans':{str(a):q for a,q in plans.items()},'starts':snapshot['matrices'],'goals':goals,
                 'config':snapshot['config'],'plan_info':info,'line_objects':lines})))

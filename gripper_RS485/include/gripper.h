@@ -95,7 +95,7 @@ class GripperController {
 
     /**
      * @brief 控制夹爪以指定速度运动。
-     *
+     * 
      * @param speed 夹爪闭合速度，单位 m/s；正值闭合，负值张开。
      */
     void set_gripper_velocity(float speed);

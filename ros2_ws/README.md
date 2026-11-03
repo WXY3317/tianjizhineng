@@ -2,7 +2,7 @@
 
 ROS 2 Humble 工作空间，提供双臂、躯干控制及关节和 TCP 反馈。三个业务节点独立运行，driver 独占唯一 SDK 连接。
 
-六轴躯干正逆解在 `gento_driver.body_kinematics` 中实现，使用躯干固定基座和 `BD_FL` 末端，支持控制器限位、J2 ±50°约束及接近当前关节角的选解。调用方式和离线示例见 [躯干运动学说明](src/gento_driver/BODY_KINEMATICS.md)。
+六轴躯干正逆解在 `gento_driver.body_kinematics` 中实现，使用躯干固定基座和第 6 关节 `BD_J6` 末端，支持控制器限位、J2 ±50°约束及接近当前关节角的选解。调用方式和离线示例见 [躯干运动学说明](src/gento_driver/BODY_KINEMATICS.md)。
 
 ## 编译、部署与启动
 
@@ -61,7 +61,9 @@ ros2 topic echo /gento_control/status
 | 话题后缀 | 消息与单位 |
 | --- | --- |
 | `left/target_pose`、`right/target_pose` | `geometry_msgs/msg/PoseStamped`，位置 m、姿态单位四元数 |
-| `body/target_pose` | `geometry_msgs/msg/PoseStamped`，躯干末端 `BD_FL` 的绝对位姿，位置 m、姿态单位四元数，参考系 `body_base` |
+| `body/target_pose` | `geometry_msgs/msg/PoseStamped`，躯干 `BD_J6` 位姿目标，逆解后执行，参考系 `body_base` |
+| `body/preview_pose` | `geometry_msgs/msg/PoseStamped`，仅预览躯干逆解，不执行 |
+| `body/ik_result` | `std_msgs/msg/String`，逆解结果 JSON，含六轴角度和弧度 |
 | `left/target_joints`、`right/target_joints` | `sensor_msgs/msg/JointState`，完整的 7 个关节名称与位置，rad |
 | `body/target_joints` | `sensor_msgs/msg/JointState`，完整的 6 个关节名称与位置，rad |
 
@@ -90,16 +92,76 @@ ros2 topic pub --once /gento_control/left/target_joints sensor_msgs/msg/JointSta
   name: [left_joint_1, left_joint_2, left_joint_3, left_joint_4, left_joint_5, left_joint_6, left_joint_7],
   position: [2.47, -1.45, -1.62, -2.49, -0.02, 0.60, 0.075]}"
 
-# 躯干关节位置：rad；此示例为全部零位的绝对目标，不是相对微动
-ros2 topic pub --once /gento_control/body/target_joints sensor_msgs/msg/JointState \
-"{header: auto,
-  name: [body_joint_1, body_joint_2, body_joint_3, body_joint_4, body_joint_5, body_joint_6],
-  position: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
 ```
 
-双臂位姿分别使用 `left_arm_sdk_base`、`right_arm_sdk_base`，躯干位姿使用 `body_base`，不自动做 TF 变换。双臂 TCP 来自 SDK 正解；躯干 `body/tcp_pose` 来自当前六轴反馈角的本地正解，末端为 `BD_FL`，不是外部测量。旧 `/gento_dual_arm/...` 话题已移除。
+双臂位姿分别使用 `left_arm_sdk_base`、`right_arm_sdk_base`，躯干位姿使用 `body_base`，不自动做 TF 变换。双臂 TCP 来自 SDK 正解；躯干 `body/tcp_pose` 来自当前六轴反馈角的本地正解，末端为 `BD_J6`，不是外部测量。旧 `/gento_dual_arm/...` 话题已移除。
 
-躯干目标通过 `/gento_control/body/target_pose` 发送，消息格式与手臂相同，`frame_id` 设为 `body_base`。以当前反馈位姿为起点修改目标，必须重新填写时间戳。逆解约束完整位置与朝向，并在 `max_delta` 和有效限位内优先接近当前关节角；J2 额外限制为 ±50°。求解失败不下发关节命令。躯干复用控制器的关节位置执行通道，只保证末端目标，不保证移动路径为直线，详见 [躯干话题用法](src/gento_driver/BODY_KINEMATICS.md#ros-话题反馈和控制)。
+躯干位姿通过 `/gento_control/body/target_pose` 发送，`frame_id` 设为 `body_base`。该话题会逆解并**执行运动**；只预览逆解时使用 `/gento_control/body/preview_pose`，结果发布到 `/gento_control/body/ik_result` 并在 control 日志打印。以当前反馈位姿为起点修改目标，必须重新填写时间戳。逆解约束完整位置与朝向，并在 `max_delta` 和有效限位内优先接近当前关节角；J2 额外限制为 ±50°。关节角执行仍使用 `/gento_control/body/target_joints`。详见 [躯干话题用法](src/gento_driver/BODY_KINEMATICS.md#ros-话题反馈和控制)。
+
+`target_pose` 现在从当前 `BD_J6` 位姿到目标做位置直线插补和姿态 SLERP，沿同一逆解分支求出关节锚点，再生成 50 Hz 关节样本。下发前逐点检查正解位姿、关节限位、速度和加速度；driver 按时间顺序发送关节目标并监控实际末端到线段的偏差。`target_joints` 仍是单点关节目标，不走此直线规划。轨迹点由控制器跟踪，实机路径误差受 `cartesian_path_tolerance` 监控，不能把模型直线等同于物理上的零误差直线。
+
+躯干位姿逆解的 `body_base` 高度范围默认 **0.55–0.76 m**（包含端点），预览和执行均检查目标以及最终逆解结果；超出范围会拒绝。可在 `src/gento_driver/launch/dual_arm.launch.py` 修改 `body_z_min_m`、`body_z_max_m`，或启动时覆盖：`./run_real_robot.sh body_z_min_m:=0.55 body_z_max_m:=0.76`。零位正解高度为 0.765 m，因此零位不能作为这两个位姿话题的逆解目标。直线路径允许从当前范围外高度向范围内移动，但不能越过当前高度继续远离范围。关节角执行话题不经过此位姿逆解限制。
+
+## 躯干控制命令
+
+以下命令在运行主机的 `ros2_ws` 目录执行。先在终端一启动驱动、反馈和控制节点：
+
+```bash
+./run_real_robot.sh  # 代码更新后需重新编译时加 --build
+```
+
+在终端二加载环境，先读取当前躯干末端位姿和六轴关节角：
+
+```bash
+source /opt/ros/humble/setup.bash
+source install_real/setup.bash
+ros2 topic echo --once /gento_feedback/body/tcp_pose
+ros2 topic echo --once /gento_feedback/body/joint_states
+```
+
+**按末端位姿执行运动**：将下面 `X/Y/Z` 替换为目标位置（m），`QX/QY/QZ/QW` 替换为目标单位四元数。以刚读取的当前位姿为基础修改；若保持朝向，直接沿用当前反馈的四元数。下面的命令会让躯干运动。
+
+```bash
+ros2 topic pub --once /gento_control/body/target_pose geometry_msgs/msg/PoseStamped \
+"{header: {stamp: now, frame_id: body_base},
+  pose: {
+    position: {x: X, y: Y, z: Z},
+    orientation: {x: QX, y: QY, z: QZ, w: QW}
+  }}"
+```
+
+只想预览逆解时，把上述命令的话题改为 `/gento_control/body/preview_pose`。在另一终端读取预览结果：
+
+```bash
+ros2 topic echo --once /gento_control/body/ik_result
+```
+
+结果 JSON 中 `joints_deg` 是六轴角度（度），`joints_rad` 是弧度，`reference_joints_deg` 是求解时的当前反馈角。结果话题保留最近一条消息，读取时应核对 `target_stamp` 是否与本次目标一致。手动发送 `target_joints` 时使用 `joints_rad`，先自行核对零位、限位和实机姿态。`preview_pose` 不会调用执行 Action。
+
+参考系 `body_base` 固定在第 1 轴中心，轴方向与配置中的 AGV 平行；末端是第 6 关节坐标系 `BD_J6`，不包含其后的 391.5 mm 安装偏移。目标和反馈均表示 `T_B_BD_J6`；当前配置全零位的位置为 `[0, 0, 765]` mm（ROS 消息为 `[0, 0, 0.765]` m）。消息是绝对目标位姿，不是位移增量。该话题同时约束位置和朝向，不自动做 TF 转换。
+
+旧 `BD_FL` 目标不能直接复用，需按 `T_B_J6 = T_B_FL @ inverse(T_J6_FL)` 转换。当前安装变换等价于沿旧末端自身 Z 方向减去 391.5 mm（ROS 为 0.3915 m），朝向不变；不能一律从 `body_base` 的 Z 坐标相减。
+
+**按六轴关节角控制**：将 `J1` 至 `J6` 替换为目标绝对角度，单位 **rad**，不能直接填写度数。
+
+```bash
+ros2 topic pub --once /gento_control/body/target_joints sensor_msgs/msg/JointState \
+"{header: {stamp: now},
+  name: [body_joint_1, body_joint_2, body_joint_3, body_joint_4, body_joint_5, body_joint_6],
+  position: [J1, J2, J3, J4, J5, J6]}"
+```
+
+预览求解及执行均受有效关节限位和 `max_delta` 约束。第 2 轴额外限制为 ±50°，即约 ±0.872665 rad。目标不排队；在另一终端观察状态，预览等待 `previewed`，执行等待 `completed` 后再发送下一条新目标：
+
+```bash
+ros2 topic echo /gento_control/status
+```
+
+需要软件停止时执行以下命令；这会停止双臂与躯干并锁定故障，恢复步骤见下一节：
+
+```bash
+ros2 topic pub --once /gento_driver/stop std_msgs/msg/Empty '{}'
+```
 
 ## 停止与清错
 
@@ -113,6 +175,110 @@ ros2 topic pub --once /gento_control/reset_error std_msgs/msg/Empty '{}'
 
 停止会锁定故障，不续跑旧轨迹，control 同时取消规划。全局恢复会清错、确认 POSITION 并更换会话。`/gento_control/{left,right,body}/reset_error` 只处理对应对象，恢复整体运动仍使用全局恢复命令。正常退出用 Ctrl+C，节点会处理停止、模式退出和 SDK 断开。
 
+## 夹爪控制命令
+
+远端夹爪包已安装在同一 `install_real` 工作空间。每个终端先加载环境：
+
+```bash
+cd /home/nvidia/wxy/tianjizhineng/ros2_ws
+source /opt/ros/humble/setup.bash
+source install_real/setup.bash
+```
+
+**单夹爪启动**（在终端一执行）：
+
+```bash
+ros2 launch gripper gripper.launch.py side:=left
+# 或只启动右夹爪：ros2 launch gripper gripper.launch.py side:=right
+```
+
+单夹爪 launch 默认使用 `/dev/gripper_rs485`、已有零位和 `0.002 m/s`（2 mm/s）速度。可在启动时覆盖单项参数，例如左夹爪使用其他串口：
+
+```bash
+ros2 launch gripper gripper.launch.py side:=left namespace:=left_gripper \
+  port:=/dev/ttyUSB4 speed_mps:=0.005
+```
+
+单夹爪 launch 默认使用已有零位（`use_existing_zero=true`），不自动使能或运动，因此无需在命令中重复填写。若不使用已有零位，添加 `use_existing_zero:=false`。速度参数启动后只读，修改需重启节点。
+
+在其他已加载环境的终端分别查看状态和应答：
+
+```bash
+ros2 topic echo /gripper/state
+ros2 topic echo /gripper/ack
+```
+
+**控制指令**：逐条发送并检查 ACK 和状态，不要整段连续执行。移动前应满足 `valid=true`、`error_code=0`、`homed=true`，并先成功使能。
+
+```bash
+# 1. 使能
+ros2 topic pub --once /gripper/command gripper/msg/GripperCommand \
+  '{action: 2}'
+
+# 2. 移动到 60 mm 开度，速度使用 launch 配置（默认 5 mm/s）
+ros2 topic pub --once /gripper/command gripper/msg/GripperCommand \
+  '{action: 0, position_m: 0.060}'
+
+# 3. 改为 30 mm 开度，速度使用同一 launch 配置
+ros2 topic pub --once /gripper/command gripper/msg/GripperCommand \
+  '{action: 0, position_m: 0.030}'
+
+# 4. 失能
+ros2 topic pub --once /gripper/command gripper/msg/GripperCommand \
+  '{action: 3}'
+
+# 清错：不自动使能，也不自动恢复旧目标
+ros2 topic pub --once /gripper/command gripper/msg/GripperCommand \
+  '{action: 4}'
+```
+
+开度 `position_m` 单位 **m**，范围 `0～0.098`；数值越大越张开。速度在 launch 的 `speed_mps` 中配置，单位 **m/s**，默认 `0.005`（5 mm/s），须为有限正数；控制消息中不再包含速度。MOVE 的 ACK 只代表指令已接受，完成需查看 `/gripper/state` 的 `at_target`；触发电流保持时查看 `current_limit_reached`、`holding_position`。
+
+| action | 动作 |
+| --- | --- |
+| `0` | MOVE，移动到指定开度 |
+| `1` | ZERO，按已有标定流程标零，会主动张开，完成后失能 |
+| `2` | ENABLE，使能 |
+| `3` | DISABLE，失能 |
+| `4` | CLEAR，清错 |
+
+仅在适用的已有标定流程下执行标零；它不是未知零点时的通用恢复命令：
+
+```bash
+ros2 topic pub --once /gripper/command gripper/msg/GripperCommand \
+  '{action: 1}'
+```
+
+`/gento_driver/stop` 和 `/gento_control/reset_error` 只处理机器人双臂、躯干，不控制这个独立夹爪节点。夹爪使用自己的 DISABLE / CLEAR 指令。
+
+**双夹爪共用一路串口**：不要同时运行单夹爪节点。设备地址须已设置为左 1、右 2；左侧默认使用 `config/calibration.csv`，右侧默认使用 `config/right_calibration.csv`：
+
+```bash
+ros2 launch gripper dual_gripper.launch.py port:=/dev/ttyUSB0 \
+  left_id:=1 right_id:=2
+```
+
+两侧各自确认零位有效后，可在上述启动命令后添加 `left_use_existing_zero:=true right_use_existing_zero:=true`。控制消息格式与单夹爪相同，仅替换话题：
+
+双夹爪速度分别由 `dual_gripper.launch.py` 的 `left_speed_mps`、`right_speed_mps` 配置，均默认 `0.005 m/s`。例如启动时覆盖：`left_speed_mps:=0.005 right_speed_mps:=0.010`。
+
+| 夹爪 | 命令话题 | 状态 / ACK |
+| --- | --- | --- |
+| 左 | `/left_gripper/command` | `/left_gripper/state`、`/left_gripper/ack` |
+| 右 | `/right_gripper/command` | `/right_gripper/state`、`/right_gripper/ack` |
+
+```bash
+# 左、右分别使能；每条都需要确认对应 ACK
+ros2 topic pub --once /left_gripper/command gripper/msg/GripperCommand '{action: 2}'
+ros2 topic pub --once /right_gripper/command gripper/msg/GripperCommand '{action: 2}'
+
+# 左、右分别设置 60 mm 开度，速度使用各自 launch 配置
+ros2 topic pub --once /left_gripper/command gripper/msg/GripperCommand '{action: 0, position_m: 0.060}'
+ros2 topic pub --once /right_gripper/command gripper/msg/GripperCommand '{action: 0, position_m: 0.060}'
+```
+
+标定、电流保持和双夹爪总线细节见 [gripper 功能包说明](src/gripper/README.md)。
+
 ## 参数与运动行为
 
 默认值和详细注释见 [dual_arm.launch.py](src/gento_driver/launch/dual_arm.launch.py)。启动时用 `参数名:=值` 覆盖；运行中参数只读，修改后需重启。
@@ -124,6 +290,7 @@ ros2 topic pub --once /gento_control/reset_error std_msgs/msg/Empty '{}'
 | `cartesian_speed`、`cartesian_angular_speed` | 末端线速度 m/s、姿态角速度 rad/s 上限 |
 | `cartesian_joint_speed`、`cartesian_joint_acc` | 关节速度 °/s、加速度 °/s² 上限 |
 | `max_delta` | 每关节相对本次起点的最大位移，°，不是相邻点步长 |
+| `body_z_min_m`、`body_z_max_m` | 躯干 `BD_J6` 位姿逆解目标与结果的高度范围，`body_base` 中，默认 0.55–0.76 m |
 | `tolerance`、`timeout` | 最终关节到位容差 °、执行超时 s |
 | `body_position_tolerance_mm`、`body_orientation_tolerance_deg` | 躯干末端到位容差，默认 1 mm / 0.2°；与关节容差同时满足并持续 0.5 秒才完成 |
 | `cartesian_path_tolerance` | 实际 TCP 到起终点线段的最大距离，默认 0.005 m |

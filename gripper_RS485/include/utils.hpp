@@ -77,3 +77,4 @@ inline bool expect_near(const std::string &label, double actual,
     }
     return ok;
 }
+

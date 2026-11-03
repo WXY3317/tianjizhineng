@@ -57,6 +57,19 @@ class Planner:
                 raise ValueError(f'Body joint{i+1} exceeds limits/max_delta')
         return {3:[joints]},{'body_target_matrix':matrix,'body_ik':result}
 
+    def body_cartesian(self,matrix):
+        self.check_cancel()
+        result=self.rpc('body_cartesian',{'matrix':matrix,'reference':self.snapshot['body']})
+        self.check_cancel()
+        if not isinstance(result,dict) or 'path' not in result or 'info' not in result:
+            raise ValueError('Invalid Body Cartesian plan from driver')
+        path=result['path']
+        if not path:return {},result['info']
+        if len(path)<5 or len(path)>5000 or any(len(q)!=6 for q in path):
+            raise ValueError('Invalid Body Cartesian trajectory length')
+        for q in path:finite(q)
+        return {3:path},result['info']
+
     def joint(self,arm,target):
         start=self.snapshot['joints'][arm]
         validate_target(start,target,self.limits[arm],self.c.max_delta)

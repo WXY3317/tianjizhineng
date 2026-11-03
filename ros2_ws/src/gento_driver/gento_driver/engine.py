@@ -291,6 +291,30 @@ class Engine:
         self.cartesian_rate_limits = result
         return result
 
+    def read_body_rate_limits(self):
+        """Read six torso ratings and respect the active POSITION ratios."""
+        settings = self.robot.get_sg_dict()['body']['set']
+        ratios = [float(settings[key]) for key in ('vel_ratio', 'acc_ratio')]
+        self.h.finite(ratios)
+        if not all(0 < value <= 100 for value in ratios):
+            raise ValueError('Invalid body speed/acceleration ratios')
+        rated = [[], []]
+        for joint in range(6):
+            for kind, suffix in enumerate(('VelMax', 'AccMax')):
+                self.check_cancel()
+                ret, value = self.recovery_call(self.robot.param_get_float,
+                                                f'R.B.L{joint}.BASIC.{suffix}')
+                self.h.check(ret, f'Body joint{joint+1} {suffix}')
+                self.h.finite([value])
+                if value <= 0:
+                    raise ValueError(f'Body joint{joint+1} invalid {suffix}: {value}')
+                rated[kind].append(value)
+        return {'vel_ratio': ratios[0], 'acc_ratio': ratios[1],
+                'speed': [min(self.c.cartesian_joint_speed, v*min(ratios[0],self.c.speed)/100*.9)
+                          for v in rated[0]],
+                'acceleration': [min(self.c.cartesian_joint_acc, a*min(ratios[1],self.c.acc)/100*.9)
+                                 for a in rated[1]]}
+
     def set_arm_ratios(self,ratios,allow_cancel=True,timeout=.5):
         """Set and confirm global ratios; callers retain independently checked path limits."""
         self.require_control()

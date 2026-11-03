@@ -1,8 +1,8 @@
 """Offline six-axis Luna torso FK/IK. Lengths: mm; public joint angles: degrees.
 
 B is fixed at the BD_J1 pivot, with axes parallel to the parent AGV frame.
-E is BD_FL, including its fixed mounting transform after BD_J6. Geometry and
-positive joint directions follow CordDef.Cord and ICBase.cpp, not SkyeBody.
+E is BD_J6 after joint 6 rotation, before the BD_J6 -> BD_FL mounting transform.
+Geometry and positive joint directions follow CordDef.Cord and ICBase.cpp, not SkyeBody.
 This module computes joint targets only; it never sends motion commands.
 """
 
@@ -70,7 +70,7 @@ def _load_chain(path):
         transform[:3, 3] = p
         nodes[name] = (parent, transform, int(kind))
 
-    names = [f"BD_J{i}" for i in range(1, 7)] + ["BD_FL"]
+    names = [f"BD_J{i}" for i in range(1, 7)]
     parent = "AGV"
     chain = []
     for name in names:
@@ -161,16 +161,16 @@ class LunaBodyKinematics:
 
     def _fk(self, radians):
         transform = np.eye(4)
-        for fixed, angle in zip(self._chain[:6], radians):
+        for fixed, angle in zip(self._chain, radians):
             transform = transform @ fixed
             c, s = np.cos(angle), np.sin(angle)
             rotation = np.array([[c, -s, 0, 0], [s, c, 0, 0],
                                  [0, 0, 1, 0], [0, 0, 0, 1]])
             transform = transform @ rotation
-        return transform @ self._chain[6]
+        return transform
 
     def forward(self, joints_deg):
-        """Return T_B_BD_FL, a nested-list 4x4 matrix, in mm.
+        """Return T_B_BD_J6, a nested-list 4x4 matrix, in mm.
 
         FK accepts measured angles outside the user caps as well, so the actual
         pose can still be inspected before solving for a target inside the caps.
@@ -180,10 +180,11 @@ class LunaBodyKinematics:
 
     def inverse(self, target_pose, reference_joints_deg, *, position_only=False,
                 position_tolerance_mm=0.1, orientation_tolerance_deg=0.01,
-                max_joint_delta_deg=None, max_nfev=300, checkpoint=None):
+                max_joint_delta_deg=None, max_nfev=300, checkpoint=None,
+                local_only=False, seed_joints_deg=None):
         """Solve in B, selecting the nearest feasible candidate to the reference.
 
-        Full-pose mode accepts a rigid 4x4 T_B_BD_FL. Position-only mode accepts
+        Full-pose mode accepts a rigid 4x4 T_B_BD_J6. Position-only mode accepts
         XYZ (mm) or a 4x4 matrix whose orientation is ignored. In position-only
         mode orientation is free, allowing smaller joint changes.
 
@@ -289,17 +290,19 @@ class LunaBodyKinematics:
         def active_residual(active):
             return residual(expand(active))
 
-        seeds = [seed]
+        seeds = [np.clip(np.deg2rad(_array(seed_joints_deg,(6,),"seed_joints_deg")),lo,hi)
+                 if seed_joints_deg is not None else seed]
         # Opposite bend seeds help leave the zero-pose singularity and find
         # both bend branches. All seeds and optimizer iterates obey the bounds.
-        for sign in (-1, 1):
-            seeds.append(np.clip(seed + np.deg2rad([0, 20*sign, -40*sign, 20*sign, 0, 0]), lo, hi))
-        for joint in (1, 2, 3):
+        if not local_only:
             for sign in (-1, 1):
-                offset = np.zeros(6)
-                offset[joint] = np.deg2rad(30 * sign)
-                seeds.append(np.clip(seed + offset, lo, hi))
-        seeds.append((lo + hi) / 2)
+                seeds.append(np.clip(seed + np.deg2rad([0, 20*sign, -40*sign, 20*sign, 0, 0]), lo, hi))
+            for joint in (1, 2, 3):
+                for sign in (-1, 1):
+                    offset = np.zeros(6)
+                    offset[joint] = np.deg2rad(30 * sign)
+                    seeds.append(np.clip(seed + offset, lo, hi))
+            seeds.append((lo + hi) / 2)
         candidates = []
         best, best_error = seed, float(np.linalg.norm(residual(seed)))
         tried = set()
@@ -319,6 +322,8 @@ class LunaBodyKinematics:
             if not feasible(q):
                 continue
             candidates.append(q.copy())
+            if local_only:
+                break
             if len(residual(q)) > len(free):
                 # SLSQP cannot handle more equality constraints than variables.
                 # Retain the bounded feasible solution found by least squares.

@@ -21,10 +21,10 @@ int main(int argc, char **argv)
     double input[22] = {0};
     for (int i = 0; i < 6; ++i) input[i] = std::atof(argv[i + 4]);
     if (!model.FX_OnUpdateCord(22, input)) return 3;
-    pCordCell flange = model.FX_SearchCord((char *)"BD_FL");
-    if (!flange) return 4;
+    pCordCell joint6 = model.FX_SearchCord((char *)"BD_J6");
+    if (!joint6) return 4;
     for (int i = 0; i < 4; ++i)
         for (int j = 0; j < 4; ++j)
-            std::printf("%.17g ", flange->m_RunW[i][j]);
+            std::printf("%.17g ", joint6->m_RunW[i][j]);
     return 0;
 }

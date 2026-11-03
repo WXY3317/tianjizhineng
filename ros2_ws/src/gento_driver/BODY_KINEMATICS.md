@@ -14,27 +14,38 @@ source install/setup.bash
 
 - **固定基座 B**：原点在 `BD_J1` 旋转中心，轴方向与配置中的 `AGV` 平行；
   位于第 1 轴运动之前，不随任何躯干关节转动。
-- **末端 E**：`BD_FL`，包含 `BD_J6 -> BD_FL` 的固定安装变换。
-  当前配置为第 6 轴局部 Z 方向 391.5 mm；不是 `BD_J6` 原点。
-- 输出/输入位姿均为 **`T_B_BD_FL`**，4×4 齐次矩阵；平移单位 mm，关节角单位度。
+- **末端 E**：第 6 关节坐标系 `BD_J6`，包含第 6 轴的旋转；不包含
+  `BD_J6 -> BD_FL` 的 391.5 mm 固定安装偏移。
+- 输出/输入位姿均为 **`T_B_BD_J6`**，4×4 齐次矩阵；平移单位 mm，关节角单位度。
   位姿矩阵左上角是旋转矩阵，不是欧拉角。
 
 几何参数读取包内 `gento_driver/data/luna_body.Cord`，随功能包一起安装，
 运行时无需访问 SDK 源码目录。该文件是原有
 `C_SDK/FXConfig/InterferenceCfg/CordDef.Cord` 的工作空间副本，
-可通过构造函数的 `cord_path` 显式指定经过标定的配置。
+可通过构造函数的 `cord_path` 显式指定经过标定的配置。配置中仍保留真实的
+`BD_FL` 安装记录；本模块的运动链在 `BD_J6` 处结束。
 `<m3>` 的三组数依次是局部 X 轴、局部 Z 轴和安装位移，不是普通 3×3 旋转矩阵。
 每个关节使用 `T_parent_joint(q) = T_install @ Rz(q)`，与
 `ICBase::FX_OnLoadCord`、`FX_OnUpdateCord` 的定义一致。
 
 当前配置中 `T_AGV_B` 只有 Z=100 mm 的平移。B 的全零位末端位置为
-`[0, 0, 1156.5]` mm，末端朝向为单位旋转矩阵。模型的“全零位”不表示推荐的实机姿态。
+`[0, 0, 765]` mm，末端朝向为单位旋转矩阵。模型的“全零位”不表示推荐的实机姿态。
+ROS 位姿逆解目标与最终结果的 `body_base` 高度默认限制在 0.55–0.76 m（包含端点），
+在 `dual_arm.launch.py` 中设置 `body_z_min_m`、`body_z_max_m`，也可用启动参数覆盖。
+零位正解高度 0.765 m 高于默认上限，因此不能作为位姿逆解目标。
+此限制不作用于直接发送关节角。直线位姿路径允许从当前范围外高度向范围内移动，
+但不能越过当前高度继续远离范围。
 如需转换现有 AGV 坐标下的目标：
 
 ```python
 import numpy as np
 target_in_base = np.linalg.inv(np.array(model.agv_to_base)) @ target_in_agv
 ```
+
+旧版本以 `BD_FL` 为末端保存的目标不能直接复用。沿用原关节姿态所对应的目标时，
+应转换为 `T_B_J6 = T_B_FL @ inverse(T_J6_FL)`。当前 `T_J6_FL` 是沿第 6 轴局部
+Z 方向平移 391.5 mm 的单位旋转变换，因此等价于沿旧末端自身 Z 轴减去 391.5 mm，
+不是始终沿 `body_base` 的 Z 轴相减；朝向不变。ROS 位姿消息中的对应距离为 0.3915 m。
 
 这是仓库配置描述的几何模型。尚未与当前实体机器的标定参数、零位和反馈进行实机比对。
 离线测试会与 SDK 原有 C++ 坐标链比较，但这不代替机械标定。
@@ -104,8 +115,10 @@ print("朝向误差（度）:", result.orientation_error_deg)
 
 | 话题 | 消息 | 含义 |
 |---|---|---|
-| `/gento_feedback/body/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 当前六轴反馈角正解得到的 `BD_FL` 位姿 |
-| `/gento_control/body/target_pose` | `geometry_msgs/msg/PoseStamped` | `BD_FL` 的绝对目标位置及朝向 |
+| `/gento_feedback/body/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 当前六轴反馈角正解得到的 `BD_J6` 位姿 |
+| `/gento_control/body/target_pose` | `geometry_msgs/msg/PoseStamped` | `BD_J6` 位姿逆解后执行 |
+| `/gento_control/body/preview_pose` | `geometry_msgs/msg/PoseStamped` | `BD_J6` 位姿逆解预览，不执行 |
+| `/gento_control/body/ik_result` | `std_msgs/msg/String` | 逆解结果 JSON，含 `joints_deg` 和 `joints_rad` |
 
 两者默认 `frame_id: body_base`，位置单位 **m**，朝向为单位四元数；此处固定
 使用 mm→m 的换算，不受双臂 `sdk_length_to_m` 参数影响。可通过 driver/launch
@@ -115,14 +128,21 @@ driver 从当前反馈角计算 `body_matrix`，与同一帧关节反馈一起�
 feedback 转换为带相同时间戳的 `PoseStamped`。只读模式也可发布当前位姿，
 无需读取限位或开启控制。
 
-control 收到新鲜目标后，向唯一 SDK owner driver 请求 `body_ik`，以当前反馈
-关节角为参考，约束完整位姿、有效限位和 `max_delta`，再提交现有躯干关节执行
-Action。driver 会独立检查起点、限位、模式、心跳和最大变化量。
-控制器采用单点关节位置通道执行，末端移动路径不保证为直线。
+control 收到新鲜 `target_pose` 后，向唯一 SDK owner driver 请求 `body_cartesian`。
+driver 从当前反馈的 `BD_J6` 位姿到目标做位置直线插补和姿态 SLERP，
+沿同一逆解分支计算锚点，再生成 50 Hz 关节样本；逐点检查正解位姿、
+关节限位、速度和加速度后才提交执行 Action。执行时 driver 按时间顺序发送
+躯干关节位置指令，并监控实际末端到直线段的偏差。
+`preview_pose` 使用同样逆解，但将结果发布到 `ik_result` 并打印日志，不提交执行 Action。
+发送 `target_pose` 或 `target_joints` 会请求运动。
+driver 对执行请求独立检查起点、限位、模式、心跳和最大变化量。
+`target_joints` 仍采用单点关节位置通道，不执行直线插补。
 若逆解失败或消息非法，不下发关节目标。停止请求可中断数值求解。
 本地额外限位也应用于现有 `body/target_joints` 通道。
 
-躯干任务不读取双臂限速参数。执行完成须同时满足关节角 `tolerance`、
+躯干位姿任务读取躯干各轴控制器速度和加速度额定值，并与 launch 中的
+`cartesian_speed`、`cartesian_angular_speed`、`cartesian_joint_speed`、
+`cartesian_joint_acc` 共同限制规划。执行完成须同时满足关节角 `tolerance`、
 末端位置 `body_position_tolerance_mm`（默认 1 mm）和朝向
 `body_orientation_tolerance_deg`（默认 0.2°），并持续 0.5 秒。
 执行位姿误差以目标关节角正解得到的位姿为基准；逆解与原始目标之间另有
@@ -141,7 +161,7 @@ Action。driver 会独立检查起点、限位、模式、心跳和最大变化�
 ros2 topic echo --once /gento_feedback/body/tcp_pose
 ```
 
-发送目标的格式如下。`X/Y/Z/QX/QY/QZ/QW` 必须替换为现场选定的数值，
+发送执行目标的格式如下，**这会使机器人运动**。`X/Y/Z/QX/QY/QZ/QW` 必须替换为现场选定的数值，
 可从当前反馈位姿开始小幅调整；四元数若不需要旋转可沿用当前反馈值。
 
 ```bash
@@ -150,6 +170,9 @@ ros2 topic pub --once /gento_control/body/target_pose geometry_msgs/msg/PoseStam
   pose: {position: {x: X, y: Y, z: Z},
          orientation: {x: QX, y: QY, z: QZ, w: QW}}}"
 ```
+
+若仅需逆解预览，把话题改为 `/gento_control/body/preview_pose`，在
+`/gento_control/body/ik_result` 读取六轴结果。
 
 当前通道只接受完整位置和朝向；`position_only=True` 仍用于直接调用计算模块，
 没有把“忽略朝向”隐含在 ROS 位姿消息中。忙碌时不排队，任务结束后需重新发带新时间戳的目标。

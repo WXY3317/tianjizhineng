@@ -72,6 +72,9 @@ def generate_launch_description():
         'right_frame': ('right_arm_sdk_base', str),
         # 躯干固定基座：原点在第 1 轴中心、轴方向与配置 AGV 平行；不做 TF 转换。
         'body_frame': ('body_base', str),
+        # 躯干 BD_J6 位姿逆解目标在 body_base 中的高度范围，单位 m；上下限均包含。
+        'body_z_min_m': ('0.55', float),
+        'body_z_max_m': ('0.76', float),
         # 躯干到位须同时满足关节容差、末端位置和朝向容差，持续 0.5 秒。
         'body_position_tolerance_mm': ('1.0', float),
         'body_orientation_tolerance_deg': ('0.2', float),

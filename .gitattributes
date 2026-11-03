@@ -1,0 +1,2 @@
+mjcf/assets/meshes/base/Underpan_Base_link.obj filter=lfs diff=lfs merge=lfs -text
+mjcf/assets/meshes/other/Gento_Luna_Leg_J6_Link.obj filter=lfs diff=lfs merge=lfs -text

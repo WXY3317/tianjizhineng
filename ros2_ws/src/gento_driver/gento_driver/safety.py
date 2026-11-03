@@ -1,6 +1,8 @@
 """Independent validation at the hardware boundary; no planner is trusted."""
 import math
 from .conversions import JOINT_NAMES, BODY_JOINT_NAMES, finite, pose_matrix
+from .body_kinematics import LunaBodyKinematics, pose_error
+from .body_cartesian import interpolate as body_interpolate
 
 OBJECT_NAMES = {0: JOINT_NAMES[:7], 1: JOINT_NAMES[7:], 3: BODY_JOINT_NAMES}
 
@@ -38,7 +40,8 @@ def validate_goal(goal, snapshot, hardware, now_ns, check_freshness=True, planni
         if obj == 3 and len(goal.trajectories) != 1:
             raise ValueError('Body and arms cannot be executed together')
         count = len(trajectory.points)
-        if (obj == 3 and count != 1) or (obj != 3 and not 5 <= count <= hardware.robot.max_point):
+        if (obj == 3 and count != 1 and not (5 <= count <= hardware.robot.max_point and 3 in goal.line_objects)
+                or obj != 3 and not 5 <= count <= hardware.robot.max_point):
             raise ValueError('Invalid trajectory point count')
         points = []
         for index,point in enumerate(trajectory.points):
@@ -53,6 +56,8 @@ def validate_goal(goal, snapshot, hardware, now_ns, check_freshness=True, planni
     # limits may be reused. Limits are never supplied by the action client.
     arm_limits = (hardware.read_cartesian_rate_limits([a for a in objects if a != 3])
                   if planning_limits is None else planning_limits)
+    if 3 in plans and len(plans[3])>1 and 3 not in arm_limits:
+        arm_limits[3]=hardware.read_body_rate_limits()
     for index,obj in enumerate(objects):
         settings=arm_limits[obj] if obj!=3 else snapshot['controller']['body']['set']
         finite([settings['vel_ratio'],settings['acc_ratio']])
@@ -77,9 +82,10 @@ def validate_goal(goal, snapshot, hardware, now_ns, check_freshness=True, planni
                     continue
                 if not lo <= value <= hi or abs(value-initial)>hardware.c.max_delta:
                     raise ValueError(f'object{obj} joint{i+1} exceeds limits/max_delta')
-        if obj == 3: continue
+        if obj == 3 and len(points)==1: continue
         caps = arm_limits[obj]
-        entry = [(x-y)*50 for x,y in zip(points[0],actual[obj*7:obj*7+7])]
+        first_actual = actual[14:] if obj==3 else actual[obj*7:obj*7+7]
+        entry = [(x-y)*50 for x,y in zip(points[0],first_actual)]
         previous = entry
         for index in range(len(points)):
             velocity = entry if index == 0 else [(x-y)*50 for x,y in zip(points[index],points[index-1])]
@@ -98,21 +104,35 @@ def validate_goal(goal, snapshot, hardware, now_ns, check_freshness=True, planni
     if not len(goal.line_objects)==len(goal.line_starts)==len(goal.line_goals):
         raise ValueError('Cartesian line metadata lengths differ')
     for obj,a,b in zip(goal.line_objects,goal.line_starts,goal.line_goals):
-        if obj not in plans or obj == 3 or obj in lines:
+        if obj not in plans or obj in lines or (obj==3 and len(plans[obj])<5):
             raise ValueError('Invalid Cartesian line object')
-        begin,end = pose_matrix(a,hardware.c.sdk_length_to_m),pose_matrix(b,hardware.c.sdk_length_to_m)
+        scale=.001 if obj==3 else hardware.c.sdk_length_to_m
+        begin,end = pose_matrix(a,scale),pose_matrix(b,scale)
+        body_model=LunaBodyKinematics() if obj==3 else None
         for index in (0,len(plans[obj])-1):
-            fk = hardware.h.fk(hardware.robot,obj,plans[obj][index])
+            fk = (body_model.forward(plans[obj][index]) if obj==3 else
+                  hardware.h.fk(hardware.robot,obj,plans[obj][index]))
             target = begin if index == 0 else end
-            if (math.sqrt(sum((fk[i][3]-target[i][3])**2 for i in range(3)))*hardware.c.sdk_length_to_m > .0001 or
+            if (math.sqrt(sum((fk[i][3]-target[i][3])**2 for i in range(3)))*scale > .0001 or
                     max(abs(fk[i][j]-target[i][j]) for i in range(3) for j in range(3)) > .001):
                 raise ValueError('Cartesian line endpoints disagree with joint trajectory')
         # Verify all planned points against the supplied segment before touching hardware.
-        for q in plans[obj]:
+        for index,q in enumerate(plans[obj]):
             hardware.check_cancel()
-            fk = hardware.h.fk(hardware.robot,obj,q)
-            if line_error(fk,begin,end,hardware.c.sdk_length_to_m)[0] > .0002:
+            fk = body_model.forward(q) if obj==3 else hardware.h.fk(hardware.robot,obj,q)
+            if line_error(fk,begin,end,scale)[0] > .0002:
                 raise ValueError('Planned FK departs the Cartesian segment')
+            if obj==3:
+                t=index/(len(plans[obj])-1)
+                fraction=t*t*t*(10+t*(-15+6*t))
+                desired=body_interpolate(begin,end,fraction)
+                position_mm,orientation_deg=pose_error(fk,desired)
+                if position_mm>.2 or orientation_deg>.05:
+                    raise ValueError(f'Body Cartesian pose mismatch at sample {index}')
+                lower=min(begin[2][3],hardware.c.body_z_min_m*1000)
+                upper=max(begin[2][3],hardware.c.body_z_max_m*1000)
+                if not lower-.1<=fk[2][3]<=upper+.1:
+                    raise ValueError(f'Body Cartesian z exceeds height envelope at sample {index}')
         lines[obj]=(begin,end)
     return plans,lines
 

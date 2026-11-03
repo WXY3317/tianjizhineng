@@ -1,0 +1,4 @@
+# Tianji CH340 RS485 adapter. This chip has no unique USB serial number.
+# Match USB VID/PID plus the physical port; moving the adapter to another port
+# requires updating ID_PATH. The motor's Modbus ID (1 or 2) is not a udev field.
+SUBSYSTEM=="tty", KERNEL=="ttyUSB*", ENV{ID_VENDOR_ID}=="1a86", ENV{ID_MODEL_ID}=="7523", ENV{ID_PATH}=="platform-14180000.pcie-pci-0000:01:00.0-usb-0:2.1:1.0", SYMLINK+="gripper_rs485"

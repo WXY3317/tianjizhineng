@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  场景道具（非机器人本体）定义。
+
+  单独成文件的原因：mjcf/luna_m6_scene.xml 是由 scripts/generate_mjcf.py
+  整体重写生成的，直接改场景 XML 会在下次重新生成时被覆盖。
+  本文件通过 <include> 挂进场景，generator 的模板里也已同步加上该 include。
+
+  动/静分类（硬性要求，2026-09-21 定稿）：
+    固定设施（无 joint，不可拖动/旋转/搬移）：Conveyor_RollerLine、
+      StorageCage_B、StorageCage_I；
+    可搬运物（有 freejoint，可拖动/旋转/提起）：Pallet_S02、10 个工件。
+  回归：tests/check_props_movable.py 双向断言。
+-->
+<mujoco model="luna_m6_props">
+  <asset>
+    <!-- 零压力辊筒输送线，1300 x 1300 x 680 mm，米制，原点在底面中心 -->
+    <mesh name="Conveyor_RollerLine"
+          file="assets/meshes/Conveyor_RollerLine_1300x1300x680.STL"/>
+    <!-- 折叠式钢丝物料框（蝴蝶笼），800 x 800 x 450 mm，米制，XY 居中、底面 z=0 -->
+    <mesh name="StorageCage"
+          file="assets/meshes/StorageCage_800x800x450.STL"/>
+    <!--
+      工件（铸件 s01）减面版：161.8 x 161.8 x 63.5 mm，米制。
+      与源模型 s01.STL / s01_lowpoly.STL 的差别：本网格做了坐标规范化 ——
+      原点在「底面中心」、z 向上平放，因此 MJCF 里 body 的 pos.z 就等于
+      工件底面高度，绕 z 任意旋转都不会移动底面中心，便于在物料框内摆位。
+      三角形 12,246（由 48,984 减到 25%），最大几何偏差 0.06 mm。
+    -->
+    <mesh name="Workpiece_S01"
+          file="assets/meshes/Workpiece_S01_162x162x63.STL"/>
+    <!--
+      卡槽托盘（铸件 s02 工装板）减面版：1000 x 500 x 185 mm，米制。
+      网格做了坐标规范化 —— 原点在「底面中心」、z 向上水平平放，body 的
+      pos.z 即托盘底面高度。三角形 9,392（由 37,574 减到 25%），
+      最大几何偏差 0.86 mm。文件名用 ASCII：MuJoCo 在 Windows 上
+      fopen 打不开中文路径。
+    -->
+    <mesh name="Pallet_S02"
+          file="assets/meshes/s02_pallet_1000x500x185.STL"/>
+  </asset>
+
+  <worldbody>
+    <!--
+      输送线台子：固定在场景地面上的静态物体。
+
+      该 body 没有挂任何 joint，因此在 MuJoCo 里是 static body
+      （body_dofnum = 0，body_mass = 0）。接触求解器不会给它分配自由度，
+      任何碰撞、推力、掉落物都无法让它移动或倾斜 —— 满足「固定在地面上、
+      不可移动、不可被撞动」的要求。
+
+      pos 的 z = 0 与 luna_m6_scene.xml 中 ground 平面的高度一致（世界原点在地面），
+      使台子底面正好落在地面上。
+    -->
+    <body name="Conveyor_RollerLine" pos="1.0 0 0">
+      <!-- 外观：直接使用建模导出的 STL 网格 -->
+      <geom name="visual_Conveyor_RollerLine" type="mesh" mesh="Conveyor_RollerLine"
+            pos="0 0 0" quat="1 0 0 0" rgba="0.95 0.78 0.10 1"
+            contype="0" conaffinity="0" group="1"/>
+
+      <!--
+        碰撞体刻意不用整个 STL，而是用简化盒体：
+        MuJoCo 对 mesh 碰撞按凸包处理，整个线体的凸包会把辊筒之间的缝隙和
+        台下的空间一并填死，机器人手臂可能被"空气"挡住。
+        下面用一个台面板 + 四条腿来近似，与项目里 link 的做法一致
+        （visual 用 mesh，collision 用 box）。
+      -->
+      <!-- 台面板：对应侧框架 + 辊筒所在高度，z = 0.56 .. 0.68 -->
+      <geom name="collision_Conveyor_Bed" type="box" pos="0 0 0.62" size="0.65 0.65 0.06"
+            contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+
+      <!-- 四条腿：与建模脚本的腿位一致（x = ±0.40, y = ±0.53, 边长 60 mm） -->
+      <geom name="collision_Conveyor_Leg_1" type="box" pos=" 0.40  0.53 0.28"
+            size="0.03 0.03 0.28" contype="1" conaffinity="1" group="3"
+            friction="0.8 0.02 0.01"/>
+      <geom name="collision_Conveyor_Leg_2" type="box" pos=" 0.40 -0.53 0.28"
+            size="0.03 0.03 0.28" contype="1" conaffinity="1" group="3"
+            friction="0.8 0.02 0.01"/>
+      <geom name="collision_Conveyor_Leg_3" type="box" pos="-0.40  0.53 0.28"
+            size="0.03 0.03 0.28" contype="1" conaffinity="1" group="3"
+            friction="0.8 0.02 0.01"/>
+      <geom name="collision_Conveyor_Leg_4" type="box" pos="-0.40 -0.53 0.28"
+            size="0.03 0.03 0.28" contype="1" conaffinity="1" group="3"
+            friction="0.8 0.02 0.01"/>
+    </body>
+
+    <!--
+      物料框（折叠式钢丝仓储笼 / 蝴蝶笼）：800 x 800 x 450 mm，共 2 个。
+
+      位置依据《图 2-8 智能物流集成作业演示场景布局图》量测：
+        - 图中 E 区 = 仿真里「机器人 + 滚台」的位置（机器人底盘在世界原点、
+          滚台在其 +X 前方 1.0 m）；
+        - 图中 B、I = 两个上料框（物料框），量测比例尺取 E 区上方那个
+          1300 x 1300 mm 滚台段（88 x 83 px）→ 约 65.8 px/m；
+        - 以滚台中心为基准量得：B ≈ (ΔX −5.0 m, ΔY +1.2 m)，
+          I ≈ (ΔX −6.0 m, ΔY +1.2 m)，两框中心距 0.97 m。
+
+      换算到世界坐标（滚台中心在 x = +1.0）：
+        B → (-4.0, +1.2)，I → (-5.0, +1.2)。
+
+      z = 0 与 ground 平面一致（世界原点在地面），使框底正好落在地面上。
+      两个 body 都没有挂任何 joint，因此都是 static body（dofnum = 0）：
+      碰撞、推力、掉落物都无法让它们移动或倾斜。
+    -->
+    <body name="StorageCage_B" pos="-4.0 1.2 0.137" quat="0.98480775 0.17364818 0 0">
+      <!-- 硬性要求：料笼是固定设施，必须保持静态（无 joint）。
+           2026-09-21 曾短暂动态化过，当天按建仿真的硬性要求回退。 -->
+      <!-- 显式惯性参数（按钢材等效体积约 46.5 kg、重心偏底）。
+           静态 body 的动力学本就不会用到它，这里写明是为了避免 MuJoCo
+           对非闭合的多零件 mesh 自动估算出偏大的质量（实测 351 kg），
+           万一日后去掉固定、改成可移动物体时数值仍然合理。 -->
+      <inertial pos="0 0 0.134" mass="46.5" diaginertia="3.265 3.265 4.96"/>
+      <!-- 外观：建模导出的 STL 网格（含底架、立柱、实心板与 50x50 mm 钢丝网格） -->
+      <geom name="visual_StorageCage_B" type="mesh" mesh="StorageCage"
+            pos="0 0 0" quat="1 0 0 0" rgba="0.07 0.16 0.75 1"
+            contype="0" conaffinity="0" group="1"/>
+
+      <!--
+        碰撞体同样不用整个 STL：物料框是空腔网笼，整体凸包会把它填成一个实心方块，
+        机器人无法把工件放进框内。改用「底板 + 四角立柱 + 四面围板」近似。
+        坐标均为框的局部坐标（原点 = 底面中心，z 向上）。
+      -->
+      <!-- 底板（含托盘）：z = 0.035 .. 0.085，工件放在 0.085 面上。
+           （静态 body 不落地，底面悬空 35 mm 无妨；若日后重新动态化，
+           底面须先延伸到 z=0，否则会下沉穿地。） -->
+      <geom name="collision_Cage_B_Floor" type="box" pos="0 0 0.06" size="0.40 0.40 0.025"
+            contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+
+      <!-- 四角立柱：50 x 50 mm 方管，z = 0.035 .. 0.45 -->
+      <geom name="collision_Cage_B_Post_1" type="box" pos=" 0.375  0.375 0.2425"
+            size="0.025 0.025 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Cage_B_Post_2" type="box" pos=" 0.375 -0.375 0.2425"
+            size="0.025 0.025 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Cage_B_Post_3" type="box" pos="-0.375  0.375 0.2425"
+            size="0.025 0.025 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Cage_B_Post_4" type="box" pos="-0.375 -0.375 0.2425"
+            size="0.025 0.025 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+
+      <!-- 四面围板：把钢丝网格（z 0.21 .. 0.40）与下部实心板（z 0.085 .. 0.20）
+           当作等效实心墙，防止工件从侧面滑出框外。若需要「真正的网孔」，
+           删除下面 4 个 geom 即可，只保留底板与立柱。
+
+           位置必须与视觉网格对齐 —— 实测 StorageCage STL 的侧壁（实心板与钢丝网）
+           位于 |x|,|y| = 0.3455 .. 0.3505（峰值 0.345~0.350），四角立柱内缘在 0.350。
+           因此围板内表面取 0.342（比视觉内表面再内收 3.5 mm，保证工件边缘不会
+           插进视觉网格 —— 原先放在 ±0.372 会外扩 20 mm，拖动时明显穿模）。
+
+           厚度取到外框边缘（0.342 .. 0.400，58 mm 厚的等效实心墙）：原先只有 12 mm
+           厚的薄板，鼠标拖动时施加的力能瞬间压穿（MuJoCo 没有连续碰撞检测 CCD），
+           加厚后抗穿透能力提升数倍；外表面 0.400 正好与四角立柱外缘齐平，
+           物理上拼成一个完整壳体。 -->
+      <geom name="collision_Cage_B_Wall_F" type="box" pos="0  0.371 0.2425"
+            size="0.35 0.029 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Cage_B_Wall_B" type="box" pos="0 -0.371 0.2425"
+            size="0.35 0.029 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Cage_B_Wall_L" type="box" pos=" 0.371 0 0.2425"
+            size="0.029 0.35 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Cage_B_Wall_R" type="box" pos="-0.371 0 0.2425"
+            size="0.029 0.35 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+    </body>
+
+    <!-- 上料框 I：与 B 完全同规格，位于 B 后方 1.0 m（现场图中两框上下紧邻） -->
+    <body name="StorageCage_I" pos="-5.0 1.2 0">
+      <!-- 硬性要求：与 B 框一样保持静态（固定设施，无 joint）。 -->
+      <inertial pos="0 0 0.134" mass="46.5" diaginertia="3.265 3.265 4.96"/>
+      <geom name="visual_StorageCage_I" type="mesh" mesh="StorageCage"
+            pos="0 0 0" quat="1 0 0 0" rgba="0.07 0.16 0.75 1"
+            contype="0" conaffinity="0" group="1"/>
+      <!-- 底板 z = 0.035 .. 0.085（静态，与 B 框一致） -->
+      <geom name="collision_Cage_I_Floor" type="box" pos="0 0 0.06" size="0.40 0.40 0.025"
+            contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Cage_I_Post_1" type="box" pos=" 0.375  0.375 0.2425"
+            size="0.025 0.025 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Cage_I_Post_2" type="box" pos=" 0.375 -0.375 0.2425"
+            size="0.025 0.025 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Cage_I_Post_3" type="box" pos="-0.375  0.375 0.2425"
+            size="0.025 0.025 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Cage_I_Post_4" type="box" pos="-0.375 -0.375 0.2425"
+            size="0.025 0.025 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <!-- 四面围板：与 B 框同样对齐视觉侧壁并把厚度补到外框边缘 -->
+      <geom name="collision_Cage_I_Wall_F" type="box" pos="0  0.371 0.2425"
+            size="0.35 0.029 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Cage_I_Wall_B" type="box" pos="0 -0.371 0.2425"
+            size="0.35 0.029 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Cage_I_Wall_L" type="box" pos=" 0.371 0 0.2425"
+            size="0.029 0.35 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Cage_I_Wall_R" type="box" pos="-0.371 0 0.2425"
+            size="0.029 0.35 0.2075" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+    </body>
+
+    <!--
+      卡槽托盘 Pallet_S02：1000 x 500 x 185 mm，水平放在两个物料框的右边。
+
+      位置：物料框 B/I 中心在 x = -4.0 / -5.0（各占 x -4.4..-3.6 与 -5.4..-4.6），
+      托盘长边（1.0 m，沿 x）与框排平行，中心放在 (-3.0, 1.2)，
+      占 x -3.5..-2.5 —— 与框 B 右缘留 0.1 m 间隙，y 与框对齐（0.95..1.45）。
+
+      z = 0 与 ground 平面一致（世界原点在地面），托盘底面正好落在地面上。
+      body 没挂 joint，是 static body：碰撞、推力都无法让它移动或倾斜。
+
+      惯性按包络体积 0.0152 m^3 x 950 kg/m^3（注塑塑料托盘）估算 = 14.5 kg、
+      重心偏上部面板（z≈0.12）；若实为钢制，把 mass 改成 110、diaginertia 乘以 7.6。
+    -->
+    <body name="Pallet_S02" pos="-3.0 1.2 0">
+      <!-- 2026-09-21 起为可搬运物（与工件一致），viewer 里可拖动/旋转/提起；
+           料笼与输送线是固定设施，保持静态。 -->
+      <freejoint name="free_Pallet_S02"/>
+      <inertial pos="0 0 0.12" mass="14.5" diaginertia="0.343 1.25 1.51"/>
+      <!-- 外观：减面网格，颜色与物料框一致 -->
+      <geom name="visual_Pallet_S02" type="mesh" mesh="Pallet_S02"
+            pos="0 0 0" quat="1 0 0 0" rgba="0.07 0.16 0.75 1"
+            contype="0" conaffinity="0" group="1"/>
+
+      <!--
+        碰撞体不用整个 STL（整体凸包会把面板下的 6 个支脚空间填死），
+        按 STL 实测结构拆成「面板 + 6 个支脚」：
+          面板：z 0.09 .. 0.185，全尺寸 1.0 x 0.5；
+          支脚：z 0 .. 0.095，位于 x = 0 / ±0.4725，y = ±0.2275。
+          （支脚底面原为 0.01，动态化后延到 0 与视觉 mesh 底面齐平，
+            否则托盘会下沉 10 mm、视觉穿地；顶面 0.095 不变。）
+      -->
+      <geom name="collision_Pallet_Deck" type="box" pos="0 0 0.1375"
+            size="0.5 0.25 0.0475" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Pallet_Foot_1" type="box" pos=" 0.4725  0.2275 0.0475"
+            size="0.0275 0.0225 0.0475" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Pallet_Foot_2" type="box" pos=" 0.4725 -0.2275 0.0475"
+            size="0.0275 0.0225 0.0475" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Pallet_Foot_3" type="box" pos="-0.4725  0.2275 0.0475"
+            size="0.0275 0.0225 0.0475" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Pallet_Foot_4" type="box" pos="-0.4725 -0.2275 0.0475"
+            size="0.0275 0.0225 0.0475" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Pallet_Foot_5" type="box" pos="0  0.2275 0.0475"
+            size="0.0275 0.0225 0.0475" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+      <geom name="collision_Pallet_Foot_6" type="box" pos="0 -0.2275 0.0475"
+            size="0.0275 0.0225 0.0475" contype="1" conaffinity="1" group="3" friction="0.8 0.02 0.01"/>
+    </body>
+
+    <!-- ===== WORKPIECES BEGIN (generated by scripts/generate_workpieces.py) ===== -->
+    <!--
+      工件（铸件 s01，减面到 25%。每个物料框内随机平铺 5 个，共 10 个。
+      由 scripts/generate_workpieces.py 生成，改种子重跑即可换一批布局。
+
+      几何/物理约定：
+        * 工件网格原点在「底面中心」，z 向上平放，所以 body 的 pos.z 直接就是工件底面高度；
+        * 底面贴框底板上表面（框局部 z=0.085），初始抬 500 mm 让其自然落稳；
+        * 外观用减面网格（12246 面）；工件是直径 161.8 mm 的圆盘，碰撞用等尺寸圆柱体，
+          比外接盒体贴合得多，抓取仿真时不会提前碰上 —— 与项目 link / 道具用近似体的做法一致；
+        * 接触体带 condim="6" friction="0.9 0.02 0.005" margin="0.0003"：
+          condim=6 才让扭转/滚动摩擦真正生效（默认 condim=3 时 friction 后两个数无效），
+          圆盘被拖动后能迅速停稳；margin 让接触提前 0.3 mm 建立，拖动时不易压穿框壁
+          （代价是工件在底板上会悬浮同样的距离，0.3 mm 肉眼不可见）。
+        * 质量按实体体积 0.0005 m^3 x 2700 kg/m^3（铝）估算 = 1.432 kg，惯性按等尺寸实心圆柱；
+          若工件实为铸铁，把 mass 改成 3.820、diaginertia 乘以 2.67 即可。
+        * freejoint 让它们可被机器人抓取/碰撞推动。
+    -->
+
+    <!-- 物料框 B：工艺说明见上 -->
+    <body name="Workpiece_B_1" pos="-4.120762 1.275799 0.585" quat="-0.501709 0 0 0.865036">
+      <freejoint name="free_Workpiece_B_1"/>
+      <inertial pos="0 0 0.031748" mass="1.4324" diaginertia="0.002463 0.002463 0.004686"/>
+      <geom name="visual_Workpiece_B_1" type="mesh" mesh="Workpiece_S01" pos="0 0 0" quat="1 0 0 0" rgba="0.82 0.83 0.86 1" contype="0" conaffinity="0" group="1"/>
+      <geom name="collision_Workpiece_B_1" type="cylinder" pos="0 0 0.031748" size="0.080884 0.031748" contype="1" conaffinity="1" group="3" condim="6" friction="0.9 0.02 0.005" margin="0.0003"/>
+    </body>
+    <body name="Workpiece_B_2" pos="-3.86105 1.222164 0.585" quat="-0.94725 0 0 0.320496">
+      <freejoint name="free_Workpiece_B_2"/>
+      <inertial pos="0 0 0.031748" mass="1.4324" diaginertia="0.002463 0.002463 0.004686"/>
+      <geom name="visual_Workpiece_B_2" type="mesh" mesh="Workpiece_S01" pos="0 0 0" quat="1 0 0 0" rgba="0.82 0.83 0.86 1" contype="0" conaffinity="0" group="1"/>
+      <geom name="collision_Workpiece_B_2" type="cylinder" pos="0 0 0.031748" size="0.080884 0.031748" contype="1" conaffinity="1" group="3" condim="6" friction="0.9 0.02 0.005" margin="0.0003"/>
+    </body>
+    <body name="Workpiece_B_3" pos="-4.195529 1.090054 0.585" quat="0.825411 0 0 0.564532">
+      <freejoint name="free_Workpiece_B_3"/>
+      <inertial pos="0 0 0.031748" mass="1.4324" diaginertia="0.002463 0.002463 0.004686"/>
+      <geom name="visual_Workpiece_B_3" type="mesh" mesh="Workpiece_S01" pos="0 0 0" quat="1 0 0 0" rgba="0.82 0.83 0.86 1" contype="0" conaffinity="0" group="1"/>
+      <geom name="collision_Workpiece_B_3" type="cylinder" pos="0 0 0.031748" size="0.080884 0.031748" contype="1" conaffinity="1" group="3" condim="6" friction="0.9 0.02 0.005" margin="0.0003"/>
+    </body>
+    <body name="Workpiece_B_4" pos="-3.952553 1.032993 0.585" quat="-0.071212 0 0 0.997461">
+      <freejoint name="free_Workpiece_B_4"/>
+      <inertial pos="0 0 0.031748" mass="1.4324" diaginertia="0.002463 0.002463 0.004686"/>
+      <geom name="visual_Workpiece_B_4" type="mesh" mesh="Workpiece_S01" pos="0 0 0" quat="1 0 0 0" rgba="0.82 0.83 0.86 1" contype="0" conaffinity="0" group="1"/>
+      <geom name="collision_Workpiece_B_4" type="cylinder" pos="0 0 0.031748" size="0.080884 0.031748" contype="1" conaffinity="1" group="3" condim="6" friction="0.9 0.02 0.005" margin="0.0003"/>
+    </body>
+    <body name="Workpiece_B_5" pos="-3.79397 1.428766 0.585" quat="-0.19389 0 0 0.981023">
+      <freejoint name="free_Workpiece_B_5"/>
+      <inertial pos="0 0 0.031748" mass="1.4324" diaginertia="0.002463 0.002463 0.004686"/>
+      <geom name="visual_Workpiece_B_5" type="mesh" mesh="Workpiece_S01" pos="0 0 0" quat="1 0 0 0" rgba="0.82 0.83 0.86 1" contype="0" conaffinity="0" group="1"/>
+      <geom name="collision_Workpiece_B_5" type="cylinder" pos="0 0 0.031748" size="0.080884 0.031748" contype="1" conaffinity="1" group="3" condim="6" friction="0.9 0.02 0.005" margin="0.0003"/>
+    </body>
+    <!-- 框 B：13 次随机尝试放下 5 个工件 -->
+
+    <!-- 物料框 I：与 B 同规格、同摆放规则 -->
+    <body name="Workpiece_I_1" pos="-5.182568 1.064545 0.585" quat="0.781022 0 0 0.624504">
+      <freejoint name="free_Workpiece_I_1"/>
+      <inertial pos="0 0 0.031748" mass="1.4324" diaginertia="0.002463 0.002463 0.004686"/>
+      <geom name="visual_Workpiece_I_1" type="mesh" mesh="Workpiece_S01" pos="0 0 0" quat="1 0 0 0" rgba="0.82 0.83 0.86 1" contype="0" conaffinity="0" group="1"/>
+      <geom name="collision_Workpiece_I_1" type="cylinder" pos="0 0 0.031748" size="0.080884 0.031748" contype="1" conaffinity="1" group="3" condim="6" friction="0.9 0.02 0.005" margin="0.0003"/>
+    </body>
+    <body name="Workpiece_I_2" pos="-4.936827 1.309856 0.585" quat="-0.610471 0 0 0.792038">
+      <freejoint name="free_Workpiece_I_2"/>
+      <inertial pos="0 0 0.031748" mass="1.4324" diaginertia="0.002463 0.002463 0.004686"/>
+      <geom name="visual_Workpiece_I_2" type="mesh" mesh="Workpiece_S01" pos="0 0 0" quat="1 0 0 0" rgba="0.82 0.83 0.86 1" contype="0" conaffinity="0" group="1"/>
+      <geom name="collision_Workpiece_I_2" type="cylinder" pos="0 0 0.031748" size="0.080884 0.031748" contype="1" conaffinity="1" group="3" condim="6" friction="0.9 0.02 0.005" margin="0.0003"/>
+    </body>
+    <body name="Workpiece_I_3" pos="-5.202756 1.330952 0.585" quat="0.861583 0 0 0.507616">
+      <freejoint name="free_Workpiece_I_3"/>
+      <inertial pos="0 0 0.031748" mass="1.4324" diaginertia="0.002463 0.002463 0.004686"/>
+      <geom name="visual_Workpiece_I_3" type="mesh" mesh="Workpiece_S01" pos="0 0 0" quat="1 0 0 0" rgba="0.82 0.83 0.86 1" contype="0" conaffinity="0" group="1"/>
+      <geom name="collision_Workpiece_I_3" type="cylinder" pos="0 0 0.031748" size="0.080884 0.031748" contype="1" conaffinity="1" group="3" condim="6" friction="0.9 0.02 0.005" margin="0.0003"/>
+    </body>
+    <body name="Workpiece_I_4" pos="-4.85482 0.968434 0.585" quat="0.782735 0 0 0.622355">
+      <freejoint name="free_Workpiece_I_4"/>
+      <inertial pos="0 0 0.031748" mass="1.4324" diaginertia="0.002463 0.002463 0.004686"/>
+      <geom name="visual_Workpiece_I_4" type="mesh" mesh="Workpiece_S01" pos="0 0 0" quat="1 0 0 0" rgba="0.82 0.83 0.86 1" contype="0" conaffinity="0" group="1"/>
+      <geom name="collision_Workpiece_I_4" type="cylinder" pos="0 0 0.031748" size="0.080884 0.031748" contype="1" conaffinity="1" group="3" condim="6" friction="0.9 0.02 0.005" margin="0.0003"/>
+    </body>
+    <body name="Workpiece_I_5" pos="-4.74459 1.144704 0.585" quat="-0.702791 0 0 0.711396">
+      <freejoint name="free_Workpiece_I_5"/>
+      <inertial pos="0 0 0.031748" mass="1.4324" diaginertia="0.002463 0.002463 0.004686"/>
+      <geom name="visual_Workpiece_I_5" type="mesh" mesh="Workpiece_S01" pos="0 0 0" quat="1 0 0 0" rgba="0.82 0.83 0.86 1" contype="0" conaffinity="0" group="1"/>
+      <geom name="collision_Workpiece_I_5" type="cylinder" pos="0 0 0.031748" size="0.080884 0.031748" contype="1" conaffinity="1" group="3" condim="6" friction="0.9 0.02 0.005" margin="0.0003"/>
+    </body>
+    <!-- 框 I：94 次随机尝试放下 5 个工件 -->
+<!-- ===== WORKPIECES END ===== -->
+  </worldbody>
+</mujoco>

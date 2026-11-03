@@ -29,6 +29,7 @@ from .native_ik import bind_native_ik
 from .sdk_ops import tracking_sample
 from .safety import validate_goal, line_error
 from .body_kinematics import LunaBodyKinematics, pose_error
+from .body_cartesian import plan_body_line
 
 
 def wire_json(value):
@@ -56,6 +57,9 @@ class Bridge(Node):
         finite(values)
         if min(values)<=0 or max(self.c.speed,self.c.acc)>10 or self.c.publish_rate>100:
             raise ValueError('Invalid hardware limits/configuration')
+        finite([self.c.body_z_min_m,self.c.body_z_max_m])
+        if self.c.body_z_min_m>=self.c.body_z_max_m:
+            raise ValueError('body_z_min_m must be less than body_z_max_m')
         if self.c.cartesian_execution!='trajectory': raise ValueError('Split execution requires controller trajectory playback')
         frames=[self.c.left_frame,self.c.right_frame,self.c.body_frame]
         if any(not isinstance(f,str) or not f.strip() for f in frames) or len(set(frames))!=3:
@@ -148,6 +152,9 @@ class Bridge(Node):
                 if not isinstance(args,dict): raise ValueError('Expected RPC object')
                 if request.operation=='snapshot':
                     result=self.snapshot()
+                    if (args.get('include_body_rates',False) and self.c.enable_control
+                            and not self.active and not self.failed and not self.engine.faulted):
+                        result['body_rate_limits']=self.engine.read_body_rate_limits()
                     if (args.get('include_arm_limits',True) and self.c.enable_control
                             and not self.active and not self.failed and not self.engine.faulted):
                         result['controller_limits']=self.engine.read_cartesian_rate_limits([0,1])
@@ -156,6 +163,11 @@ class Bridge(Node):
                     if self.active or self.reserved: raise ValueError('Driver busy')
                     self.engine.check_cancel()
                     if request.operation=='body_ik':
+                        target_z_mm=float(args['matrix'][2][3])
+                        if (not math.isfinite(target_z_mm) or
+                                not self.c.body_z_min_m*1000<=target_z_mm<=self.c.body_z_max_m*1000):
+                            raise ValueError(f'Body IK target z must be within '
+                                             f'[{self.c.body_z_min_m}, {self.c.body_z_max_m}] m in {self.c.body_frame}')
                         model=LunaBodyKinematics(self.engine.body_limits)
                         solved=model.inverse(args['matrix'],args['reference'],
                                              max_joint_delta_deg=self.c.max_delta,
@@ -165,7 +177,19 @@ class Bridge(Node):
                             raise ValueError(f'Body IK failed: {solved.message}; '
                                              f'position_error_mm={solved.position_error_mm:.6f}; '
                                              f'orientation_error_deg={solved.orientation_error_deg}')
+                        actual_z_mm=model.forward(solved.joints_deg)[2][3]
+                        if not self.c.body_z_min_m*1000<=actual_z_mm<=self.c.body_z_max_m*1000:
+                            raise ValueError('Body IK solution z exceeds configured height range')
                         result=asdict(solved)
+                    elif request.operation=='body_cartesian':
+                        current=self.snapshot()
+                        reference=args['reference']
+                        finite(reference)
+                        if len(reference)!=6 or max(abs(a-b) for a,b in zip(reference,current['body']))>.2:
+                            raise ValueError('Body moved since Cartesian planning request')
+                        rates=self.engine.read_body_rate_limits()
+                        path,info=plan_body_line(current,args['matrix'],rates,self.engine.check_cancel)
+                        result={'path':path.get(3,[]),'info':info}
                     elif request.operation=='ik':
                         matrices,starts,moving=args['matrices'],args['starts'],args['moving']
                         if len(matrices)!=2 or len(starts)!=2 or not moving or len(set(moving))!=len(moving) or any(a not in (0,1) for a in moving):
@@ -288,10 +312,11 @@ class Bridge(Node):
             self.active.update(plans=plans,lines=lines,max_error={a:0. for a in lines})
             self.engine.active=True
             if 3 in plans:
-                self.active['body_goal_matrix']=self.body_geometry.forward(plans[3][0])
+                self.active['body_goal_matrix']=self.body_geometry.forward(plans[3][-1])
                 if self.engine.robot.current_state(3)!=1: raise ValueError('Body not in POSITION')
                 self.engine.check_cancel()
                 self.engine.h.check(self.engine.robot.runtime_set_joint_pos_cmd(3,plans[3][0]),'Body position command')
+                if len(plans[3])>1:self.active['body_next_index']=1
             else:
                 self.status('uploading',task_id=goal.task_id)
                 for arm,points in plans.items():
@@ -356,6 +381,19 @@ class Bridge(Node):
                     self.status('stopped',task_id=task,reason='Stop latched; reset required')
                     self.finish(False,'Stopped')
                 self.start_pending()
+                if self.active and 'body_next_index' in self.active:
+                    active=self.active
+                    points=active['plans'][3]
+                    index=active['body_next_index']
+                    if index<len(points):
+                        delay=time.monotonic()-active['started']-index/50.
+                        if delay>.04:
+                            raise RuntimeError('Body Cartesian command stream fell behind schedule')
+                    if index<len(points) and delay>=0:
+                        self.engine.check_cancel()
+                        self.engine.h.check(self.engine.robot.runtime_set_joint_pos_cmd(3,points[index]),
+                                            f'Body Cartesian point {index}')
+                        active['body_next_index']=index+1
                 raw=self.snapshot()
                 self.latest=raw
                 if self.active:
@@ -369,21 +407,26 @@ class Bridge(Node):
                         if self.engine.robot.current_state(obj)!=1: raise RuntimeError(f'object{obj} left POSITION')
                         q=raw['body'] if obj==3 else raw['joints'][obj]
                         done=done and max(abs(x-y) for x,y in zip(q,points[-1]))<=self.c.tolerance
+                        if obj==3 and 'body_next_index' in active:
+                            done=done and active['body_next_index']>=len(points)
                         if obj==3:
                             position_error,orientation_error=pose_error(raw['body_matrix'],active['body_goal_matrix'])
                             active['body_pose_error']={'position_mm':position_error,'orientation_deg':orientation_error}
                             done=done and position_error<=self.c.body_position_tolerance_mm and orientation_error<=self.c.body_orientation_tolerance_deg
                         if obj!=3: done=done and raw['controller']['arms'][obj]['get']['traj_state']==0
                         if obj in active['lines']:
-                            error,_=line_error(raw['matrices'][obj],*active['lines'][obj],self.c.sdk_length_to_m)
+                            measured=raw['body_matrix'] if obj==3 else raw['matrices'][obj]
+                            scale=.001 if obj==3 else self.c.sdk_length_to_m
+                            error,_=line_error(measured,*active['lines'][obj],scale)
                             active['max_error'][obj]=max(active['max_error'][obj],error)
                             if error>self.c.cartesian_path_tolerance:
-                                reason=f'arm{obj} TCP line error {error:.6f} m'
-                                tracking=raw['tracking'][obj]
-                                if tracking.get('available') and tracking.get('command_matrix') is not None:
-                                    commanded,_=line_error(tracking['command_matrix'],*active['lines'][obj],self.c.sdk_length_to_m)
-                                    following=max(abs(v) for v in tracking['following_error_deg'])
-                                    reason+=f'; controller_command_line_error={commanded:.6f} m; max_joint_following_error={following:.4f} deg'
+                                reason=f'object{obj} TCP line error {error:.6f} m'
+                                if obj!=3:
+                                    tracking=raw['tracking'][obj]
+                                    if tracking.get('available') and tracking.get('command_matrix') is not None:
+                                        commanded,_=line_error(tracking['command_matrix'],*active['lines'][obj],self.c.sdk_length_to_m)
+                                        following=max(abs(v) for v in tracking['following_error_deg'])
+                                        reason+=f'; controller_command_line_error={commanded:.6f} m; max_joint_following_error={following:.4f} deg'
                                 raise RuntimeError(reason)
                     self.check_playback_ratios(raw)
                     active['settled']=(active['settled'] or time.monotonic()) if done else None

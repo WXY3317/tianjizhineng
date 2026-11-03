@@ -9,6 +9,7 @@ import pytest
 
 SDK = Path(__file__).resolve().parents[4] / 'tianji-robot-SDK'
 from gento_driver.body_kinematics import LunaBodyKinematics, pose_error
+from gento_driver.body_cartesian import plan_body_line, interpolate, blend
 
 
 # Test data only: J3/J4 signed intervals are NOT defaults for real hardware.
@@ -20,12 +21,34 @@ def model():
     return LunaBodyKinematics(LIMITS)
 
 
-def test_zero_pose_base_and_end_mount(model):
+def test_zero_pose_base_and_joint_six_tip(model):
     assert np.array(model.forward([0]*6)) == pytest.approx(
-        np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 165+300+300+391.5], [0, 0, 0, 1]]))
+        np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 165+300+300], [0, 0, 0, 1]]))
     base = np.eye(4)
     base[2, 3] = 100
     assert np.array(model.agv_to_base) == pytest.approx(base)
+
+
+def test_body_cartesian_line_from_zero_to_700_mm(model):
+    start=model.forward([0]*6)
+    target=model.forward([0,26.9165676,-53.8331352,26.9165676,0,0])
+    snapshot={'body_matrix':start,'body':[0.]*6,'body_limits':model.joint_limits_deg,
+              'config':{'body_z_min_m':.55,'body_z_max_m':.76,'body_frame':'body_base',
+                        'max_delta':120.,'cartesian_speed':.08,'cartesian_angular_speed':.2,
+                        'timeout':60.}}
+    rates={'speed':[9.]*6,'acceleration':[9.]*6}
+    plans,info=plan_body_line(snapshot,target,rates,lambda:None)
+    path=np.asarray(plans[3])
+    assert 50<len(path)<3000
+    assert info['planned_duration_s']<60
+    assert np.max(np.abs(np.diff(path,axis=0)*50))<=9.
+    acceleration=np.diff(np.vstack((np.zeros((1,6)),np.diff(path,axis=0)*50,
+                                    np.zeros((1,6)))),axis=0)*50
+    assert np.max(np.abs(acceleration))<=9.
+    for index in range(0,len(path),max(1,len(path)//40)):
+        desired=interpolate(start,target,blend(index/(len(path)-1)))
+        position_mm,orientation_deg=pose_error(model.forward(path[index]),desired)
+        assert position_mm<=.1 and orientation_deg<=.01
 
 
 @pytest.fixture(scope="module")
@@ -140,13 +163,15 @@ def test_two_bend_branches_select_near_reference(model):
     assert result.joints_deg == pytest.approx([0, -20, 40, -20, 0, 0], abs=1e-3)
 
 
-def test_position_only_keeps_free_yaw_and_reduces_joint_change(model):
+def test_position_only_keeps_free_wrist_angles_and_reduces_joint_change(model):
     reference = [1, 10, -20, 10, 2, 15]
     known = [3, 12, -18, 15, 4, 120]
     target = np.array(model.forward(known))[:3, 3]
     result = model.inverse(target, reference, position_only=True)
     assert result.success and result.orientation_error_deg is None
-    assert result.joints_deg[5] == pytest.approx(reference[5], abs=1e-5)
+    # J5 and J6 rotate about axes through the BD_J6 origin, so position-only
+    # IK can keep both wrist angles at their reference values.
+    assert result.joints_deg[4:] == pytest.approx(reference[4:], abs=1e-5)
     assert result.reference_distance_deg < np.linalg.norm(np.array(known)-reference)
     assert np.array(model.forward(result.joints_deg))[:3, 3] == pytest.approx(target, abs=0.1)
 
@@ -225,7 +250,7 @@ def test_model_uses_packaged_geometry_without_sdk_import():
 def test_geometry_only_model_supports_feedback_but_rejects_ik():
     model = LunaBodyKinematics()
     assert model.joint_limits_deg is None
-    assert model.forward([0]*6)[2][3] == 1156.5
+    assert model.forward([0]*6)[2][3] == 765
     with pytest.raises(ValueError, match='limits are required'):
         model.inverse(model.forward([0]*6), [0]*6)
 
@@ -245,7 +270,7 @@ def test_joint_tolerance_does_not_imply_tip_position_tolerance(model):
     goal=[0.,20.,-40.,20.,0.,0.]
     measured=list(goal);measured[1]+=.19
     position,orientation=pose_error(model.forward(measured),model.forward(goal))
-    assert position>3.0
+    assert position>1.0  # Default execution tip-position tolerance is 1 mm.
     assert orientation==pytest.approx(.19)
 
 

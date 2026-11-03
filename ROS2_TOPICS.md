@@ -29,7 +29,7 @@ effort: []
 | --- | --- | --- |
 | `/gento_feedback/left/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 左臂 TCP 位姿，位置 m、姿态单位四元数，默认坐标系 `left_arm_sdk_base` |
 | `/gento_feedback/right/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 右臂 TCP 位姿，位置 m、姿态单位四元数，默认坐标系 `right_arm_sdk_base` |
-| `/gento_feedback/body/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 当前躯干六轴反馈角正解得到的 `BD_FL` 位姿，位置 m、姿态单位四元数，默认坐标系 `body_base` |
+| `/gento_feedback/body/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 当前躯干六轴反馈角正解得到的 `BD_J6` 位姿，位置 m、姿态单位四元数，默认坐标系 `body_base` |
 
 消息样例（左臂；右臂替换 `frame_id`）：
 
@@ -73,7 +73,9 @@ data: '{"state": "completed", "session_id": "session-001", "task_id": "task-001"
 | --- | --- | --- |
 | `/gento_control/left/target_pose` | `geometry_msgs/msg/PoseStamped` | 左臂绝对目标位姿，位置 m、姿态单位四元数，默认坐标系 `left_arm_sdk_base` |
 | `/gento_control/right/target_pose` | `geometry_msgs/msg/PoseStamped` | 右臂绝对目标位姿，位置 m、姿态单位四元数，默认坐标系 `right_arm_sdk_base` |
-| `/gento_control/body/target_pose` | `geometry_msgs/msg/PoseStamped` | 躯干末端 `BD_FL` 的绝对目标位姿，位置 m、姿态单位四元数，默认坐标系 `body_base` |
+| `/gento_control/body/target_pose` | `geometry_msgs/msg/PoseStamped` | 躯干 `BD_J6` 位姿目标，逆解后执行，默认坐标系 `body_base` |
+| `/gento_control/body/preview_pose` | `geometry_msgs/msg/PoseStamped` | 躯干逆解预览，不执行 |
+| `/gento_control/body/ik_result` | `std_msgs/msg/String` | 逆解结果 JSON，含 `joints_deg` 和 `joints_rad` |
 
 发布样例（左臂；数值仅说明格式，执行前应确认目标及路径）：
 
@@ -88,9 +90,13 @@ ros2 topic pub --once /gento_control/left/target_pose geometry_msgs/msg/PoseStam
 
 右臂替换话题为 `/gento_control/right/target_pose`，默认坐标系替换为 `right_arm_sdk_base`。目标必须带新鲜时间戳，不自动做 TF 转换。
 
-躯干目标使用 `/gento_control/body/target_pose`，`frame_id: body_base`。`body_base` 固定在第 1 轴中心、轴方向与配置 AGV 平行；末端为 `BD_FL`，包含第 6 轴之后的安装偏移。先读取 `/gento_feedback/body/tcp_pose`，以实际当前位置和朝向填写目标并刷新时间戳，不要把示例中的手臂位置直接用于躯干。
+躯干逆解执行使用 `/gento_control/body/target_pose`，`frame_id: body_base`；只预览时使用 `/gento_control/body/preview_pose`，结果在 `/gento_control/body/ik_result`。`body_base` 固定在第 1 轴中心、轴方向与配置 AGV 平行；末端为第 6 关节坐标系 `BD_J6`，不包含其后的 391.5 mm 安装偏移。目标和反馈均表示 `T_B_BD_J6`；当前配置全零位的位置为 `[0, 0, 765]` mm（ROS 消息为 `[0, 0, 0.765]` m）。先读取 `/gento_feedback/body/tcp_pose`，以实际当前位置和朝向填写目标并刷新时间戳，不要把示例中的手臂位置直接用于躯干。
 
-躯干先求完整位姿逆解，在控制器限位与额外 J1 ±11°、J2 ±50°、J5 ±30°、J6 ±170°内选择接近当前角度的解；J3/J4 采用控制器限位，并受 `max_delta` 限制。再复用现有单点关节位置执行通道，不保证躯干末端沿直线运动。无解、错误坐标系、过期消息或非法四元数会被拒绝。反馈中 `body/tcp_pose` 是关节反馈正解，不是目标位姿回显。
+位姿逆解目标和最终结果的 `body_base` 高度默认限制在 0.55–0.76 m（含端点），可通过 launch 参数 `body_z_min_m`、`body_z_max_m` 调整。零位 0.765 m 高于默认上限。位姿直线路径可从当前范围外向范围内移动，但不能越过当前高度继续远离范围；直接发送关节角不受此逆解限制。
+
+旧 `BD_FL` 目标不能直接复用，需按 `T_B_J6 = T_B_FL @ inverse(T_J6_FL)` 转换。当前安装变换等价于沿旧末端自身 Z 方向减去 391.5 mm（ROS 为 0.3915 m），朝向不变；不能一律从 `body_base` 的 Z 坐标相减。
+
+躯干先求完整位姿逆解，在控制器限位与额外 J1 ±11°、J2 ±50°、J5 ±30°、J6 ±170°内选择接近当前角度的解；J3/J4 采用控制器限位，并受 `max_delta` 限制。`target_pose` 从当前位姿做位置直线和姿态插补，生成并核验 50 Hz 关节目标后逐点发送；实际路径偏差由 `cartesian_path_tolerance` 监控。`target_joints` 仍为单点关节命令。无解、错误坐标系、过期消息或非法四元数会被拒绝。反馈中 `body/tcp_pose` 是关节反馈正解，不是目标位姿回显。
 
 ## 5. 停止与清错
 

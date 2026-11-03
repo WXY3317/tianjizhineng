@@ -157,15 +157,25 @@ class Feedback(Node):
                 sample['tracking']=raw.get('tracking',[])
                 sample['line_errors']={}
                 for arm in self.trace['plan'].get('line_objects',[]):
-                    error,vector=segment_error(raw['matrices'][arm],self.trace['plan']['starts'][arm],self.trace['plan']['goals'][arm],scale)
+                    if arm==3:
+                        current=raw['body_matrix']
+                        begin=self.trace['plan']['plan_info']['body_start_matrix']
+                        end=self.trace['plan']['plan_info']['body_target_matrix']
+                        line_scale=.001
+                    else:
+                        current=raw['matrices'][arm]
+                        begin=self.trace['plan']['starts'][arm]
+                        end=self.trace['plan']['goals'][arm]
+                        line_scale=scale
+                    error,vector=segment_error(current,begin,end,line_scale)
                     sample['line_errors'][str(arm)]={'distance_m':error,'vector_m':vector}
-                    tracking=sample['tracking'][arm] if len(sample['tracking'])>arm else {}
+                    tracking=sample['tracking'][arm] if arm!=3 and len(sample['tracking'])>arm else {}
                     command_matrix=tracking.get('command_matrix') if tracking.get('available') else None
                     if command_matrix is not None:
-                        commanded,_=segment_error(command_matrix,self.trace['plan']['starts'][arm],self.trace['plan']['goals'][arm],scale)
+                        commanded,_=segment_error(command_matrix,begin,end,line_scale)
                         sample['line_errors'][str(arm)]['command_distance_m']=commanded
                         sample['line_errors'][str(arm)]['tcp_following_error_m']=math.sqrt(sum(
-                            ((raw['matrices'][arm][i][3]-command_matrix[i][3])*scale)**2 for i in range(3)))
+                            ((current[i][3]-command_matrix[i][3])*line_scale)**2 for i in range(3)))
                     if error>raw['config']['cartesian_path_tolerance'] and not self.trace['terminal']:
                         self.stop_pub.publish(Empty())
                 if len(self.trace['samples'])<20000:self.trace['samples'].append(sample)

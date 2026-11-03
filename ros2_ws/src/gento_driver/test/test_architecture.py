@@ -375,46 +375,102 @@ def test_body_task_uses_action_and_same_single_connection(graph):
     assert len(g.links)==1
 
 
-def test_body_pose_topic_uses_real_ik_and_publishes_measured_fk(graph):
-    from gento_driver.body_kinematics import LunaBodyKinematics
+def test_body_pose_streams_verified_line_points(graph):
+    from gento_driver.body_kinematics import LunaBodyKinematics,pose_error
     from gento_control.node import as_pose
     g=graph
     model=LunaBodyKinematics()
-    target=model.forward([0,2,-4,2,0,0])
-    feedback=[]
-    g.client.create_subscription(PoseStamped,'/gento_feedback/body/tcp_pose',feedback.append,1)
-    publisher=g.client.create_publisher(PoseStamped,'/gento_control/body/target_pose',1)
-    until(lambda:publisher.get_subscription_count()>0 and bool(feedback))
-    assert feedback[-1].header.frame_id=='body_base'
-    assert feedback[-1].pose.position.z==pytest.approx(1.1565)
-    message=PoseStamped();message.header.frame_id='body_base'
-    message.header.stamp=g.client.get_clock().now().to_msg()
-    message.pose=as_pose(target,.001)
-    publisher.publish(message)
-    until(lambda:('body_command',3) in g.robot.calls)
-    until(lambda:not g.control.busy)
-    measured=model.forward(g.robot.body_positions)
-    until(lambda:abs(feedback[-1].pose.position.z-measured[2][3]*.001)<1e-10)
-    for i in range(3):assert measured[i][3]==pytest.approx(target[i][3],abs=.1)
-    assert len(g.links)==1
-    assert not any(c[0] in ('upload','run','arm_command') for c in g.robot.calls)
-    until(lambda:bool(list(g.path.glob('*.json'))))
-    record=json.loads(next(g.path.glob('*.json')).read_text())
-    assert record['outcome']=='completed'
-    assert 'body_target_matrix' in record['plan']['plan_info']
-    assert 'body_matrix' in record['samples'][-1]
-
-
-@pytest.mark.parametrize('damage',['frame','quaternion','unreachable','stale'])
-def test_body_pose_topic_rejects_invalid_target_without_motion(graph,damage):
-    g=graph
-    statuses=[]
-    g.client.create_subscription(String,'/gento_control/status',lambda m:statuses.append(json.loads(m.data)),1)
+    start=[0.,26.9165676,-53.8331352,26.9165676,0.,0.]
+    goal=[0.,27.1,-54.2,27.1,0.,0.]
+    with g.driver.sdk_lock:g.robot.body_positions=list(start)
+    commanded=[]
+    original=g.robot.runtime_set_joint_pos_cmd
+    def capture(obj,q):
+        if obj==3:commanded.append(list(q))
+        return original(obj,q)
+    g.robot.runtime_set_joint_pos_cmd=capture
     publisher=g.client.create_publisher(PoseStamped,'/gento_control/body/target_pose',1)
     until(lambda:publisher.get_subscription_count()>0)
     message=PoseStamped();message.header.frame_id='body_base'
     message.header.stamp=g.client.get_clock().now().to_msg()
-    message.pose.orientation.w=1.;message.pose.position.z=1.1565
+    message.pose=as_pose(model.forward(goal),.001)
+    publisher.publish(message)
+    until(lambda:len(commanded)>5,timeout=15.)
+    until(lambda:not g.control.busy,timeout=15.)
+    assert not g.driver.failed
+    assert len(commanded)>=50
+    assert pose_error(model.forward(commanded[-1]),model.forward(goal))[0]<.1
+    assert len(g.links)==1
+    until(lambda:bool(list(g.path.glob('*.json'))))
+    record=json.loads(next(g.path.glob('*.json')).read_text())
+    assert record['outcome']=='completed'
+    assert '3' in record['samples'][-1]['line_errors']
+
+
+def test_stop_interrupts_body_cartesian_stream(graph):
+    from gento_driver.body_kinematics import LunaBodyKinematics
+    from gento_control.node import as_pose
+    g=graph
+    model=LunaBodyKinematics()
+    with g.driver.sdk_lock:g.robot.body_positions=[0.,26.9165676,-53.8331352,26.9165676,0.,0.]
+    target=g.client.create_publisher(PoseStamped,'/gento_control/body/target_pose',1)
+    stop=g.client.create_publisher(Empty,'/gento_driver/stop',1)
+    until(lambda:target.get_subscription_count()>0 and stop.get_subscription_count()>=2)
+    message=PoseStamped();message.header.frame_id='body_base'
+    message.header.stamp=g.client.get_clock().now().to_msg()
+    message.pose=as_pose(model.forward([0.,27.1,-54.2,27.1,0.,0.]),.001)
+    target.publish(message)
+    until(lambda:sum(c==('body_command',3) for c in g.robot.calls)>5,timeout=15.)
+    stop.publish(Empty())
+    until(lambda:g.driver.failed and not g.control.busy)
+    count=sum(c==('body_command',3) for c in g.robot.calls)
+    time.sleep(.15)
+    assert sum(c==('body_command',3) for c in g.robot.calls)==count
+    assert ('stop',11) in g.robot.calls
+
+
+def test_body_preview_pose_topic_previews_bd_j6_without_motion(graph):
+    from gento_driver.body_kinematics import LunaBodyKinematics,pose_error
+    from gento_control.node import as_pose
+    g=graph
+    model=LunaBodyKinematics()
+    target=model.forward([0,5,5,-5,0,3])
+    feedback=[]
+    results=[]
+    g.client.create_subscription(PoseStamped,'/gento_feedback/body/tcp_pose',feedback.append,1)
+    g.client.create_subscription(String,'/gento_control/body/ik_result',lambda m:results.append(json.loads(m.data)),1)
+    publisher=g.client.create_publisher(PoseStamped,'/gento_control/body/preview_pose',1)
+    until(lambda:publisher.get_subscription_count()>0 and bool(feedback))
+    assert feedback[-1].header.frame_id=='body_base'
+    assert feedback[-1].pose.position.z==pytest.approx(.765)
+    message=PoseStamped();message.header.frame_id='body_base'
+    message.header.stamp=g.client.get_clock().now().to_msg()
+    message.pose=as_pose(target,.001)
+    publisher.publish(message)
+    until(lambda:bool(results))
+    until(lambda:not g.control.busy)
+    assert results[-1]['tip_frame']=='BD_J6'
+    assert results[-1]['reference_joints_deg']==[0.]*6
+    measured=model.forward(results[-1]['joints_deg'])
+    for i in range(3):assert measured[i][3]==pytest.approx(target[i][3],abs=.1)
+    assert pose_error(measured,target)[1]<.01
+    assert results[-1]['joints_rad']==pytest.approx([math.radians(q) for q in results[-1]['joints_deg']])
+    assert len(g.links)==1
+    assert not any(c[0] in ('body_command','upload','run','arm_command') for c in g.robot.calls)
+    assert g.robot.body_positions==[0.]*6
+    assert not list(g.path.glob('*.json'))
+
+
+@pytest.mark.parametrize('damage',['frame','quaternion','unreachable','stale'])
+def test_body_preview_pose_topic_rejects_invalid_target_without_motion(graph,damage):
+    g=graph
+    statuses=[]
+    g.client.create_subscription(String,'/gento_control/status',lambda m:statuses.append(json.loads(m.data)),1)
+    publisher=g.client.create_publisher(PoseStamped,'/gento_control/body/preview_pose',1)
+    until(lambda:publisher.get_subscription_count()>0)
+    message=PoseStamped();message.header.frame_id='body_base'
+    message.header.stamp=g.client.get_clock().now().to_msg()
+    message.pose.orientation.w=1.;message.pose.position.z=.7
     if damage=='frame':message.header.frame_id='world'
     elif damage=='quaternion':message.pose.orientation.w=0.
     elif damage=='unreachable':message.pose.position.x=5.
@@ -424,11 +480,28 @@ def test_body_pose_topic_rejects_invalid_target_without_motion(graph,damage):
     assert not any(c[0] in ('body_command','arm_command','upload','run') for c in g.robot.calls)
 
 
+@pytest.mark.parametrize('topic',['preview_pose','target_pose'])
+@pytest.mark.parametrize('height',[.549,.761])
+def test_body_ik_height_limits_reject_before_motion(graph,topic,height):
+    g=graph
+    statuses=[]
+    g.client.create_subscription(String,'/gento_control/status',lambda m:statuses.append(json.loads(m.data)),1)
+    publisher=g.client.create_publisher(PoseStamped,f'/gento_control/body/{topic}',1)
+    until(lambda:publisher.get_subscription_count()>0)
+    message=PoseStamped();message.header.frame_id='body_base'
+    message.header.stamp=g.client.get_clock().now().to_msg()
+    message.pose.position.z=height;message.pose.orientation.w=1.
+    publisher.publish(message)
+    until(lambda:any(s['state']=='rejected' for s in statuses))
+    assert any('Body IK target z must be within [0.55, 0.76] m' in s.get('reason','') for s in statuses)
+    assert not any(c[0] in ('body_command','arm_command','upload','run') for c in g.robot.calls)
+
+
 @pytest.mark.parametrize('graph',[False],indirect=True)
 def test_readonly_body_pose_feedback_uses_geometry_without_limit_reads(graph):
     g=graph
     sample=snapshot(g)
-    assert sample['body_matrix'][2][3]==1156.5
+    assert sample['body_matrix'][2][3]==765.
     assert sample['body_limits'] is None
     assert not g.robot.calls
 
@@ -453,12 +526,12 @@ def test_stop_topic_interrupts_body_ik_without_body_command(graph,monkeypatch):
             time.sleep(.005)
         raise AssertionError('Stop failed to interrupt torso solver')
     monkeypatch.setattr(LunaBodyKinematics,'inverse',slow_solver)
-    target=g.client.create_publisher(PoseStamped,'/gento_control/body/target_pose',1)
+    target=g.client.create_publisher(PoseStamped,'/gento_control/body/preview_pose',1)
     stop=g.client.create_publisher(Empty,'/gento_driver/stop',1)
     until(lambda:target.get_subscription_count()>0 and stop.get_subscription_count()>=2)
     message=PoseStamped();message.header.frame_id='body_base'
     message.header.stamp=g.client.get_clock().now().to_msg()
-    message.pose.position.z=1.1565;message.pose.orientation.w=1.
+    message.pose.position.z=.7;message.pose.orientation.w=1.
     target.publish(message);until(entered.is_set)
     stop.publish(Empty())
     until(lambda:not g.control.busy and g.driver.failed)
@@ -475,20 +548,21 @@ def test_body_pose_does_not_require_arm_rate_parameters(graph):
         if moving:raise RuntimeError('Arm rate parameters unavailable')
         return {}
     g.hardware.read_cartesian_rate_limits=unavailable_arm_limits
-    publisher=g.client.create_publisher(PoseStamped,'/gento_control/body/target_pose',1)
+    results=[]
+    g.client.create_subscription(String,'/gento_control/body/ik_result',lambda m:results.append(json.loads(m.data)),1)
+    publisher=g.client.create_publisher(PoseStamped,'/gento_control/body/preview_pose',1)
     until(lambda:publisher.get_subscription_count()>0)
     message=PoseStamped();message.header.frame_id='body_base'
     message.header.stamp=g.client.get_clock().now().to_msg()
-    message.pose=as_pose(LunaBodyKinematics().forward([0,2,-4,2,0,0]),.001)
+    message.pose=as_pose(LunaBodyKinematics().forward([0,5,5,-5,0,0]),.001)
     publisher.publish(message)
-    until(lambda:('body_command',3) in g.robot.calls)
+    until(lambda:bool(results))
     until(lambda:not g.control.busy)
+    assert not any(c[0]=='body_command' for c in g.robot.calls)
     assert not requested and not g.driver.failed
 
 
 def test_body_completion_checks_tip_pose_as_well_as_joint_angles(graph):
-    from gento_driver.body_kinematics import LunaBodyKinematics
-    from gento_control.node import as_pose
     g=graph
     commanded=[]
     original=g.robot.runtime_set_joint_pos_cmd
@@ -498,11 +572,10 @@ def test_body_completion_checks_tip_pose_as_well_as_joint_angles(graph):
         g.robot.body_positions[1]+=.19
         return ret
     g.robot.runtime_set_joint_pos_cmd=offset_feedback
-    publisher=g.client.create_publisher(PoseStamped,'/gento_control/body/target_pose',1)
+    publisher=g.client.create_publisher(JointState,'/gento_control/body/target_joints',1)
     until(lambda:publisher.get_subscription_count()>0)
-    message=PoseStamped();message.header.frame_id='body_base'
+    message=JointState(name=BODY_JOINT_NAMES,position=[0.,math.radians(5.),math.radians(5.),math.radians(-5.),0.,0.])
     message.header.stamp=g.client.get_clock().now().to_msg()
-    message.pose=as_pose(LunaBodyKinematics().forward([0,2,-4,2,0,0]),.001)
     publisher.publish(message)
     until(lambda:bool(commanded) and g.driver.active is not None)
     time.sleep(.7)
