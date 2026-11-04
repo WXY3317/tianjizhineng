@@ -52,6 +52,15 @@ ROS 2 Humble 工作空间，提供双臂、躯干、夹爪控制，关节与法�
 
 ## 反馈与目标命令
 
+在本机无需配置跨设备 DDS，即可经 SSH 读取 tianji 的电池电量：
+
+```bash
+./read_tianji_battery.sh
+```
+
+脚本读取远端 `/driver/battery/Data` 的一条消息，逐块输出 `id` 和 `energy`（百分比）。
+本机需有 SSH 别名 `tianji` 和 Python `PyYAML`。
+
 在运行主机的新终端先加载环境：
 
 ```bash
