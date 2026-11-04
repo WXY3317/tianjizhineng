@@ -47,7 +47,8 @@ cd ros2_ws
 控制器 DH 中臂 SDK 基座到第 1 轴的 158.6 mm 偏移已计入安装变换。
 话题格式和坐标变换见 [ROS 2 话题说明](ROS2_TOPICS.md)。
 
-MQTT Broker 在 tianji 的 `127.0.0.1:1883` 和 `192.168.2.121:1883` 提供服务。
+MQTT Broker 在 tianji 监听 `0.0.0.0:1883`，本机可通过 `127.0.0.1:1883`、
+局域网设备可通过 `192.168.2.121:1883` 连接；启动不依赖固定局域网 IP 已就绪。
 场景订阅 **`/vision_target`**；目标点在 `BD_J6` 下 Y 为正由左臂执行，为负由右臂执行，
 `position1` 完成后再执行 `position2`。消息格式见 [scene 说明](ros2_ws/src/scene/README.md)。
 

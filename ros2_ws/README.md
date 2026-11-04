@@ -110,7 +110,8 @@ ros2 topic pub --once /gento_control/left/target_joints sensor_msgs/msg/JointSta
 `BD_J6` 双臂反馈同时通过独立 MQTT 节点发往设备原有配置的 `127.0.0.1:1883`，主题为
 `gento/feedback/left/tcp_pose_bd_j6` 和 `gento/feedback/right/tcp_pose_bd_j6`。
 启动参数 `start_mqtt_feedback:=false` 可关闭；tianji 的 Mosquitto 默认在
-`127.0.0.1:1883` 和 `192.168.2.121:1883` 提供局域网发布与订阅。
+`0.0.0.0:1883` 监听所有 IPv4 接口，本机通过 `127.0.0.1:1883`、
+局域网设备通过 `192.168.2.121:1883` 发布与订阅；服务启动无需等待局域网 IP。
 
 ### MQTT 视觉目标场景
 

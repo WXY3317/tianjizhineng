@@ -41,7 +41,8 @@ effort: []
 `orientation`（四元数 `x/y/z/w`）。MQTT 仅反馈，QoS 0，不保留旧位姿；
 Broker 暂不可用时节点自动重连。启动参数 `start_mqtt_feedback:=false` 可关闭，
 `mqtt_host`、`mqtt_port`、`mqtt_topic_prefix` 可覆盖连接和主题前缀。
-Broker 同时监听局域网地址 `192.168.2.121:1883`，允许局域网客户端无凭据发布和订阅。
+Broker 绑定 `0.0.0.0:1883`；本机使用 `127.0.0.1`，局域网客户端使用
+`192.168.2.121`，均可无凭据发布和订阅。服务启动无需等待该局域网 IP。
 
 消息样例（左臂；右臂替换 `frame_id`）：
 
