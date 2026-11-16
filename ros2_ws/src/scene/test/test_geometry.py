@@ -2,7 +2,11 @@ import math
 
 import pytest
 
-from scene.geometry import parse_targets, route_targets, transform_target
+from scene.geometry import (flange_target_from_tip, joint5_restore_waypoints,
+                            parse_targets, rotate_vector,
+                            route_targets, tool_z_rotation_matrix, tool_z_rotations,
+                            undo_tool_z_matrix, undo_tool_z_rotation,
+                            workpiece_pose_from_flange)
 
 
 SAMPLE = '''{
@@ -28,12 +32,67 @@ def test_targets_route_by_y_and_keep_order():
         route_targets([((.1, 0., .3), targets[0][1])])
 
 
-def test_transform_uses_body_joint_six_rotation_and_translation():
-    target = parse_targets(SAMPLE)[0]
-    q = (0., 0., math.sqrt(.5), math.sqrt(.5))
-    position, orientation = transform_target((.2, .3, .765), q, target)
-    assert position == pytest.approx((.28, .42, 1.155))
+def test_tool_tip_target_is_shifted_along_rotated_local_z():
+    q = (0., math.sqrt(.5), 0., math.sqrt(.5))  # Local +Z points along body +X.
+    flange, orientation = flange_target_from_tip((1., 2., 3.), q, .20)
+    assert flange == pytest.approx((.8, 2., 3.))
     assert orientation == pytest.approx(q)
+    flange_negative, _ = flange_target_from_tip((1., 2., 3.), q, -.20)
+    assert flange_negative == pytest.approx((1.2, 2., 3.))
+
+
+def test_attached_workpiece_pose_reverses_selected_tool_z_rotation():
+    requested = (0., 0., 0., 1.)
+    tip = (.5, .2, .6)
+    flange, _ = flange_target_from_tip(tip, requested, .2)
+    selected = list(tool_z_rotations(requested))[1]
+    assert selected[0] == 15.
+    position, orientation = workpiece_pose_from_flange(flange, selected[1], .2, selected[0])
+    assert position == pytest.approx(tip)
+    assert orientation == pytest.approx(requested)
+    moved_position, moved_orientation = workpiece_pose_from_flange(
+        (.6, .2, .4), selected[1], .2, selected[0])
+    assert moved_position == pytest.approx((.6, .2, .6))
+    assert moved_orientation == pytest.approx(requested)
+    tilted = (0., math.sqrt(.5), 0., math.sqrt(.5))
+    tilted_position, tilted_orientation = workpiece_pose_from_flange(
+        (.2, .3, .4), tilted, .2, 0.)
+    assert tilted_position == pytest.approx((.4, .3, .4))
+    assert tilted_orientation == pytest.approx(tilted)
+
+
+def test_tool_z_candidates_keep_tip_position_and_try_small_angles_first():
+    original = (.93310935, -.34575016, .09466474, .02832574)
+    candidates = list(tool_z_rotations(original))
+    assert [angle for angle, _ in candidates[:5]] == [0., 15., -15., 30., -30.]
+    assert candidates[-1][0] == 180.
+    assert len({round(angle, 6) for angle, _ in candidates}) == len(candidates)
+    tip = (.6313, .17275, .29167)
+    flange, _ = flange_target_from_tip(tip, original, .20)
+    for _, q in candidates:
+        assert rotate_vector(q, (0, 0, 1)) == pytest.approx(rotate_vector(original, (0, 0, 1)), abs=1e-7)
+        candidate_flange, _ = flange_target_from_tip(tip, q, .20)
+        assert candidate_flange == pytest.approx(flange, abs=1e-7)
+
+
+def test_joint5_restore_is_split_and_checked_before_motion():
+    waypoints = joint5_restore_waypoints(0., 127.18532124600992)
+    assert len(waypoints) == 2
+    assert waypoints[0] == pytest.approx(-math.radians(127.18532124600992) / 2)
+    assert waypoints[-1] == pytest.approx(-math.radians(127.18532124600992))
+    with pytest.raises(ValueError, match='limits'):
+        joint5_restore_waypoints(-2., 127.18532124600992)
+
+
+def test_undo_tool_z_rotation_uses_current_orientation():
+    current_c = (0., 0., 1., 0.)
+    returned = undo_tool_z_rotation(current_c, 90.)
+    assert returned == pytest.approx((0., 0., math.sqrt(.5), math.sqrt(.5)))
+    assert rotate_vector(returned, (0., 0., 1.)) == pytest.approx(
+        rotate_vector(current_c, (0., 0., 1.)))
+    assert undo_tool_z_matrix(current_c, tool_z_rotation_matrix(90.)) == pytest.approx(returned)
+    with pytest.raises(ValueError, match='local Z'):
+        undo_tool_z_matrix(current_c, ((1., 0., 0.), (0., 0., -1.), (0., 1., 0.)))
 
 
 @pytest.mark.parametrize('payload', [

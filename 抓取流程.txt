@@ -1,0 +1,19 @@
+抓取流程：
+1、接收来自视觉的mqtt 数据，
+2、到达position1位置，左臂可能会绕局部z轴旋转一个角度，得到一个旋转矩阵R
+3、经过interval间隔之后，到达position2位置,和position1保持位姿不动，只沿着局部z轴下降一个高度。
+4、发送一个夹爪张开的指令，将左夹爪张开27mm ,ros2 topic pub --once /left_gripper/command gripper/msg/GripperCommand '{action: 0, position_m: 0.027}'
+5、这时工件已经在夹具上固定住了，可以随手臂而运动了。发送ros2 service call /scene/attach_workpiece std_srvs/srv/Trigger '{}'
+6、回退到position1,
+7、回退到left_arm_joint_pre准备姿态。
+8、躯干升起到0位置。ros2 topic pub --once /gento_control/body/target_joints sensor_msgs/msg/JointState "{header: {stamp: now},name: [body_joint_1, body_joint_2, body_joint_3, body_joint_4, body_joint_5, body_joint_6],position: [0.0, -0.0, -0.0, -0.0, 0.0, 0.0]}"
+9、左臂发送关节角位置，到达左右臂的交接位置A点，关节角位置：left_post_grasp_joints
+10、右臂发送关节角 [0.2175552912610932,-0.4690223298884362,-0.19600047499896323,-1.5263951506241609,-1.1898433109620943,-0.5670400206804377, -1.070166084152843]，从准备姿态到达预备交接位置，
+11、经过interval间隔之后，从预备交接位置发送直线位置，保持位姿不动，y+7cm
+12、右夹爪张开到27mm,ros2 topic pub --once /right_gripper/command gripper/msg/GripperCommand '{action: 0, position_m: 0.0270}'
+13、左夹爪闭合到0mm,ros2 topic pub --once /left_gripper/command gripper/msg/GripperCommand '{action: 0, position_m: 0.00}'
+14、右臂回退发送关节角的预备交接位置。
+
+备注：从第5步后，工件就在双臂的夹具上了，先在左臂夹具上，但是工件的位姿可能是左臂末端夹具的位置乘上一个旋转矩阵R1得到工具的实际的位姿。
+从12步，右臂夹具拿到了工件，这个时候右臂的夹具相对于工件也有一个旋转矩阵R2,抓取到了之后，右臂末端的夹具的位置乘上R2是不是得到了工件的实际位置
+从第5步后，要实时的发布出这个工件的位置。后续从右臂上放下是，视觉发布的是工件的位姿信息，那么我的右臂位置视觉发布的位置后是不是要旋转R2矩阵的一个角度才能放下。

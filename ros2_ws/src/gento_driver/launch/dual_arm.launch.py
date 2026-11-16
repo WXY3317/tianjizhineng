@@ -89,6 +89,25 @@ def generate_launch_description():
         DeclareLaunchArgument('mqtt_port', default_value='1883'),
         DeclareLaunchArgument('mqtt_topic_prefix', default_value='gento/feedback'),
         DeclareLaunchArgument('vision_mqtt_topic', default_value='/vision_target'),
+        DeclareLaunchArgument('scene_dry_run', default_value='true'),
+        DeclareLaunchArgument('scene_interval', default_value='1.0'),
+        DeclareLaunchArgument('scene_tool_tip_offset_z_m', default_value='0.20'),
+        DeclareLaunchArgument('scene_allow_tool_z_rotation', default_value='true'),
+        DeclareLaunchArgument('scene_left_arm_joint_init', default_value='[0, 0, 0, 0, 0, 0, 0]'),
+        DeclareLaunchArgument('scene_right_arm_joint_init', default_value='[0, 0, 0, 0, 0, 0, 0]'),
+        DeclareLaunchArgument('scene_left_arm_joint_pre', default_value='[1.91, 0.80, -2.0, -1.0, 0, 0, 0]'),
+        DeclareLaunchArgument('scene_right_arm_joint_pre', default_value='[0.25, -0.45, 0.3, -1.0, 0, 0, 0]'),
+        DeclareLaunchArgument('scene_left_post_grasp_joints',
+                              default_value='[2.845654625621635, 0.4907167724907257, '
+                                            '-2.826141844584338, -1.5708835932574963, '
+                                            '-2.0122948143793824, 0.49986229777117597, '
+                                            '-1.035084966187757]'),
+        DeclareLaunchArgument('scene_right_handover_joints',
+                              default_value='[0.2175552912610932, -0.4690223298884362, '
+                                            '-0.19600047499896323, -1.5263951506241609, '
+                                            '-1.1898433109620943, -0.5670400206804377, '
+                                            '-1.070166084152843]'),
+        DeclareLaunchArgument('scene_handover_y_offset_m', default_value='0.07'),
         DeclareLaunchArgument('start_control', default_value='true', description='Start control node when enable_control is true'),
         Node(package='gento_driver', executable='bridge',
                                                  name='gento_driver', output='screen', parameters=[params]),
@@ -105,7 +124,17 @@ def generate_launch_description():
              output='screen', parameters=[{
                  'mqtt_host': ParameterValue(LaunchConfiguration('mqtt_host'), value_type=str),
                  'mqtt_port': ParameterValue(LaunchConfiguration('mqtt_port'), value_type=int),
-                 'mqtt_topic': ParameterValue(LaunchConfiguration('vision_mqtt_topic'), value_type=str)}],
+                 'mqtt_topic': ParameterValue(LaunchConfiguration('vision_mqtt_topic'), value_type=str),
+                 'dry_run': ParameterValue(LaunchConfiguration('scene_dry_run'), value_type=bool),
+                 'interval': ParameterValue(LaunchConfiguration('scene_interval'), value_type=float),
+                 'tool_tip_offset_z_m': ParameterValue(LaunchConfiguration('scene_tool_tip_offset_z_m'), value_type=float),
+                 'allow_tool_z_rotation': ParameterValue(LaunchConfiguration('scene_allow_tool_z_rotation'), value_type=bool),
+                 'left_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_left_post_grasp_joints'), value_type=str),
+                 'right_handover_joints': ParameterValue(LaunchConfiguration('scene_right_handover_joints'), value_type=str),
+                 'handover_y_offset_m': ParameterValue(LaunchConfiguration('scene_handover_y_offset_m'), value_type=float),
+                 **{f'{side}_arm_joint_{position}': ParameterValue(
+                     LaunchConfiguration(f'scene_{side}_arm_joint_{position}'), value_type=str)
+                    for side in ('left', 'right') for position in ('init', 'pre')}}],
              condition=IfCondition(LaunchConfiguration('start_scene'))),
         GroupAction(condition=IfCondition(LaunchConfiguration('enable_control')), actions=[
             Node(package='gento_control', executable='control', name='gento_control',
