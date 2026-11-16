@@ -1,174 +1,158 @@
-# ROS 2 话题说明
+# 项目控制接口
 
-## 1. 关节反馈
+本文只列对外使用的控制入口。以下示例会向机器人发送目标；请按现场情况填写目标值。位置单位为米，关节角和旋转增量单位为弧度。
 
-| 话题名称 | 消息类型 | 内容 |
-| --- | --- | --- |
-| `/gento_feedback/joint_states` | `sensor_msgs/msg/JointState` | 双臂 14 个关节，左臂在前、右臂在后，位置单位 rad |
-| `/gento_feedback/body/joint_states` | `sensor_msgs/msg/JointState` | 躯干 6 个关节，位置单位 rad |
-| `/gento_feedback/head/joint_states` | `sensor_msgs/msg/JointState` | 头部关节，数量由 SDK 反馈决定，位置单位 rad |
-| `/gento_feedback/full_joint_states` | `sensor_msgs/msg/JointState` | 全部关节，顺序：头部 → 躯干 → 左臂 → 右臂，位置单位 rad |
+目标命令中的 `stamp: now` 会在发布时生成新时间戳。控制任务忙碌时，新目标不会排队。
 
-消息样例（以躯干反馈为例，其他关节反馈使用相同结构）：
+## 左右臂
 
-```yaml
-header:
-  stamp: {sec: 0, nanosec: 0}
-  frame_id: ''
-name: [body_joint_1, body_joint_2, body_joint_3, body_joint_4, body_joint_5, body_joint_6]
-position: [0.1, 0.2, 0.3, 0.0, 0.0, 0.0]
-velocity: []
-effort: []
+| 控制话题 | 作用 |
+| --- | --- |
+| `/gento_control/left/target_joints` | 左臂七轴绝对关节目标 |
+| `/gento_control/right/target_joints` | 右臂七轴绝对关节目标 |
+| `/gento_control/left/target_pose` | 左臂法兰绝对位姿，末端按直线轨迹运动 |
+| `/gento_control/right/target_pose` | 右臂法兰绝对位姿，末端按直线轨迹运动 |
+| `/gento_control/left/target_pose_ptp` | 左臂法兰绝对位姿，按关节空间轨迹运动 |
+| `/gento_control/right/target_pose_ptp` | 右臂法兰绝对位姿，按关节空间轨迹运动 |
+| `/gento_control/left/rotate_tcp` | 保持左臂当前 TCP 位置，按固定 `body_base` 轴旋转姿态 |
+| `/gento_control/right/rotate_tcp` | 保持右臂当前 TCP 位置，按固定 `body_base` 轴旋转姿态 |
+
+七轴目标按关节名对应，单位为弧度。分别发送到左右臂的样例：
+
+```bash
+ros2 topic pub --once /gento_control/left/target_joints sensor_msgs/msg/JointState \
+  '{header: {stamp: now}, name: [left_joint_1, left_joint_2, left_joint_3, left_joint_4, left_joint_5, left_joint_6, left_joint_7], position: [1.91314266, 1.31929438, -1.61547676, -1.34913951, -1.97765003, 0.11096803, -0.39805724]}'
+
+ros2 topic pub --once /gento_control/right/target_joints sensor_msgs/msg/JointState \
+  '{header: {stamp: now}, name: [right_joint_1, right_joint_2, right_joint_3, right_joint_4, right_joint_5, right_joint_6, right_joint_7], position: [0.25, -0.45, 0.30, -1.00, 0.0, 0.0, 0.0]}'
 ```
 
-关节名称：左臂 `left_joint_1` 至 `left_joint_7`，右臂 `right_joint_1` 至 `right_joint_7`，躯干 `body_joint_1` 至 `body_joint_6`，头部 `head_joint_1` 至 `head_joint_N`。`position` 与 `name` 一一对应。
-
-## 2. TCP 位姿反馈
-
-| 话题名称 | 消息类型 | 内容 |
-| --- | --- | --- |
-| `/gento_feedback/left/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 左臂 SDK 正解末端（当前未设置工具偏移，即法兰）位姿，位置 m、姿态单位四元数，默认坐标系 `left_arm_sdk_base` |
-| `/gento_feedback/right/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 右臂 SDK 正解末端（当前未设置工具偏移，即法兰）位姿，位置 m、姿态单位四元数，默认坐标系 `right_arm_sdk_base` |
-| `/gento_feedback/left/tcp_pose_body_base` | `geometry_msgs/msg/PoseStamped` | 左臂 TCP 在固定 `body_base` 中的位姿，位置 m |
-| `/gento_feedback/right/tcp_pose_body_base` | `geometry_msgs/msg/PoseStamped` | 右臂 TCP 在固定 `body_base` 中的位姿，位置 m |
-| `/gento_feedback/left/tcp_pose_bd_j6` | `geometry_msgs/msg/PoseStamped` | 左臂 TCP 相对当前 `BD_J6` 的位姿，位置 m、姿态单位四元数，仅反馈 |
-| `/gento_feedback/right/tcp_pose_bd_j6` | `geometry_msgs/msg/PoseStamped` | 右臂 TCP 相对当前 `BD_J6` 的位姿，位置 m、姿态单位四元数，仅反馈 |
-| `/gento_feedback/body/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 当前躯干六轴反馈角正解得到的 `BD_J6` 位姿，位置 m、姿态单位四元数，默认坐标系 `body_base` |
-
-同一组 `BD_J6` 位姿还由独立的 MQTT 节点发布到 tianji 的 Broker `127.0.0.1:1883`：
-`gento/feedback/left/tcp_pose_bd_j6` 和 `gento/feedback/right/tcp_pose_bd_j6`。
-消息是 JSON，包含 `frame_id`、`stamp`（`sec`/`nanosec`）、`position`（米）和
-`orientation`（四元数 `x/y/z/w`）。MQTT 仅反馈，QoS 0，不保留旧位姿；
-Broker 暂不可用时节点自动重连。启动参数 `start_mqtt_feedback:=false` 可关闭，
-`mqtt_host`、`mqtt_port`、`mqtt_topic_prefix` 可覆盖连接和主题前缀。
-Broker 绑定 `0.0.0.0:1883`；本机使用 `127.0.0.1`，局域网客户端使用
-`192.168.2.121`，均可无凭据发布和订阅。服务启动无需等待该局域网 IP。
-
-消息样例（左臂；右臂替换 `frame_id`）：
-
-```yaml
-header:
-  stamp: {sec: 0, nanosec: 0}
-  frame_id: left_arm_sdk_base
-pose:
-  position: {x: 0.25, y: 0.25, z: 0.21}
-  orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
-```
-
-## 3. 错误与状态反馈
-
-| 话题名称 | 消息类型 | 内容 |
-| --- | --- | --- |
-| `/gento_feedback/joint_errors` | `std_msgs/msg/String` | `data` 为 JSON 字符串，包含反馈可用性、对象状态、错误码及故障对象列表 |
-| `/gento_feedback/status` | `std_msgs/msg/String` | `data` 为 JSON 字符串，转发 driver、control 的状态事件，字段随事件变化 |
-
-错误反馈消息样例：
-
-```yaml
-data: '{"available": true, "objects": [{"object_id": 0, "state": 1, "error_code": 0}, {"object_id": 1, "state": 1, "error_code": 0}, {"object_id": 3, "state": 1, "error_code": 0}, {"object_id": 2, "state": 1, "error_code": 0}], "stamp": {"sec": 0, "nanosec": 0}, "fault_objects": []}'
-```
-
-对象 ID：`0` 左臂、`1` 右臂、`2` 头部、`3` 躯干。反馈超时时的消息样例：
-
-```yaml
-data: '{"available": false, "reason": "Driver feedback timeout"}'
-```
-
-状态消息样例（`task_id`、`reason`、`terminal` 等字段不保证每条事件都有）：
-
-```yaml
-data: '{"state": "completed", "session_id": "session-001", "task_id": "task-001", "reason": "Completed", "terminal": true}'
-```
-
-## 4. TCP 位姿目标
-
-| 话题名称 | 消息类型 | 内容 |
-| --- | --- | --- |
-| `/gento_control/left/target_pose` | `geometry_msgs/msg/PoseStamped` | 左臂绝对目标位姿，位置 m、姿态单位四元数，标准坐标系 `body_base` |
-| `/gento_control/right/target_pose` | `geometry_msgs/msg/PoseStamped` | 右臂绝对目标位姿，位置 m、姿态单位四元数，标准坐标系 `body_base` |
-| `/gento_control/body/target_pose` | `geometry_msgs/msg/PoseStamped` | 躯干 `BD_J6` 位姿目标，逆解后执行，默认坐标系 `body_base` |
-| `/gento_control/body/preview_pose` | `geometry_msgs/msg/PoseStamped` | 躯干逆解预览，不执行 |
-| `/gento_control/body/ik_result` | `std_msgs/msg/String` | 逆解结果 JSON，含 `joints_deg` 和 `joints_rad` |
-
-双臂目标使用 `frame_id: body_base`。`body_base` 固定于躯干第 1 轴中心，轴方向与 AGV 平行；它不随第 1 关节旋转。
-控制节点使用当前躯干反馈角和 `luna_body.Cord` 的 `BD_J6 -> BD_FL -> LA_J1/RA_J1` 安装链，
-再沿 SDK 局部 Z 轴减去控制器 `R.A{0,1}.L0.DH.D = 158.6 mm`，得到各自 SDK 基座后执行现有逆解。
-这段偏移已用于位姿反馈和目标逆变换；全零位左臂法兰相对 `BD_J6` 的 Y 为约 0.8296 m。
-躯干在双臂执行期间若偏离起点超过 0.2°，驱动停止执行。
-旧 SDK 基坐标系目标仍可接收，用于兼容和核对；旧 TCP 反馈话题保持 SDK 坐标，新增的 `*_body_base` 话题用于统一坐标反馈。
-
-发布样例（左臂；数值仅说明格式，执行前应确认目标及路径）：
+法兰位姿目标使用 `body_base` 坐标，位置为米，姿态为单位四元数 `x/y/z/w`。下例分别使用左臂直线轨迹和右臂关节空间轨迹。将话题后缀在 `target_pose` 与 `target_pose_ptp` 之间替换，即可切换轨迹方式；关节空间轨迹不保证法兰路径为直线。
 
 ```bash
 ros2 topic pub --once /gento_control/left/target_pose geometry_msgs/msg/PoseStamped \
-"{header: {stamp: now, frame_id: body_base},
-  pose: {
-    position: {x: 0.25, y: 0.25, z: 0.21},
-    orientation: {x: -0.5523719707682738, y: 0.3977202702536071, z: -0.30106956732332846, w: 0.6678779141210726}
-  }}"
+  '{header: {stamp: now, frame_id: body_base}, pose: {position: {x: 0.5599476948, y: 0.2499921409, z: 0.6499149393}, orientation: {x: 0.7070993883, y: 0.0000101756, z: -0.0000073963, w: 0.7071141739}}}'
+
+ros2 topic pub --once /gento_control/right/target_pose_ptp geometry_msgs/msg/PoseStamped \
+  '{header: {stamp: now, frame_id: body_base}, pose: {position: {x: 0.5600184529, y: -0.2699976378, z: 0.6497690436}, orientation: {x: -0.0000354015, y: 0.7078026320, z: 0.7064102419, w: 0.0000559751}}}'
 ```
 
-右臂替换话题为 `/gento_control/right/target_pose`，仍使用 `body_base`。目标必须带新鲜时间戳；程序内用当前躯干角度转换，无需设备发布 TF。
-
-躯干逆解执行使用 `/gento_control/body/target_pose`，`frame_id: body_base`；只预览时使用 `/gento_control/body/preview_pose`，结果在 `/gento_control/body/ik_result`。`body_base` 固定在第 1 轴中心、轴方向与配置 AGV 平行；末端为第 6 关节坐标系 `BD_J6`，不包含其后的 391.5 mm 安装偏移。目标和反馈均表示 `T_B_BD_J6`；当前配置全零位的位置为 `[0, 0, 765]` mm（ROS 消息为 `[0, 0, 0.765]` m）。先读取 `/gento_feedback/body/tcp_pose`，以实际当前位置和朝向填写目标并刷新时间戳，不要把示例中的手臂位置直接用于躯干。
-
-位姿逆解目标和最终结果的 `body_base` 高度默认限制在 0.55–0.76 m（含端点），可通过 launch 参数 `body_z_min_m`、`body_z_max_m` 调整。零位 0.765 m 高于默认上限。位姿直线路径可从当前范围外向范围内移动，但不能越过当前高度继续远离范围；直接发送关节角不受此逆解限制。
-
-旧 `BD_FL` 目标不能直接复用，需按 `T_B_J6 = T_B_FL @ inverse(T_J6_FL)` 转换。当前安装变换等价于沿旧末端自身 Z 方向减去 391.5 mm（ROS 为 0.3915 m），朝向不变；不能一律从 `body_base` 的 Z 坐标相减。
-
-躯干先求完整位姿逆解，在控制器限位与额外 J1 ±11°、J2 ±50°、J5 ±30°、J6 ±170°内选择接近当前角度的解；J3/J4 采用控制器限位，并受 `max_delta` 限制。`target_pose` 从当前位姿做位置直线和姿态插补，生成并核验 50 Hz 关节目标后逐点发送；实际路径偏差由 `cartesian_path_tolerance` 监控。`target_joints` 仍为单点关节命令。无解、错误坐标系、过期消息或非法四元数会被拒绝。反馈中 `body/tcp_pose` 是关节反馈正解，不是目标位姿回显。
-
-## 5. 停止与清错
-
-| 话题名称 | 消息类型 | 内容 |
-| --- | --- | --- |
-| `/gento_driver/stop` | `std_msgs/msg/Empty` | 软件停止并锁定故障，不续跑旧轨迹 |
-| `/gento_control/reset_error` | `std_msgs/msg/Empty` | 全局清错与恢复 |
-| `/gento_control/left/reset_error` | `std_msgs/msg/Empty` | 左臂清错 |
-| `/gento_control/right/reset_error` | `std_msgs/msg/Empty` | 右臂清错 |
-| `/gento_control/body/reset_error` | `std_msgs/msg/Empty` | 躯干清错 |
-
-发布样例：
+`rotate_tcp` 的 `vector.x/y/z` 是绕 `body_base` 固定 X/Y/Z 轴的相对增量；同时指定多轴时按 X、Y、Z 顺序应用，即 `Rz × Ry × Rx`。例如左臂绕固定 Z 轴旋转 10°，或右臂绕固定 X 轴旋转 5°：
 
 ```bash
-# 软件停止
+ros2 topic pub --once /gento_control/left/rotate_tcp geometry_msgs/msg/Vector3Stamped \
+  '{header: {stamp: now, frame_id: body_base}, vector: {x: 0.0, y: 0.0, z: 0.1745329252}}'
+
+ros2 topic pub --once /gento_control/right/rotate_tcp geometry_msgs/msg/Vector3Stamped \
+  '{header: {stamp: now, frame_id: body_base}, vector: {x: 0.0872664626, y: 0.0, z: 0.0}}'
+```
+
+## 躯干与头部
+
+| 控制话题 | 作用 |
+| --- | --- |
+| `/gento_control/body/target_joints` | 躯干六轴绝对关节目标 |
+| `/gento_control/body/target_pose` | 躯干第六轴 `BD_J6` 的绝对位姿目标，执行运动 |
+| `/gento_control/body/preview_pose` | 对躯干位姿目标求解预览，不执行运动 |
+| `/gento_control/head/target_joints` | 头部两轴绝对关节目标 |
+
+躯干关节和头部关节目标的单位为弧度。头部控制需启用 `enable_head_control:=true`。
+
+```bash
+ros2 topic pub --once /gento_control/body/target_joints sensor_msgs/msg/JointState \
+  '{header: {stamp: now}, name: [body_joint_1, body_joint_2, body_joint_3, body_joint_4, body_joint_5, body_joint_6], position: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}'
+
+ros2 topic pub --once /gento_control/head/target_joints sensor_msgs/msg/JointState \
+  '{header: {stamp: now}, name: [head_joint_1, head_joint_2], position: [0.0, 0.0]}'
+```
+
+躯干位姿目标使用 `body_base` 坐标和完整的位置、姿态。下面先给出不执行运动的预览样例；确认目标后，将话题改为 `/gento_control/body/target_pose` 执行。默认目标高度范围为 0.55～0.76 m，目标仍需满足关节与路径约束。
+
+```bash
+ros2 topic pub --once /gento_control/body/preview_pose geometry_msgs/msg/PoseStamped \
+  '{header: {stamp: now, frame_id: body_base}, pose: {position: {x: 0.0011537186, y: 0.0, z: 0.6644140365}, orientation: {x: 0.0000079485, y: 0.4554128364, z: 0.0000155383, w: 0.8902803761}}}'
+```
+
+## 场景控制
+
+| 控制入口 | 作用 |
+| --- | --- |
+| `/scene/arm_position` | `0`：左右臂依次到初始关节位置；`1`：依次到准备位置 |
+| `/scene/restore_tool_z` | 在当前法兰位置撤销上一次由 scene 执行的夹具局部 Z 轴旋转 |
+| `/scene/attach_workpiece`（`std_srvs/srv/Trigger`） | 第 5 步人工确认左夹爪抓牢后调用；启动左臂回退、准备位、躯干回零和左臂交接位运动 |
+| `/scene/start_handover`（`std_srvs/srv/Trigger`） | 第 10 步人工确认交接区安全后调用；启动右臂交接流程 |
+| `/scene/detach_workpiece`（`std_srvs/srv/Trigger`） | 工件实际释放后结束位姿跟踪 |
+| MQTT `vs/workpiece/6d_pose` | 提交工件位姿；`position1` 使用关节空间轨迹，`position2` 使用法兰直线轨迹 |
+| `/scene/status`（`std_msgs/msg/String`） | JSON 状态；含 `awaiting_attach`、`awaiting_handover`、`handover_waiting`、`post_grasp_completed` 和 `rejected` |
+| `/scene/workpiece_pose`（`geometry_msgs/msg/PoseStamped`） | 根据当前持有臂的法兰反馈推算的工件位姿，坐标系为 `body_base` |
+
+`/scene/arm_position` 使用 launch 中的 `left_arm_joint_init`、`right_arm_joint_init`、`left_arm_joint_pre`、`right_arm_joint_pre` 七轴预设，单位弧度。先移动左臂，完成后再移动右臂；任一步失败即停止。需以 `dry_run:=false` 启动 scene。
+
+```bash
+ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 0}'  # 到初始位置
+ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 1}'  # 到准备位置
+
+ros2 service call /scene/restore_tool_z std_srvs/srv/Trigger '{}'
+# 分别在终端中观察状态与工件位姿：
+ros2 topic echo /scene/status
+ros2 topic echo /scene/workpiece_pose
+# 看到 /scene/status 的 awaiting_attach，且确认左夹爪已抓牢后：
+ros2 service call /scene/attach_workpiece std_srvs/srv/Trigger '{}'
+# 看到 awaiting_handover，且确认交接区域安全后：
+ros2 service call /scene/start_handover std_srvs/srv/Trigger '{}'
+# 工件实际释放后：
+ros2 service call /scene/detach_workpiece std_srvs/srv/Trigger '{}'
+```
+
+scene 默认接收下面的 MQTT 工件目标。`position1` 是预抓取位置，通过 `/gento_control/{left,right}/target_pose_ptp` 执行；完成后等待 `interval` 秒（默认 1.0 秒），`position2` 作为工件实际位置通过 `/gento_control/{left,right}/target_pose` 执行。第二步继承第一步选定的法兰姿态和绕轴角度，只改变位置；第二步不可达时拒绝，不再另选姿态。Y 正值选左臂，Y 负值选右臂；两个非零目标必须选择同一只手臂。位置单位为米，姿态为 `body_base` 下的单位四元数。`position2` 可省略或填全零占位。工件原点作为夹具尖端目标，法兰到尖端的局部 Z 偏移默认 0.20 m。实际执行需以 `dry_run:=false` 启动 scene。
+
+左臂到 `position2` 后，scene 自动发送左夹爪 27 mm 命令并等待夹爪反馈到位；`awaiting_attach` 后才由操作者调用附着服务。左臂依次退回 `position1`、到 `left_arm_joint_pre`、躯干六轴回零、到 `left_post_grasp_joints`。`awaiting_handover` 后才由操作者启动右臂。右臂到 `right_handover_joints` 并收到完成状态后等待 `interval`，再保持姿态沿 `body_base` 的 +Y 方向直线移动 `handover_y_offset_m`（默认 0.07 m）；右夹爪到 27 mm、左夹爪到 0 mm 后右臂退回预备交接位。每段运动等待控制节点报告完成，夹爪动作等待状态到位；夹爪到位本身不证明工件已可靠持有。
+
+附着期间，scene 根据法兰反馈持续发布工件估计位姿。交接时由左右法兰反馈求右法兰到工件的固定平移与旋转，随后改用右臂跟踪。当前尚未实现右臂放置流程。放置目标若由视觉给出，须用工件目标位姿乘以右法兰到工件固定变换的逆，得到右法兰目标；不能只旋转一个角度。
+
+```bash
+mosquitto_pub -h 127.0.0.1 -t vs/workpiece/6d_pose -m \
+  '{"position1":{"x":0.55,"y":0.25,"z":0.65},"position2":{"x":0.55,"y":0.25,"z":0.62},"orientation":{"x":0,"y":0,"z":0,"w":1}}'
+```
+
+## 夹爪
+
+| 控制话题 | 作用 |
+| --- | --- |
+| `/gripper/command` | 单夹爪启动方式下的控制入口 |
+| `/left_gripper/command` | 双夹爪启动方式下的左夹爪控制入口 |
+| `/right_gripper/command` | 双夹爪启动方式下的右夹爪控制入口 |
+
+动作编号：`0` 移动到指定开度，`1` 标零，`2` 使能，`3` 失能，`4` 清错，`5` 设置电流触发保持阈值。移动开度 `position_m` 单位为米，范围 0～0.098 m；动作 `5` 的 `current_threshold_a` 单位为安培。标零会驱动夹爪到机械全开端，应先确认空载、张开路径畅通。
+
+```bash
+ros2 topic pub --once /left_gripper/command gripper/msg/GripperCommand '{action: 1}'
+ros2 topic pub --once /left_gripper/command gripper/msg/GripperCommand '{action: 2}'
+ros2 topic pub --once /left_gripper/command gripper/msg/GripperCommand '{action: 0, position_m: 0.060}'
+ros2 topic pub --once /left_gripper/command gripper/msg/GripperCommand '{action: 5, current_threshold_a: 0.8}'
+ros2 topic pub --once /left_gripper/command gripper/msg/GripperCommand '{action: 3}'
+
+ros2 topic pub --once /right_gripper/command gripper/msg/GripperCommand '{action: 4}'
+```
+
+单夹爪模式下将样例话题换为 `/gripper/command`；双夹爪模式分别使用左右话题。
+
+## 停止与清错
+
+| 控制话题 | 作用 |
+| --- | --- |
+| `/gento_driver/stop` | 软件停止当前任务并锁定故障 |
+| `/gento_control/reset_error` | 全局清错与恢复 |
+| `/gento_control/left/reset_error` | 左臂清错 |
+| `/gento_control/right/reset_error` | 右臂清错 |
+| `/gento_control/body/reset_error` | 躯干清错 |
+| `/gento_control/head/reset_error` | 头部清错 |
+
+```bash
 ros2 topic pub --once /gento_driver/stop std_msgs/msg/Empty '{}'
-
-# 全局清错与恢复
 ros2 topic pub --once /gento_control/reset_error std_msgs/msg/Empty '{}'
-
-# 左臂清错；右臂、躯干分别将 left 替换为 right、body
 ros2 topic pub --once /gento_control/left/reset_error std_msgs/msg/Empty '{}'
+ros2 topic pub --once /gento_control/right/reset_error std_msgs/msg/Empty '{}'
+ros2 topic pub --once /gento_control/body/reset_error std_msgs/msg/Empty '{}'
+ros2 topic pub --once /gento_control/head/reset_error std_msgs/msg/Empty '{}'
 ```
-
-## 6. MQTT 视觉目标场景
-
-独立 `scene` 包默认订阅 tianji Broker 的 **`/vision_target`**（含开头的 `/`）。
-可用 `./run_real_robot.sh start_scene:=true` 随真机程序启动，或在真机运行时
-另开终端执行 `./run_scene.sh`；默认不启动场景节点。脚本支持
-`mqtt_host:=... mqtt_port:=... mqtt_topic:=...`，首次构建使用 `./run_scene.sh --build`。
-
-输入是 UTF-8 JSON；示意图中不带引号的 `position1`、`position2`、`orientation`
-顶层键也可解析。坐标单位为米，姿态为 `BD_J6` 下的单位四元数 `x/y/z/w`：
-
-```json
-{
-  "position1": {"x": 0.12, "y": -0.08, "z": 0.39},
-  "position2": {"x": 0.10, "y": 0.15, "z": 0.35},
-  "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0}
-}
-```
-
-`position1`、`position2` 依次执行、共用 `orientation`。每个目标在 `BD_J6`
-下的 **Y > 0 选择左臂、Y < 0 选择右臂**；全零 `position2` 占位会跳过，
-其他 Y = 0 目标会被拒绝。上例先由右臂执行，再由左臂执行。
-节点使用新鲜的 `/gento_feedback/body/tcp_pose` 计算
-`T_body_base_target = T_body_base_BD_J6 × T_BD_J6_target`，然后向对应的
-`/gento_control/{left,right}/target_pose` 发布带当前时间戳的 `PoseStamped`。
-第一步收到 control 的 `completed` 状态后才发送第二步；执行中收到的新 MQTT
-目标会被忽略。MQTT retained 消息和过期躯干反馈不会触发运动。
-
-`/scene/status` 是 `std_msgs/msg/String`，`data` 为 JSON，含 `state`
-（如 `sent`、`step_completed`、`rejected`）、目标臂、剩余步数或拒绝原因。
-可用 `ros2 topic echo /scene/status` 查看；完整启动说明见
-[scene 功能包说明](ros2_ws/src/scene/README.md)。

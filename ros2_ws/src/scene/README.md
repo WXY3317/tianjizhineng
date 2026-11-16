@@ -46,7 +46,7 @@ MQTT 视觉目标是 `body_base` 下的工件位姿；工件原点作为夹具�
 需要控制节点；绕轴候选先尝试原始姿态，再按绝对角度从小到大尝试。
 可在 `/scene/status` 查看发送、完成及拒绝原因。
 
-到达 `position2` 后，scene 向左夹爪发送 27 mm 命令并等待夹爪反馈到位。收到 `awaiting_attach` 状态后，操作者确认实物已夹牢，再手动调用下面的附着服务。服务会依次执行四段运动，并等待每段确认完成后再发送下一段：先从当前位姿沿法兰直线轨迹退回本次实际到达的 `position1` 法兰位姿（包含选定的局部 Z 轴旋转）；再让左臂回到 `left_arm_joint_pre` 关节准备姿态；随后通过 `/gento_control/body/target_joints` 将六个躯干关节回到 0；躯干完成后，通过 `/gento_control/left/target_joints` 到 `left_post_grasp_joints`。默认最终关节角（弧度）为 `[2.845654625621635, 0.4907167724907257, -2.826141844584338, -1.5708835932574963, -2.0122948143793824, 0.49986229777117597, -1.035084966187757]`。单独启动可用 `left_post_grasp_joints:='[j1,j2,j3,j4,j5,j6,j7]'` 覆盖；随真机启动使用 `scene_left_post_grasp_joints`。初次抓取仅支持左臂。左臂到达交接点后，scene 发布 `awaiting_handover`，等待操作者手动调用 `/scene/start_handover`。
+到达 `position2` 后，scene 向左夹爪发送 27 mm 命令，等待夹爪到位或触发电流阈值并保持当前位置。电流保持可能发生在 27 mm 之前，不能单凭反馈确认抓牢；收到 `awaiting_attach` 状态后，操作者确认实物已夹牢，再手动调用下面的附着服务。服务会依次执行四段运动，并等待每段确认完成后再发送下一段：先从当前位姿沿法兰直线轨迹退回本次实际到达的 `position1` 法兰位姿（包含选定的局部 Z 轴旋转）；再让左臂回到 `left_arm_joint_pre` 关节准备姿态；随后通过 `/gento_control/body/target_joints` 将六个躯干关节回到 0；躯干完成后，通过 `/gento_control/left/target_joints` 到 `left_post_grasp_joints`。默认最终关节角（弧度）为 `[2.845654625621635, 0.4907167724907257, -2.826141844584338, -1.5708835932574963, -2.0122948143793824, 0.49986229777117597, -1.035084966187757]`。单独启动可用 `left_post_grasp_joints:='[j1,j2,j3,j4,j5,j6,j7]'` 覆盖；随真机启动使用 `scene_left_post_grasp_joints`。初次抓取仅支持左臂。左臂到达交接点后，scene 发布 `awaiting_handover`，等待操作者手动调用 `/scene/start_handover`。
 
 scene 将所选绕轴角和法兰到夹具尖端的偏移作为固定变换，
 每次收到该手臂的新鲜法兰位姿，就在 `/scene/workpiece_pose` 发布工件在 `body_base` 下的估计位姿。
@@ -62,7 +62,7 @@ ros2 topic echo /scene/workpiece_pose
 ros2 service call /scene/detach_workpiece std_srvs/srv/Trigger '{}'
 ```
 
-手动启动交接后，右臂先到 `right_handover_joints`；控制节点确认到位后等待 `interval`（默认 1.0 秒），再保持姿态沿 `body_base` 的 +Y 直线运动 7 cm。随后右夹爪到 27 mm，切换工件附着到右臂，左夹爪到 0 mm，最后右臂退回预备交接关节位。右夹爪到位时根据双臂当前法兰反馈计算右法兰到工件的完整固定变换，并用右臂反馈持续发布工件位姿。`right_handover_joints` 和 `handover_y_offset_m` 可在单独启动时覆盖，随真机启动时加 `scene_` 前缀。夹爪反馈错误或 15 秒未到位时流程停止，需检查现场并重启 scene。
+手动启动交接后，右臂先到 `right_handover_joints`；控制节点确认到位后等待 `interval`（默认 1.0 秒），再保持姿态沿 `body_base` 的 +Y 直线运动 7 cm。随后右夹爪到 27 mm 或触发电流保持，切换工件附着到右臂，左夹爪到 0 mm，最后右臂退回预备交接关节位。右夹爪到位时根据双臂当前法兰反馈计算右法兰到工件的完整固定变换，并用右臂反馈持续发布工件位姿。`right_handover_joints` 和 `handover_y_offset_m` 可在单独启动时覆盖，随真机启动时加 `scene_` 前缀。夹爪反馈错误或 15 秒未到位时流程停止，需检查现场并重启 scene。
 
 该位姿由法兰位姿和固定夹具几何推算，不是工件的独立视觉测量；前提是工件夹取后相对夹具不滑动。
 附着期间 scene 不接受新的 MQTT 工件目标，释放后可处理下一件。

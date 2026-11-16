@@ -1,6 +1,6 @@
 # 天机机器人 ROS 2 真机控制
 
-通过 ROS 2 Humble 连接实体控制器，读取双臂、躯干和头部反馈，控制双臂及六轴躯干。
+通过 ROS 2 Humble 连接实体控制器，读取双臂、躯干和头部反馈，控制双臂、六轴躯干及两轴头部。
 driver 独占 SDK 连接，control 规划轨迹，feedback 发布位姿和状态；独立的 `scene`
 包可将 MQTT 视觉目标转换为双臂运动目标。
 
@@ -10,12 +10,24 @@ driver 独占 SDK 连接，control 规划轨迹，feedback 发布位姿和状态
 | `ros2_ws/src/gento_control` | 运动任务、路径规划与执行管理 |
 | `ros2_ws/src/gento_feedback` | 反馈汇总、诊断和轨迹记录 |
 | `ros2_ws/src/gento_interfaces` | ROS 查询服务和轨迹 Action 定义 |
-| `ros2_ws/src/scene` | MQTT `/vision_target` 视觉目标转换和顺序执行 |
+| `ros2_ws/src/scene` | MQTT 工件目标、左臂抓取、人工确认交接和工件位姿跟踪 |
 | `ros2_ws/src/gripper` | 左右夹爪的 RS485 ROS 接口 |
 | `ros2_ws/README.md` | 启动部署、常用命令与功能包说明 |
 | `tianji-robot-SDK` | Gento 原厂 SDK 与示例 |
 
 功能包职责、启动方式及新命令见 [工作空间说明](ros2_ws/README.md)。
+
+## 部署到 tianji
+
+在本机执行以下命令即可交叉编译 ARM64 SDK、同步源码，并在 tianji 上编译全部 ROS 包；脚本默认连接 SSH 别名 `tianji`，部署时不会启动机器人或夹爪。
+全量部署前需停止设备上正在运行的机器人和夹爪节点；脚本检测到这些进程时会拒绝部署。
+
+```bash
+cd ros2_ws
+./deploy_arm.sh
+```
+
+远端统一使用 `ros2_ws/build/`、`install/`、`log/`。启动前执行 `source install/setup.bash`；夹爪双侧的启动命令及自动标零行为见 [gripper 说明](ros2_ws/src/gripper/README.md)。
 
 ## 启动
 
@@ -37,8 +49,10 @@ cd ros2_ws
 # 后续连接；收到合法目标后直接执行
 ./run_real_robot.sh ip:=6.6.7.190
 
-# 另一终端：接收 MQTT 视觉目标并发布双臂目标
+# 另一终端：先预览视觉目标，不发送运动命令
 ./run_scene.sh
+# 停止预览进程后，以实际执行模式重新启动；第 5、10 步仍需人工确认
+./run_scene.sh dry_run:=false
 ```
 
 双臂位姿目标使用固定在躯干第 1 轴中心的 `body_base`；`BD_J6` 是随躯干运动的
@@ -49,8 +63,15 @@ cd ros2_ws
 
 MQTT Broker 在 tianji 监听 `0.0.0.0:1883`，本机可通过 `127.0.0.1:1883`、
 局域网设备可通过 `192.168.2.121:1883` 连接；启动不依赖固定局域网 IP 已就绪。
-场景订阅 **`/vision_target`**；目标点在 `BD_J6` 下 Y 为正由左臂执行，为负由右臂执行，
-`position1` 完成后再执行 `position2`。消息格式见 [scene 说明](ros2_ws/src/scene/README.md)。
+单独启动的场景默认订阅 MQTT **`vs/workpiece/6d_pose`**；随真机一并启动时可用
+`vision_mqtt_topic:=vs/workpiece/6d_pose` 指定同一主题。视觉给出的工件目标位姿
+在 `body_base` 下；Y 为正选左臂，为负选右臂。`position1` 完成后等待 `interval`
+（默认 1 秒）再到 `position2`。左夹爪到位后，操作者确认抓牢并手动调用
+`/scene/attach_workpiece`；左臂到交接点后，再手动调用 `/scene/start_handover`。
+右臂到预备交接位后也等待 `interval`，再沿 `body_base` 的 +Y 方向移动
+`handover_y_offset_m`（默认 0.07 m）。过程可在 `/scene/status` 查看，
+工件估计位姿由 `/scene/workpiece_pose` 发布。命令与消息格式见
+[scene 说明](ros2_ws/src/scene/README.md)和[ROS 2 话题说明](ROS2_TOPICS.md)。
 
 当前控制接口没有碰撞检测；运行前应核对实机目标与路径。
 

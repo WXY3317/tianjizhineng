@@ -308,11 +308,21 @@ class VisionTargets(Node):
             self.state = 'fault'
             self.report('rejected', reason=f'{side} gripper invalid or fault at {step}')
             return
-        if (not message.at_target or abs(message.position_m - target) > .002 or
-                abs(message.target_position_m - target) > .002):
+        at_target = (message.at_target and
+                     abs(message.position_m - target) <= .002 and
+                     abs(message.target_position_m - target) <= .002)
+        held_by_current_limit = (step in ('left_grasp', 'right_grasp') and
+                                 message.target_active and message.current_limit_reached and
+                                 message.holding_position and
+                                 math.isfinite(message.position_m) and
+                                 math.isfinite(message.target_position_m) and
+                                 abs(message.position_m - message.target_position_m) <= .002)
+        if not (at_target or held_by_current_limit):
             return
         self.gripper_pending = None
-        self.report('gripper_completed', arm=side, step=step)
+        self.report('gripper_completed', arm=side, step=step,
+                    completion='current_limit_hold' if held_by_current_limit else 'at_target',
+                    position_m=message.position_m)
         if step == 'left_grasp':
             self.state = 'idle'
             self.report('awaiting_attach', command="ros2 service call /scene/attach_workpiece std_srvs/srv/Trigger '{}'")

@@ -499,6 +499,33 @@ def test_right_approach_waits_interval_after_right_pre_completed(monkeypatch):
     assert sent == ['right_approach']
 
 
+def test_grasp_current_limit_hold_waits_for_operator_confirmation(monkeypatch):
+    VisionTargets = import_scene_node(monkeypatch)
+    import scene.node as scene_module
+    monkeypatch.setattr(scene_module.time, 'monotonic', lambda: 10.)
+    reports = []
+    scene = SimpleNamespace(
+        gripper_pending=('left', .027, 'left_grasp', 9.), state='gripper_waiting',
+        report=lambda state, **details: reports.append((state, details)),
+    )
+    feedback = SimpleNamespace(
+        valid=True, error_code=0, enabled=True, at_target=False,
+        position_m=.02238, target_position_m=.02238, target_active=True,
+        current_limit_reached=True, holding_position=True,
+    )
+    VisionTargets.on_gripper_state(scene, 'left', feedback)
+    assert scene.state == 'idle' and scene.gripper_pending is None
+    assert reports[0] == ('gripper_completed', {
+        'arm': 'left', 'step': 'left_grasp', 'completion': 'current_limit_hold',
+        'position_m': .02238})
+    assert reports[1][0] == 'awaiting_attach'
+
+    scene.gripper_pending = ('left', 0., 'left_release', 9.)
+    scene.state = 'gripper_waiting'
+    VisionTargets.on_gripper_state(scene, 'left', feedback)
+    assert scene.state == 'gripper_waiting' and scene.gripper_pending is not None
+
+
 def test_restore_tool_z_uses_current_c_pose_and_saved_b_angle(monkeypatch, tmp_path):
     VisionTargets = import_scene_node(monkeypatch)
     angle_file = tmp_path / 'tool_z.json'
