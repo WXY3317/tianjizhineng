@@ -4,6 +4,7 @@ import math
 
 JOINT_NAMES = [f'{side}_joint_{i}' for side in ('left', 'right') for i in range(1, 8)]
 BODY_JOINT_NAMES = [f'body_joint_{i}' for i in range(1, 7)]
+HEAD_JOINT_NAMES = ['head_joint_1', 'head_joint_2']
 
 
 def body_target(names, positions):

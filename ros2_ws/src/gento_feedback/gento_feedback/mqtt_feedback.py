@@ -1,4 +1,4 @@
-"""Publish read-only BD_J6 arm TCP feedback to the device's MQTT broker."""
+"""Publish read-only arm and body pose feedback to the device's MQTT broker."""
 import json
 import site
 
@@ -51,6 +51,9 @@ class MqttFeedback(Node):
             self.create_subscription(
                 PoseStamped, f'/gento_feedback/{side}/tcp_pose_bd_j6',
                 lambda msg, destination=topic: self.forward(destination, msg), 10)
+        self.create_subscription(
+            PoseStamped, '/gento_feedback/body/tcp_pose',
+            lambda msg: self.forward(f'{prefix}/body_pose_bd_j6', msg, None), 10)
 
     def on_connect(self, _client, _userdata, _flags, result_code):
         self.connected = result_code == 0
@@ -62,11 +65,11 @@ class MqttFeedback(Node):
     def on_disconnect(self, _client, _userdata, _result_code):
         self.connected = False
 
-    def forward(self, topic, pose):
+    def forward(self, topic, pose, expected_frame='BD_J6'):
         if not self.connected:
             return
-        if pose.header.frame_id != 'BD_J6':
-            self.get_logger().warning('Ignoring non-BD_J6 arm pose')
+        if expected_frame is not None and pose.header.frame_id != expected_frame:
+            self.get_logger().warning(f'Ignoring pose outside {expected_frame}')
             return
         result = self.mqtt.publish(topic, pose_payload(pose), qos=0, retain=False)
         if result.rc != 0:

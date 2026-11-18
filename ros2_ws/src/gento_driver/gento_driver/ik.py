@@ -5,7 +5,7 @@ import math
 MAX_STEP_DEG = 1.0  # Same discontinuity bound as the Cartesian planner.
 
 
-def solve_step(engine, arm, matrix, reference):
+def solve_step(engine, arm, matrix, reference, max_step_deg=MAX_STEP_DEG, endpoint=False):
     limits=engine.limits[arm]
 
     def attempt(seed):
@@ -34,8 +34,12 @@ def solve_step(engine, arm, matrix, reference):
         return q,params,None,False
 
     q,original,error,limit_error=attempt(reference)
-    if q is not None:return q
-    if not limit_error:raise ValueError(f'arm{arm} {error}')
+    if q is not None and (not endpoint or max(abs(a-b) for a,b in zip(q,reference))<=max_step_deg):
+        return q
+    if q is not None:
+        error='IK solution exceeds permitted joint change'
+        limit_error=True
+    if not limit_error and not endpoint:raise ValueError(f'arm{arm} {error}')
 
     tried={tuple(reference)}
     attempts=1
@@ -46,13 +50,13 @@ def solve_step(engine, arm, matrix, reference):
         for seed in seeds:
             if len(seed)!=7 or not all(math.isfinite(v) for v in seed):continue
             if any(not lo<=v<=hi for v,(lo,hi) in zip(seed,limits)):continue
-            if max(abs(a-b) for a,b in zip(seed,reference))>MAX_STEP_DEG:continue
+            if max(abs(a-b) for a,b in zip(seed,reference))>max_step_deg:continue
             key=tuple(seed)
             if key in tried:continue
             tried.add(key)
             attempts+=1
             candidate,_,_,_=attempt(seed)
-            if candidate is not None and max(abs(a-b) for a,b in zip(candidate,reference))<=MAX_STEP_DEG:
+            if candidate is not None and max(abs(a-b) for a,b in zip(candidate,reference))<=max_step_deg:
                 candidates.append(candidate)
         return min(candidates,key=lambda q:sum((a-b)**2 for a,b in zip(q,reference))) if candidates else None
 
@@ -66,7 +70,8 @@ def solve_step(engine, arm, matrix, reference):
         if q is not None:recovered.append(q)
     # Smaller neighborhoods first reduce the risk of introducing rate discontinuities.
     # At most 8 SDK candidates plus 4*14 perturbed references are examined.
-    for offset in (.001,.005,.025,.1):
+    offsets=(.001,.005,.025,.1,1.,5.,15.,30.) if endpoint else (.001,.005,.025,.1)
+    for offset in offsets:
         seeds=[]
         for joint in range(7):
             for sign in (-1,1):
@@ -85,4 +90,6 @@ def solve_step(engine, arm, matrix, reference):
             lo,hi=runtime_lo,runtime_hi
         exceeded.append(f'joint{i+1}={original.m_Output_RetJoint[i]:.4f} deg, limits=[{lo:.4f},{hi:.4f}]')
     detail='; '.join(exceeded) or 'SDK did not identify the exceeded joint'
+    if endpoint:
+        raise ValueError(f'arm{arm} {error}; {detail}; no legal endpoint IK found in {attempts} attempts')
     raise ValueError(f'arm{arm} {error}; {detail}; no continuous legal IK found in {attempts} local attempts')

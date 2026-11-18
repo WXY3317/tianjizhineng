@@ -1,10 +1,10 @@
 """Independent validation at the hardware boundary; no planner is trusted."""
 import math
-from .conversions import JOINT_NAMES, BODY_JOINT_NAMES, finite, pose_matrix
+from .conversions import JOINT_NAMES, BODY_JOINT_NAMES, HEAD_JOINT_NAMES, finite, pose_matrix
 from .body_kinematics import LunaBodyKinematics, pose_error
 from .body_cartesian import interpolate as body_interpolate
 
-OBJECT_NAMES = {0: JOINT_NAMES[:7], 1: JOINT_NAMES[7:], 3: BODY_JOINT_NAMES}
+OBJECT_NAMES = {0: JOINT_NAMES[:7], 1: JOINT_NAMES[7:], 2: HEAD_JOINT_NAMES, 3: BODY_JOINT_NAMES}
 
 
 def validate_goal(goal, snapshot, hardware, now_ns, check_freshness=True, planning_limits=None):
@@ -16,17 +16,18 @@ def validate_goal(goal, snapshot, hardware, now_ns, check_freshness=True, planni
     age = (now_ns-state.header.stamp.sec*10**9-state.header.stamp.nanosec)/1e9
     if check_freshness and not 0 <= age <= hardware.c.command_max_age:
         raise ValueError('Stale or future trajectory start state')
-    all_names = JOINT_NAMES+BODY_JOINT_NAMES
-    if list(state.name) != all_names or len(state.position) != 20:
-        raise ValueError('Expected complete start state with 20 named joints')
+    head_motion = any(list(t.joint_names)==HEAD_JOINT_NAMES for t in goal.trajectories)
+    all_names = JOINT_NAMES+BODY_JOINT_NAMES+(HEAD_JOINT_NAMES if head_motion else [])
+    if list(state.name) != all_names or len(state.position) != len(all_names):
+        raise ValueError('Expected complete named start state')
     finite(state.position)
     if state.velocity or state.effort:raise ValueError('Start state must contain positions only')
     start = [math.degrees(q) for q in state.position]
-    actual = snapshot['joints'][0]+snapshot['joints'][1]+snapshot['body']
+    actual = snapshot['joints'][0]+snapshot['joints'][1]+snapshot['body']+(snapshot['head'] if head_motion else [])
     if max(abs(x-y) for x,y in zip(start,actual)) > .2:
         raise ValueError('Robot moved since planning; replan required')
-    if not 1 <= len(goal.trajectories) <= 2:
-        raise ValueError('Expected one body trajectory or one/two arm trajectories')
+    if not 1 <= len(goal.trajectories) <= 2 or (head_motion and len(goal.trajectories)!=1):
+        raise ValueError('Expected one body/head trajectory or one/two arm trajectories')
     if len(goal.controller_ratios)!=2*len(goal.trajectories):raise ValueError('Missing expected controller ratios')
     finite(goal.controller_ratios)
     objects, plans = [], {}
@@ -54,8 +55,10 @@ def validate_goal(goal, snapshot, hardware, now_ns, check_freshness=True, planni
         plans[obj] = points
     # After enabling SDK playback, only the driver's previously measured low-speed
     # limits may be reused. Limits are never supplied by the action client.
-    arm_limits = (hardware.read_cartesian_rate_limits([a for a in objects if a != 3])
+    arm_limits = (hardware.read_cartesian_rate_limits([a for a in objects if a in (0,1)])
                   if planning_limits is None else planning_limits)
+    if 2 in plans and 2 not in arm_limits:
+        arm_limits[2]=hardware.read_head_rate_limits()
     if 3 in plans and len(plans[3])>1 and 3 not in arm_limits:
         arm_limits[3]=hardware.read_body_rate_limits()
     for index,obj in enumerate(objects):
@@ -67,24 +70,20 @@ def validate_goal(goal, snapshot, hardware, now_ns, check_freshness=True, planni
             raise ValueError('Controller ratios changed since planning; replan required')
     max_duration = 0.
     for obj,points in plans.items():
-        origin = start[obj*7:obj*7+7] if obj != 3 else start[14:]
-        limits = hardware.limits[obj] if obj != 3 else hardware.body_limits
+        origin = start[20:22] if obj==2 else start[14:20] if obj==3 else start[obj*7:obj*7+7]
+        limits = hardware.head_limits if obj==2 else hardware.body_limits if obj==3 else hardware.limits[obj]
         for q in points:
             for i,(value,initial,(lo,hi)) in enumerate(zip(q,origin,limits)):
-                if obj==3:
-                    # ROS radians -> SDK degrees may overshoot a limit by an
-                    # ULP. Tolerate only conversion noise, then clamp the actual
-                    # command back into exact controller limits before SDK use.
-                    epsilon=1e-10  # degrees, far below encoder resolution
-                    if not lo-epsilon<=value<=hi+epsilon or abs(value-initial)>hardware.c.max_delta+epsilon:
-                        raise ValueError(f'object{obj} joint{i+1} exceeds limits/max_delta')
-                    q[i]=min(hi,max(lo,value))
-                    continue
-                if not lo <= value <= hi or abs(value-initial)>hardware.c.max_delta:
+                # ROS radians -> SDK degrees can overshoot an exact limit by
+                # one ULP. Accept conversion noise only, then clamp the SDK
+                # command to the controller's measured limits.
+                epsilon=1e-10  # degrees, far below encoder resolution
+                if not lo-epsilon<=value<=hi+epsilon:
                     raise ValueError(f'object{obj} joint{i+1} exceeds limits/max_delta')
+                q[i]=min(hi,max(lo,value))
         if obj == 3 and len(points)==1: continue
         caps = arm_limits[obj]
-        first_actual = actual[14:] if obj==3 else actual[obj*7:obj*7+7]
+        first_actual = actual[20:22] if obj==2 else actual[14:20] if obj==3 else actual[obj*7:obj*7+7]
         entry = [(x-y)*50 for x,y in zip(points[0],first_actual)]
         previous = entry
         for index in range(len(points)):
@@ -104,7 +103,7 @@ def validate_goal(goal, snapshot, hardware, now_ns, check_freshness=True, planni
     if not len(goal.line_objects)==len(goal.line_starts)==len(goal.line_goals):
         raise ValueError('Cartesian line metadata lengths differ')
     for obj,a,b in zip(goal.line_objects,goal.line_starts,goal.line_goals):
-        if obj not in plans or obj in lines or (obj==3 and len(plans[obj])<5):
+        if obj not in plans or obj in lines or obj==2 or (obj==3 and len(plans[obj])<5):
             raise ValueError('Invalid Cartesian line object')
         scale=.001 if obj==3 else hardware.c.sdk_length_to_m
         begin,end = pose_matrix(a,scale),pose_matrix(b,scale)

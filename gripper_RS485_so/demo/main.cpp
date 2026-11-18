@@ -75,16 +75,17 @@ void consume(const std::string& line, gripper_demo::Controller& controller, std:
 } // namespace
 int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--help") {
-        std::cout << "Usage: gripper_demo [--use-existing-zero] [--current-threshold-a A] [port [motor_id [baud]]]\n"
+        std::cout << "Usage: gripper_demo [--use-existing-zero] [--current-threshold-a A] [--feedback-ms MS] [port [motor_id [baud]]]\n"
                      "Defaults: /dev/ttyUSB0 1 115200; current threshold 0.5 A\n"
                      "Input: CLEAR id | ZERO id | ENABLE id | MOVE id position_m speed_mps | DISABLE id | QUIT\n"
-                     "Output: feedback (10 Hz) and ack as JSON lines. ZERO actively opens the gripper.\n";
+                     "Output: feedback (1 Hz by default) and ack as JSON lines. Internal sampling remains about 10 Hz. ZERO actively opens the gripper.\n";
         return 0;
     }
     std::signal(SIGINT, signal_handler); std::signal(SIGTERM, signal_handler);
     try {
         bool use_existing_zero = false;
         double current_threshold_a = 0.5;
+        int feedback_ms = 1000;
         std::vector<std::string> args;
         for (int i = 1; i < argc; ++i) {
             const std::string arg(argv[i]);
@@ -95,6 +96,13 @@ int main(int argc, char** argv) {
                 current_threshold_a = std::stod(value, &used);
                 if (used != value.size() || !std::isfinite(current_threshold_a) || current_threshold_a <= 0)
                     throw std::invalid_argument("current threshold must be finite and positive");
+            }
+            else if (arg == "--feedback-ms") {
+                if (++i >= argc) throw std::invalid_argument("missing feedback interval");
+                std::size_t used = 0; const std::string value(argv[i]);
+                feedback_ms = std::stoi(value, &used);
+                if (used != value.size() || feedback_ms < 100 || feedback_ms > 60000)
+                    throw std::invalid_argument("feedback interval must be 100..60000 ms");
             }
             else args.push_back(arg);
         }
@@ -120,9 +128,26 @@ int main(int argc, char** argv) {
         controller.init(use_existing_zero);
         std::string pending;
         auto next = std::chrono::steady_clock::now();
+        auto next_feedback = next;
+        bool previous_current_limit = false;
+        bool previous_valid = true;
+        std::uint32_t previous_error = 0;
         while (!stopped) {
             const auto now = std::chrono::steady_clock::now();
-            if (now >= next) { feedback(output, controller.sample()); next = now + std::chrono::milliseconds(100); }
+            if (now >= next) {
+                const auto state = controller.sample();
+                if (now >= next_feedback ||
+                    (state.current_limit_reached && !previous_current_limit) ||
+                    (!state.valid && previous_valid) ||
+                    (state.error_code != 0 && state.error_code != previous_error)) {
+                    feedback(output, state);
+                    next_feedback = now + std::chrono::milliseconds(feedback_ms);
+                }
+                previous_current_limit = state.current_limit_reached;
+                previous_valid = state.valid;
+                previous_error = state.error_code;
+                next = now + std::chrono::milliseconds(100);
+            }
             pollfd pfd{STDIN_FILENO, POLLIN, 0};
             const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(next - std::chrono::steady_clock::now()).count();
             const int rc = poll(&pfd, 1, static_cast<int>(std::max<std::int64_t>(0, ms)));

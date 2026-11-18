@@ -47,7 +47,8 @@ def test_body_cartesian_line_from_zero_to_700_mm(model):
     target=model.forward([0,26.9165676,-53.8331352,26.9165676,0,0])
     snapshot={'body_matrix':start,'body':[0.]*6,'body_limits':model.joint_limits_deg,
               'config':{'body_z_min_m':.55,'body_z_max_m':.76,'body_frame':'body_base',
-                        'max_delta':120.,'cartesian_speed':.08,'cartesian_angular_speed':.2,
+                        'max_delta':120.,'cartesian_speed':.001,'cartesian_angular_speed':.001,
+                        'body_cartesian_speed':.08,'body_cartesian_angular_speed':.2,
                         'timeout':60.}}
     rates={'speed':[9.]*6,'acceleration':[9.]*6}
     plans,info=plan_body_line(snapshot,target,rates,lambda:None)
@@ -117,7 +118,7 @@ def test_limits_intersect_controller_and_user_caps():
     limits[5] = [-180, 180]
     model = LunaBodyKinematics(limits)
     assert np.array(model.joint_limits_deg) == pytest.approx(
-        np.array([[-8, 9], [-40, 50], [-140, 60], [-110, 55], [-30, 30], [-170, 170]]))
+        np.array([[-8, 9], [-40, 80], [-140, 60], [-110, 55], [-30, 30], [-170, 170]]))
 
 
 def test_controller_limits_are_read_without_commands():
@@ -128,7 +129,7 @@ def test_controller_limits_are_read_without_commands():
         return 0, LIMITS[joint][name.endswith("LimitPos")]
     robot = SimpleNamespace(_connected=True, get_ctrl_obj_dof=lambda obj: 6, param_get_float=read)
     model = LunaBodyKinematics.from_robot(robot)
-    assert model.joint_limits_deg[1] == [-50, 50]
+    assert model.joint_limits_deg[1] == [-50, 80]
     assert len(calls) == 12 and calls[0] == "R.B.L0.BASIC.LimitNeg"
     robot.param_get_float = lambda name: (-1, 0)
     with pytest.raises(RuntimeError, match="Cannot read"):
@@ -208,25 +209,25 @@ def test_joint_two_cap_and_optional_change_bound_are_hard(model):
 
 @pytest.mark.parametrize('delta', [1, 10, 60])
 def test_change_bound_touching_limit_is_a_legal_fixed_angle(model, delta):
-    reference = [0, 50 + delta, -40, 0, 0, 0]
-    target_q = [0, 50, -40, 0, 0, 0]
+    reference = [0, 80 + delta, -40, 0, 0, 0]
+    target_q = [0, 80, -40, 0, 0, 0]
     result = model.inverse(model.forward(target_q), reference, max_joint_delta_deg=delta)
     assert result.success
     assert result.joints_deg == pytest.approx(target_q, abs=1e-8)
 
 
 def test_fixed_joint_is_removed_from_optimization(model):
-    reference = [0, 51, -40, 0, 0, 0]
-    target_q = [0.2, 50, -39.5, -0.5, 0.2, 0.5]
+    reference = [0, 81, -40, 0, 0, 0]
+    target_q = [0.2, 80, -39.5, -0.5, 0.2, 0.5]
     result = model.inverse(model.forward(target_q), reference, max_joint_delta_deg=1)
     assert result.success, result
-    assert result.joints_deg[1] == pytest.approx(50, abs=1e-10)
+    assert result.joints_deg[1] == pytest.approx(80, abs=1e-10)
     assert np.max(np.abs(np.array(result.joints_deg) - reference)) <= 1
 
 
 def test_disjoint_change_bound_still_rejected(model):
     with pytest.raises(ValueError, match='no intersection'):
-        model.inverse(model.forward([0]*6), [0, 60, 0, 0, 0, 0], max_joint_delta_deg=1)
+        model.inverse(model.forward([0]*6), [0, 90, 0, 0, 0, 0], max_joint_delta_deg=1)
 
 
 def test_all_joints_fixed_reports_unreachable_pose_without_optimizer(model):

@@ -11,7 +11,7 @@ def gripper_config(side, motor_id='', calibration_path=''):
         raise ValueError("side must be 'left' or 'right'")
     share = get_package_share_directory('gripper')
     selected_id = 1 if side == 'left' else 2
-    selected_table = 'calibration.csv' if side == 'left' else 'right_calibration.csv'
+    selected_table = 'calibration.csv'
     return (int(motor_id) if motor_id else selected_id,
             calibration_path or f'{share}/config/{selected_table}')
 
@@ -28,6 +28,7 @@ def make_node(context):
         'calibration_path': calibration,
         'baud_rate': ParameterValue(LaunchConfiguration('baud_rate'), value_type=int),
         'use_existing_zero': ParameterValue(LaunchConfiguration('use_existing_zero'), value_type=bool),
+        'auto_home': ParameterValue(LaunchConfiguration('auto_home'), value_type=bool),
         'current_threshold_a': ParameterValue(LaunchConfiguration('current_threshold_a'), value_type=float),
         'feedback_rate_hz': ParameterValue(LaunchConfiguration('feedback_rate_hz'), value_type=float),
         'speed_mps': ParameterValue(LaunchConfiguration('speed_mps'), value_type=float),
@@ -40,7 +41,8 @@ def make_node(context):
 def generate_launch_description():
     defaults = {
         'side': 'left', 'namespace': 'gripper', 'port': '/dev/gripper_rs485',
-        'baud_rate': '115200', 'use_existing_zero': 'true',
+        'baud_rate': '115200', 'use_existing_zero': 'false',
+        'auto_home': 'false',
         'current_threshold_a': '0.5', 'feedback_rate_hz': '10.0',
         'speed_mps': '0.002',
         # Optional overrides kept for existing launch scripts.

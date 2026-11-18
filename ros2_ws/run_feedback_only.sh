@@ -24,8 +24,8 @@ fi
 source "$ros_setup"
 cd "$workspace_dir"
 if [[ "${1:-}" == "--build" ]]; then
-  colcon --log-base log_real build --base-paths src --packages-up-to gento_driver \
-    --build-base build_real --install-base install_real --symlink-install
+  colcon --log-base log build --base-paths src --packages-up-to gento_driver \
+    --build-base build --install-base install --symlink-install
   shift
 fi
 sdk_root="$project_dir/tianji-robot-SDK"
@@ -39,10 +39,10 @@ if [[ ! -f "$sdk_root/PYTHON_SDK/libGentoSDKPY.so" ]]; then
   echo "Provide the hardware-compatible vendor library before starting." >&2
   exit 1
 fi
-if [[ ! -f install_real/gento_driver/share/gento_driver/package.xml ]]; then
+if [[ ! -f install/gento_driver/share/gento_driver/package.xml ]]; then
   echo "Build first: $0 --build ip:=CONTROLLER_IPV4" >&2
   exit 1
 fi
-source install_real/setup.bash
+source install/setup.bash
 exec ros2 launch gento_driver dual_arm.launch.py "sdk_root:=$sdk_root" "$@" \
   "enable_control:=true" "start_feedback:=true" "start_control:=false"

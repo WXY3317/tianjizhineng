@@ -9,11 +9,17 @@ class Fake final : public Hardware {
 public:
     HardwareState state{0.085, 0, 0, 0, false};
     bool connected{true}, zero_ok{true}, throw_move{false}, throw_hold{false}, follow_moves{true};
+    bool invalid_until_zero{false};
     int holds{0}; double held_angle{0};
     int moves{0}, shutdowns{0};
+    double minimum_position_m{0};
+    double min_position_m() const override { return minimum_position_m; }
     void init() override {}
-    bool read(HardwareState& out) override { out = state; return connected; }
-    bool zero() override { return zero_ok; }
+    bool read(HardwareState& out) override {
+        if (invalid_until_zero) throw std::runtime_error("feedback outside calibrated stroke");
+        out = state; return connected;
+    }
+    bool zero() override { if (zero_ok) invalid_until_zero = false; return zero_ok; }
     void enable_position() override { state.enabled = true; }
     void disable() override { state.enabled = false; }
     void clear() override { state.error_code = 0; }
@@ -78,8 +84,22 @@ int main() {
             try { c.init(true); } catch (const std::runtime_error&) { rejected = true; }
             check(rejected, "existing zero accepted without communication");
         }
+        {
+            auto hardware = std::make_unique<Fake>();
+            hardware->invalid_until_zero = true;
+            Controller recovery(std::move(hardware)); recovery.init();
+            check(recovery.command({Action::Zero}).accepted,
+                  "ZERO cannot recover when old calibration rejects raw feedback");
+            check(recovery.sample().homed, "recovered zero not marked valid");
+        }
         auto fake = std::make_unique<Fake>(); auto* hw = fake.get();
         Controller c(std::move(fake)); c.init();
+        check(c.command({Action::SetCurrentThreshold, 0, 0.01f, 42, 0.8}).accepted,
+              "topic threshold update rejected");
+        check(c.sample().command_id == 42 && c.sample().current_threshold_a == 0.8,
+              "threshold or command ID not reflected in feedback");
+        check(!c.command({Action::SetCurrentThreshold, 0, 0.01f, 43, -1}).accepted &&
+              c.sample().command_id == 42, "invalid threshold changed state");
         check(!c.command({Action::Move, 0.06, 0.01f}).accepted, "unhomed movement accepted");
         check(hw->moves == 0, "unhomed command reached hardware");
         check(c.command({Action::Zero}).accepted, "zero failed");

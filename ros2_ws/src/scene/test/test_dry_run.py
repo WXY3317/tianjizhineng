@@ -11,6 +11,20 @@ import pytest
 
 def import_scene_node(monkeypatch):
     # These tests call callbacks directly; no ROS graph or MQTT broker is needed.
+    if importlib.util.find_spec('ament_index_python') is None:
+        ament = ModuleType('ament_index_python')
+        packages = ModuleType('ament_index_python.packages')
+        packages.get_package_share_directory = lambda _: '/tmp/scene'
+        ament.packages = packages
+        monkeypatch.setitem(sys.modules, 'ament_index_python', ament)
+        monkeypatch.setitem(sys.modules, 'ament_index_python.packages', packages)
+    if importlib.util.find_spec('builtin_interfaces') is None:
+        builtin = ModuleType('builtin_interfaces')
+        messages = ModuleType('builtin_interfaces.msg')
+        messages.Time = type('Time', (), {'__init__': lambda self: setattr(self, 'sec', 0)})
+        builtin.msg = messages
+        monkeypatch.setitem(sys.modules, 'builtin_interfaces', builtin)
+        monkeypatch.setitem(sys.modules, 'builtin_interfaces.msg', messages)
     if 'paho.mqtt.client' not in sys.modules:
         paho = ModuleType('paho')
         mqtt = ModuleType('paho.mqtt')
@@ -41,6 +55,14 @@ def import_scene_node(monkeypatch):
                         self.name = []
                         self.position = []
                 setattr(messages, message, JointState)
+            elif message == 'PoseStamped':
+                class PoseStamped:
+                    def __init__(self):
+                        self.header = SimpleNamespace(stamp=None, frame_id='')
+                        self.pose = SimpleNamespace(
+                            position=SimpleNamespace(x=0., y=0., z=0.),
+                            orientation=SimpleNamespace(x=0., y=0., z=0., w=0.))
+                setattr(messages, message, PoseStamped)
             else:
                 setattr(messages, message, type(message, (), {}))
             parent.msg = messages
@@ -71,6 +93,7 @@ def test_dry_run_uses_body_base_object_targets_without_body_feedback(monkeypatch
     reports = []
     logs = []
     payload = json.dumps({
+        'label': '无遮挡正面',
         'position1': {'x': .1, 'y': .2, 'z': .3},
         'position2': {'x': .2, 'y': .3, 'z': .4},
         'orientation': {'x': 0, 'y': math.sqrt(.5), 'z': 0, 'w': math.sqrt(.5)},
@@ -126,7 +149,8 @@ def test_scene_first_target_uses_ptp_second_uses_cartesian(monkeypatch):
         allow_tool_z_rotation=False, restore_mode=False,
         target_publishers={'left': Publisher('cartesian'), 'right': Publisher('cartesian')},
         ptp_publishers={'left': Publisher('ptp'), 'right': Publisher('ptp')},
-        get_clock=lambda: SimpleNamespace(now=lambda: SimpleNamespace(to_msg=lambda: 'fresh')),
+        get_clock=lambda: SimpleNamespace(now=lambda: SimpleNamespace(
+                to_msg=lambda: __import__('builtin_interfaces.msg', fromlist=['Time']).Time())),
         report=lambda state, **details: reports.append((state, details)),
     )
     VisionTargets.send_next(scene)
@@ -146,6 +170,7 @@ def test_scene_rejects_two_positions_on_different_arms(monkeypatch):
     VisionTargets = import_scene_node(monkeypatch)
     reports = []
     payload = json.dumps({
+        'label': '无遮挡背面',
         'position1': {'x': .5, 'y': .2, 'z': .6},
         'position2': {'x': .5, 'y': -.2, 'z': .6},
         'orientation': {'x': 0, 'y': 0, 'z': 0, 'w': 1},
@@ -177,6 +202,7 @@ def test_workpiece_pose_tracks_flange_only_while_attached(monkeypatch):
     scene = SimpleNamespace(
         arm_poses={}, grasp_target=('left', 90.), attached_workpiece=None,
         position1_goal=('left', (.4, .2, .5), (0., 0., 0., 1.)),
+        right_handover_joints=(.1,) * 7,
         left_post_grasp_joints=(2.845654625621635, 0.4907167724907257,
                                 -2.826141844584338, -1.5708835932574963,
                                 -2.0122948143793824, 0.49986229777117597,
@@ -249,13 +275,14 @@ def test_workpiece_pose_tracks_flange_only_while_attached(monkeypatch):
         'joints_rad': list(scene.left_post_grasp_joints)})
     VisionTargets.on_control_status(scene, SimpleNamespace(data=json.dumps({
         'state': 'completed', 'task_id': 'transfer-task'})))
-    assert scene.state == 'idle' and reports[-1][0] == 'awaiting_handover'
+    assert scene.state == 'next' and reports[-1][0] == 'handover_started'
+    assert scene.post_grasp_targets[0][0] == 'right_pre'
     assert scene.attached_workpiece == ('left', 90.)
 
     VisionTargets.detach_workpiece(scene, None, response)
-    assert response.success and scene.attached_workpiece is None
+    assert not response.success and scene.attached_workpiece == ('left', 90.)
     VisionTargets.on_arm_pose(scene, 'left', flange)
-    assert len(published) == 2
+    assert len(published) == 3
 
 
 def test_post_grasp_body_rejection_stops_transfer(monkeypatch):
@@ -295,9 +322,12 @@ def test_arm_position_moves_left_then_right_and_rejects_other_values(monkeypatch
         dry_run=False, state='idle', queue=None, queue_lock=threading.Lock(),
         restore_mode=False, control_state='completed', preset_targets=[], preset_name=None,
         joint_publishers={side: Publisher(side) for side in ('left', 'right')},
-        arm_positions={('init', side): (0.,) * 7 for side in ('left', 'right')}
-        | {('pre', 'left'): (1.,) * 7, ('pre', 'right'): (2.,) * 7},
-        get_clock=lambda: SimpleNamespace(now=lambda: SimpleNamespace(to_msg=lambda: 'fresh')),
+        arm_positions={0: 'init', 1: 'pre', 9: 'home'}
+        | {('init', side): (0.,) * 7 for side in ('left', 'right')}
+        | {('pre', 'left'): (1.,) * 7, ('pre', 'right'): (2.,) * 7}
+        | {('home', 'left'): (3.,) * 7, ('home', 'right'): (4.,) * 7},
+        get_clock=lambda: SimpleNamespace(now=lambda: SimpleNamespace(
+                to_msg=lambda: __import__('builtin_interfaces.msg', fromlist=['Time']).Time())),
         report=lambda state, **details: reports.append((state, json.loads(json.dumps(details)))),
         send_preset_next=lambda: VisionTargets.send_preset_next(scene),
         last_task_id='previous', joint_restore_steps=None,
@@ -308,7 +338,7 @@ def test_arm_position_moves_left_then_right_and_rejects_other_values(monkeypatch
     VisionTargets.on_arm_position(scene, SimpleNamespace(data=1))
     assert len(sent) == 1 and sent[0][0] == 'left'
     assert list(sent[0][1].position) == [1.] * 7
-    assert sent[0][1].header.stamp == 'fresh'
+    assert sent[0][1].header.stamp.sec == 0
     VisionTargets.on_arm_position(scene, SimpleNamespace(data=0))
     assert len(sent) == 1 and reports[-1][0] == 'rejected'
 
@@ -322,6 +352,10 @@ def test_arm_position_moves_left_then_right_and_rejects_other_values(monkeypatch
         'state': 'completed', 'task_id': 'right-task'})))
     assert scene.state == 'idle' and scene.preset_targets == []
     assert reports[-1] == ('arm_position_completed', {'position': 'pre'})
+
+    VisionTargets.on_arm_position(scene, SimpleNamespace(data=9))
+    assert len(sent) == 3 and sent[-1][0] == 'left'
+    assert list(sent[-1][1].position) == [3.] * 7
 
 
 def test_arm_position_stops_after_rejected_first_arm(monkeypatch):
@@ -443,7 +477,28 @@ def test_completed_position2_exposes_grasp_target(monkeypatch, tmp_path):
     assert scene.state == 'idle'
 
 
-def test_handover_waits_for_manual_service_and_uses_right_feedback(monkeypatch):
+def test_back_right_position2_commands_right_gripper(monkeypatch, tmp_path):
+    VisionTargets = import_scene_node(monkeypatch)
+    sent = []
+    scene = SimpleNamespace(
+        state='waiting', control_state='running', last_task_id='old',
+        waiting_task_id='second', target_index=1, interval=1.,
+        targets=[('right', (.5, -.2, .4), (0., 0., 0., 1.), (.5, -.2, .6))],
+        yaw_candidates=[(15., (0., 0., 0., 1.))], yaw_index=0,
+        restore_mode=False, joint_restore_steps=None,
+        tool_z_angle_file=tmp_path / 'tool_z.json', vision_label='无遮挡背面',
+        save_last_rotation=lambda record: None,
+        save_record=lambda path, record: None,
+        send_gripper=lambda side, position, step: sent.append((side, position, step)),
+        report=lambda state, **details: None,
+    )
+    VisionTargets.on_control_status(scene, SimpleNamespace(data=json.dumps({
+        'state': 'completed', 'task_id': 'second'})))
+    assert scene.grasp_target == ('right', 15.)
+    assert sent == [('right', .027, 'right_direct_grasp')]
+
+
+def test_handover_uses_right_feedback(monkeypatch):
     VisionTargets = import_scene_node(monkeypatch)
     sent, reports = [], []
     pose = SimpleNamespace(
@@ -455,24 +510,104 @@ def test_handover_waits_for_manual_service_and_uses_right_feedback(monkeypatch):
         pose=SimpleNamespace(position=SimpleNamespace(x=1., y=2., z=2.8),
                              orientation=SimpleNamespace(x=0., y=0., z=0., w=1.)))
     scene = SimpleNamespace(
-        dry_run=False, handover_ready=True, state='idle', control_state='completed',
         attached_workpiece=('left', 0.), tool_tip_offset_z_m=.2,
-        right_handover_joints=(.1,) * 7, post_grasp_targets=[],
         current_arm_pose=lambda side: pose if side == 'left' else right,
-        send_post_grasp_next=lambda: sent.append('right_pre') or True,
         report=lambda state, **details: reports.append((state, details)),
+        publish_workpiece_pose=sent.append,
     )
-    response = SimpleNamespace(success=None, message='')
-    VisionTargets.start_handover(scene, None, response)
-    assert response.success and sent == ['right_pre']
-    assert scene.post_grasp_targets[0][0] == 'right_pre'
-    assert not scene.handover_ready
-
-    scene.publish_workpiece_pose = sent.append
     VisionTargets.capture_right_attachment(scene)
     assert scene.attached_workpiece[0] == 'right'
     assert scene.workpiece_relative[0] == pytest.approx((0., 0., .4))
     assert reports[-1][0] == 'workpiece_transferred'
+
+
+def test_right_retreat_then_pre_before_handover_completes(monkeypatch):
+    VisionTargets = import_scene_node(monkeypatch)
+    import scene.node as scene_module
+    monkeypatch.setattr(scene_module.time, 'monotonic', lambda: 100.)
+    reports = []
+    right_pre = (.25, -.45, .3, -1., 0., 0., 0.)
+    scene = SimpleNamespace(
+        gripper_pending=('right', .027, 'right_grasp', 90.), state='gripper_waiting',
+        post_grasp_targets=[], right_handover_joints=(.1,) * 7,
+        arm_positions={('pre', 'right'): right_pre}, attached_workpiece=('left', 0.),
+        capture_right_attachment=lambda: setattr(scene, 'attached_workpiece', ('right', 0.)),
+        report=lambda state, **details: reports.append((state, details)),
+    )
+    feedback = SimpleNamespace(
+        valid=True, error_code=0, enabled=True, at_target=True,
+        position_m=.027, target_position_m=.027, target_active=True,
+        current_limit_reached=False, holding_position=False,
+    )
+    VisionTargets.on_gripper_state(scene, 'right', feedback)
+    assert [step[0] for step in scene.post_grasp_targets] == [
+        'left_release', 'right_retreat', 'right_home_pre']
+    assert scene.post_grasp_targets[-1][2] == right_pre
+
+    scene.post_grasp_targets = scene.post_grasp_targets[1:]
+    scene.state = 'waiting'
+    scene.waiting_task_id = 'retreat-task'
+    scene.last_task_id = None
+    scene.control_state = 'running'
+    VisionTargets.on_control_status(scene, SimpleNamespace(data=json.dumps({
+        'state': 'completed', 'task_id': 'retreat-task'})))
+    assert scene.state == 'next' and scene.post_grasp_targets[0][0] == 'right_home_pre'
+    assert not any(state == 'post_grasp_completed' for state, _ in reports)
+
+    scene.state = 'waiting'
+    scene.waiting_task_id = 'pre-task'
+    VisionTargets.on_control_status(scene, SimpleNamespace(data=json.dumps({
+        'state': 'completed', 'task_id': 'pre-task'})))
+    assert scene.state == 'idle' and scene.post_grasp_targets == []
+    assert reports[-1] == ('post_grasp_completed', {'arm': 'right'})
+
+
+def test_back_right_grasp_attaches_and_uses_right_post_grasp_route(monkeypatch):
+    VisionTargets = import_scene_node(monkeypatch)
+    import scene.node as scene_module
+    monkeypatch.setattr(scene_module.time, 'monotonic', lambda: 100.)
+    reports = []
+    scene = SimpleNamespace(
+        gripper_pending=('right', .027, 'right_direct_grasp', 90.),
+        state='gripper_waiting', attached_workpiece=None,
+        report=lambda state, **details: reports.append((state, details)),
+    )
+    feedback = SimpleNamespace(
+        valid=True, error_code=0, enabled=True, at_target=True,
+        position_m=.027, target_position_m=.027, target_active=True,
+        current_limit_reached=False, holding_position=False,
+    )
+    VisionTargets.on_gripper_state(scene, 'right', feedback)
+    assert scene.state == 'idle' and reports[-1][0] == 'awaiting_attach'
+
+    destination = (.22, -.4, -.2, -1.52, -1.19, -.56, -1.1)
+    scene.grasp_target = ('right', 30.)
+    scene.position1_goal = ('right', (.1, -.2, .3), (0., 0., 0., 1.))
+    scene.vision_label = '无遮挡背面'
+    scene.queue = None
+    scene.control_state = 'completed'
+    scene.target_publishers = {'right': SimpleNamespace(get_subscription_count=lambda: 1)}
+    scene.joint_publishers = {'right': SimpleNamespace(get_subscription_count=lambda: 1)}
+    scene.current_arm_pose = lambda side: SimpleNamespace()
+    scene.publish_workpiece_pose = lambda pose: None
+    scene.arm_positions = {('pre', 'right'): (1.,) * 7}
+    scene.back_post_grasp_joints = {'right': destination}
+    scene.send_post_grasp_next = lambda: True
+    response = SimpleNamespace(success=None, message='')
+    VisionTargets.attach_workpiece(scene, None, response)
+    assert response.success and scene.attached_workpiece == ('right', 30.)
+    assert [step[0] for step in scene.post_grasp_targets] == [
+        'right_retreat', 'right_grasp_pre', 'right_back_destination']
+    assert scene.post_grasp_targets[-1][2] == destination
+
+    scene.state = 'waiting'
+    scene.post_grasp_targets = [scene.post_grasp_targets[-1]]
+    scene.waiting_task_id = 'back-destination-task'
+    scene.last_task_id = None
+    VisionTargets.on_control_status(scene, SimpleNamespace(data=json.dumps({
+        'state': 'completed', 'task_id': 'back-destination-task'})))
+    assert scene.state == 'idle' and scene.post_grasp_targets == []
+    assert reports[-1] == ('post_grasp_completed', {'arm': 'right'})
 
 
 def test_right_approach_waits_interval_after_right_pre_completed(monkeypatch):
@@ -715,3 +850,83 @@ def test_joint5_restore_step_only_changes_fifth_joint(monkeypatch):
     assert published[0].name == [f'left_joint_{i}' for i in range(1, 8)]
     assert published[0].position == list(start[:4]) + [-.8] + list(start[5:])
     assert scene.state == 'waiting' and reports[-1][0] == 'restore_joint5_sent'
+
+
+def test_arm_position_body_pose_publishes_and_completes(monkeypatch):
+    VisionTargets = import_scene_node(monkeypatch)
+    from builtin_interfaces.msg import Time
+    sent, reports = [], []
+
+    class Publisher:
+        def get_subscription_count(self):
+            return 1
+
+        def publish(self, message):
+            sent.append(message)
+
+    scene = SimpleNamespace(
+        dry_run=False, state='idle', queue=None, queue_lock=threading.Lock(),
+        restore_mode=False, control_state='completed', preset_targets=[], preset_name=None,
+        body_pose_publisher=Publisher(), joint_publishers={},
+        arm_positions={2: 'body_photo', ('body_photo', 'body_pose'):
+                       ((-.05, 0., .6), (0., .38941332986322064, 0., .9210631132147452))},
+        get_clock=lambda: SimpleNamespace(now=lambda: SimpleNamespace(to_msg=Time)),
+        report=lambda state, **details: reports.append((state, details)),
+        last_task_id='previous', waiting_task_id=None,
+    )
+    VisionTargets.on_arm_position(scene, SimpleNamespace(data=2))
+    assert len(sent) == 1 and sent[0].header.frame_id == 'body_base'
+    assert sent[0].pose.position.z == .6
+    assert scene.state == 'waiting'
+    VisionTargets.on_control_status(scene, SimpleNamespace(data=json.dumps({
+        'state': 'completed', 'task_id': 'body-task'})))
+    assert scene.state == 'idle' and reports[-1] == (
+        'arm_position_completed', {'position': 'body_photo'})
+
+
+def test_arm_position_body_pose_ptp_uses_joint_space_topic(monkeypatch):
+    VisionTargets = import_scene_node(monkeypatch)
+    from builtin_interfaces.msg import Time
+    sent, reports = [], []
+    publisher = SimpleNamespace(get_subscription_count=lambda: 1, publish=sent.append)
+    scene = SimpleNamespace(
+        dry_run=False, state='idle', queue=None, queue_lock=threading.Lock(),
+        restore_mode=False, control_state='completed', preset_targets=[], preset_name=None,
+        body_pose_ptp_publisher=publisher, joint_publishers={},
+        arm_positions={2: 'body_photo', ('body_photo', 'body_pose_ptp'):
+                       ((-.05, 0., .6), (0., .38941332986322064, 0., .9210631132147452))},
+        get_clock=lambda: SimpleNamespace(now=lambda: SimpleNamespace(to_msg=Time)),
+        report=lambda state, **details: reports.append((state, details)),
+        last_task_id='previous', waiting_task_id=None,
+    )
+    VisionTargets.on_arm_position(scene, SimpleNamespace(data=2))
+    assert len(sent) == 1 and sent[0].header.frame_id == 'body_base'
+    assert scene.state == 'waiting'
+    VisionTargets.on_control_status(scene, SimpleNamespace(data=json.dumps({
+        'state': 'completed', 'task_id': 'body-ptp-task'})))
+    assert reports[-1] == ('arm_position_completed', {'position': 'body_photo'})
+
+
+def test_arm_position_body_joints_publishes_and_completes(monkeypatch):
+    VisionTargets = import_scene_node(monkeypatch)
+    from builtin_interfaces.msg import Time
+    sent, reports = [], []
+    publisher = SimpleNamespace(get_subscription_count=lambda: 1, publish=sent.append)
+    scene = SimpleNamespace(
+        dry_run=False, state='idle', queue=None, queue_lock=threading.Lock(),
+        restore_mode=False, control_state='completed', preset_targets=[], preset_name=None,
+        body_joint_publisher=publisher, joint_publishers={},
+        arm_positions={3: 'body_home', ('body_home', 'body_joints'): (0.,) * 6},
+        get_clock=lambda: SimpleNamespace(now=lambda: SimpleNamespace(to_msg=Time)),
+        report=lambda state, **details: reports.append((state, details)),
+        last_task_id='previous', waiting_task_id=None,
+    )
+    VisionTargets.on_arm_position(scene, SimpleNamespace(data=3))
+    assert len(sent) == 1
+    assert sent[0].name == [f'body_joint_{index}' for index in range(1, 7)]
+    assert list(sent[0].position) == [0.] * 6
+    assert scene.state == 'waiting'
+    VisionTargets.on_control_status(scene, SimpleNamespace(data=json.dumps({
+        'state': 'completed', 'task_id': 'body-task'})))
+    assert scene.state == 'idle'
+    assert reports[-1] == ('arm_position_completed', {'position': 'body_home'})

@@ -53,9 +53,11 @@ class Bridge(Node):
         values=[self.c.speed,self.c.acc,self.c.max_delta,self.c.timeout,self.c.tolerance,
                 self.c.publish_rate,self.c.command_max_age,self.c.sdk_length_to_m,self.c.cartesian_path_tolerance,
                 self.c.cartesian_speed,self.c.cartesian_angular_speed,self.c.cartesian_joint_speed,self.c.cartesian_joint_acc,
+                self.c.body_speed,self.c.body_acc,self.c.body_cartesian_speed,self.c.body_cartesian_angular_speed,
+                self.c.body_cartesian_joint_speed,self.c.body_cartesian_joint_acc,
                 self.c.body_position_tolerance_mm,self.c.body_orientation_tolerance_deg]
         finite(values)
-        if min(values)<=0 or max(self.c.speed,self.c.acc)>10 or self.c.publish_rate>100:
+        if min(values)<=0 or max(self.c.speed,self.c.acc,self.c.body_speed,self.c.body_acc)>10 or self.c.publish_rate>100:
             raise ValueError('Invalid hardware limits/configuration')
         finite([self.c.body_z_min_m,self.c.body_z_max_m])
         if self.c.body_z_min_m>=self.c.body_z_max_m:
@@ -140,6 +142,7 @@ class Bridge(Node):
                 'head':head,'matrices':matrices,'objects':objects,'tracking':tracking,
                 'controller':self.engine.robot.get_sg_dict(), 'config':vars(self.c),
                 'limits':getattr(self.engine,'limits',None),'body_limits':getattr(self.engine,'body_limits',None),
+                'head_limits':getattr(self.engine,'head_limits',None),
                 'active_task':self.active['goal'].task_id if self.active else None,
                 'ready':not self.failed and not self.engine.faulted,
                 'heartbeat_task_id':self.heartbeat[1] if self.heartbeat and self.heartbeat[0]==self.session and time.monotonic()-self.heartbeat[2]<1. else None}
@@ -158,6 +161,9 @@ class Bridge(Node):
                     if (args.get('include_body_rates',False) and self.c.enable_control
                             and not self.active and not self.failed and not self.engine.faulted):
                         result['body_rate_limits']=self.engine.read_body_rate_limits()
+                    if (args.get('include_head_rates',False) and self.c.enable_control
+                            and not self.active and not self.failed and not self.engine.faulted):
+                        result['head_rate_limits']=self.engine.read_head_rate_limits()
                     if (args.get('include_arm_limits',True) and self.c.enable_control
                             and not self.active and not self.failed and not self.engine.faulted):
                         result['controller_limits']=self.engine.read_cartesian_rate_limits([0,1])
@@ -204,6 +210,19 @@ class Bridge(Node):
                             if len(q)!=7: raise ValueError('Invalid IK reference')
                             finite(q)
                         result=self.engine.solve(matrices,starts,moving)
+                    elif request.operation=='ik_endpoint':
+                        arm=args['arm']
+                        matrix=args['matrix']
+                        reference=args['reference']
+                        if arm not in (0,1) or len(matrix)!=4 or any(len(row)!=4 for row in matrix):
+                            raise ValueError('Invalid arm endpoint IK request')
+                        if len(reference)!=7:
+                            raise ValueError('Expected seven reference joints')
+                        finite([x for row in matrix for x in row]+reference)
+                        current=self.snapshot()
+                        if max(abs(a-b) for a,b in zip(reference,current['joints'][arm]))>.2:
+                            raise ValueError('Arm moved since endpoint IK request; replan required')
+                        result=self.engine.solve_endpoint(arm,matrix,reference)
                     elif request.operation=='fk':
                         joints=args['joints']
                         if len(joints)!=2 or any(len(q)!=7 for q in joints):raise ValueError('Expected two seven-joint vectors')
@@ -309,14 +328,21 @@ class Bridge(Node):
             if not self.alive(goal): raise ValueError('Control heartbeat unavailable')
             self.status('validating',task_id=goal.task_id)
             snapshot=self.snapshot()
-            if any(o['object_id'] in (0,1,3) and (o['state'] not in (0,1) or o['error_code']) for o in snapshot['objects']):
+            controlled=(0,1,2,3) if self.c.enable_head_control else (0,1,3)
+            if any(o['object_id'] in controlled and (o['state'] not in (0,1) or o['error_code']) for o in snapshot['objects']):
                 raise ValueError('Controlled object has a fault or unsupported mode')
             plans,lines=validate_goal(goal,snapshot,self.engine,self.get_clock().now().nanoseconds)
             self.active.update(plans=plans,lines=lines,max_error={a:0. for a in lines})
-            if 3 not in plans:
+            if 3 not in plans and 2 not in plans:
                 self.active['body_start']=list(snapshot['body'])
             self.engine.active=True
-            if 3 in plans:
+            if 2 in plans:
+                if self.engine.robot.current_state(2)!=1: raise ValueError('Head not in POSITION')
+                self.engine.check_cancel()
+                self.engine.h.check(self.engine.robot.runtime_set_joint_pos_cmd(2,plans[2][0]+[0.]),
+                                    'Head position command')
+                self.active['head_next_index']=1
+            elif 3 in plans:
                 self.active['body_goal_matrix']=self.body_geometry.forward(plans[3][-1])
                 if self.engine.robot.current_state(3)!=1: raise ValueError('Body not in POSITION')
                 self.engine.check_cancel()
@@ -344,7 +370,7 @@ class Bridge(Node):
                 fresh=self.snapshot()
                 validate_goal(goal,fresh,self.engine,self.get_clock().now().nanoseconds,
                               check_freshness=False,planning_limits=limits)
-                if any(o['object_id'] in (0,1,3) and (o['state'] not in (0,1) or o['error_code']) for o in fresh['objects']):
+                if any(o['object_id'] in controlled and (o['state'] not in (0,1) or o['error_code']) for o in fresh['objects']):
                     raise ValueError('Controlled object changed mode/faulted before playback')
                 self.engine.check_uploaded_trajectories(plans)
                 self.check_playback_ratios({'controller':self.engine.robot.get_sg_dict()})
@@ -363,7 +389,8 @@ class Bridge(Node):
     def check_playback_ratios(self,raw):
         active=self.active
         for index,obj in enumerate(active['plans']):
-            settings=raw['controller']['body']['set'] if obj==3 else raw['controller']['arms'][obj]['set']
+            settings=(raw['controller']['body']['set'] if obj==3 else
+                      raw['controller']['head']['set'] if obj==2 else raw['controller']['arms'][obj]['set'])
             expected=active.get('playback_ratios',{}).get(obj,active['goal'].controller_ratios[index*2:index*2+2])
             for cap,key in zip(expected,('vel_ratio','acc_ratio')):
                 ratio=float(settings[key])
@@ -386,6 +413,19 @@ class Bridge(Node):
                     self.status('stopped',task_id=task,reason='Stop latched; reset required')
                     self.finish(False,'Stopped')
                 self.start_pending()
+                if self.active and 'head_next_index' in self.active:
+                    active=self.active
+                    points=active['plans'][2]
+                    index=active['head_next_index']
+                    if index<len(points):
+                        delay=time.monotonic()-active['started']-index/50.
+                        if delay>.04:
+                            raise RuntimeError('Head command stream fell behind schedule')
+                        if delay>=0:
+                            self.engine.check_cancel()
+                            self.engine.h.check(self.engine.robot.runtime_set_joint_pos_cmd(2,points[index]+[0.]),
+                                                f'Head point {index}')
+                            active['head_next_index']=index+1
                 if self.active and 'body_next_index' in self.active:
                     active=self.active
                     points=active['plans'][3]
@@ -405,22 +445,25 @@ class Bridge(Node):
                     active=self.active
                     if not self.alive(active['goal']): raise RuntimeError('Control heartbeat timed out')
                     if time.monotonic()-active['started']>self.c.timeout: raise TimeoutError('Execution timeout')
-                    if any(o['object_id'] in (0,1,3) and (o['state']==100 or o['error_code']) for o in raw['objects']):
+                    controlled=(0,1,2,3) if self.c.enable_head_control else (0,1,3)
+                    if any(o['object_id'] in controlled and (o['state']==100 or o['error_code']) for o in raw['objects']):
                         raise RuntimeError('Controlled object fault during execution')
                     if 'body_start' in active and max(abs(a-b) for a,b in zip(raw['body'],active['body_start']))>.2:
                         raise RuntimeError('Body moved during arm execution; frame transform is stale')
                     done=True
                     for obj,points in active['plans'].items():
                         if self.engine.robot.current_state(obj)!=1: raise RuntimeError(f'object{obj} left POSITION')
-                        q=raw['body'] if obj==3 else raw['joints'][obj]
+                        q=raw['head'] if obj==2 else raw['body'] if obj==3 else raw['joints'][obj]
                         done=done and max(abs(x-y) for x,y in zip(q,points[-1]))<=self.c.tolerance
+                        if obj==2:
+                            done=done and active['head_next_index']>=len(points)
                         if obj==3 and 'body_next_index' in active:
                             done=done and active['body_next_index']>=len(points)
                         if obj==3:
                             position_error,orientation_error=pose_error(raw['body_matrix'],active['body_goal_matrix'])
                             active['body_pose_error']={'position_mm':position_error,'orientation_deg':orientation_error}
                             done=done and position_error<=self.c.body_position_tolerance_mm and orientation_error<=self.c.body_orientation_tolerance_deg
-                        if obj!=3: done=done and raw['controller']['arms'][obj]['get']['traj_state']==0
+                        if obj in (0,1): done=done and raw['controller']['arms'][obj]['get']['traj_state']==0
                         if obj in active['lines']:
                             measured=raw['body_matrix'] if obj==3 else raw['matrices'][obj]
                             scale=.001 if obj==3 else self.c.sdk_length_to_m

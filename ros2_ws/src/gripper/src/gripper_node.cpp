@@ -8,6 +8,7 @@
 #include <gripper/msg/gripper_state.hpp>
 #include <gripper/msg/gripper_ack.hpp>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 // A single-threaded executor owns all SDK operations, including blocking ZERO.
@@ -34,7 +35,8 @@ class GripperNode : public rclcpp::Node {
       add_gripper("right", "right_gripper/", port, right_id, baud, right_cal);
     } else {
       const int id = declare_parameter<int>("motor_id", 1);
-      const auto calibration = declare_parameter<std::string>("calibration_path", default_calibration);
+      const auto calibration = declare_parameter<std::string>("calibration_path",
+          default_calibration);
       add_gripper("", "", port, id, baud, calibration);
     }
     timer_ = create_wall_timer(std::chrono::duration<double>(1.0/rate), [this] { for (auto& side : sides_) publish_state(*side); });
@@ -43,6 +45,7 @@ class GripperNode : public rclcpp::Node {
  private:
   struct Side {
     float speed_mps;
+    std::uint64_t next_command_id{1};
     std::unique_ptr<gripper_demo::Controller> controller;
     rclcpp::Publisher<gripper::msg::GripperState>::SharedPtr state;
     rclcpp::Publisher<gripper::msg::GripperAck>::SharedPtr ack;
@@ -52,6 +55,9 @@ class GripperNode : public rclcpp::Node {
                    const std::string& port, int id, int baud, const std::string& calibration) {
     const auto prefix = name.empty() ? "" : name + ".";
     const bool zero = declare_parameter<bool>(prefix + "use_existing_zero", false);
+    const bool auto_home = declare_parameter<bool>(prefix + "auto_home", false);
+    if (zero && auto_home)
+      throw std::invalid_argument(prefix + "use_existing_zero and auto_home cannot both be true");
     const double threshold = declare_parameter<double>(prefix + "current_threshold_a", 0.5);
     rcl_interfaces::msg::ParameterDescriptor speed_descriptor;
     speed_descriptor.read_only = true;
@@ -67,19 +73,30 @@ class GripperNode : public rclcpp::Node {
     side->controller = std::make_unique<gripper_demo::Controller>(
         gripper_demo::make_hardware(port, id, baud, calibration), threshold);
     side->controller->init(zero);
+    if (auto_home) {
+      RCLCPP_WARN(get_logger(), "%s automatic opening homing started; keep the gripper clear",
+                  name.empty() ? "gripper" : name.c_str());
+      const auto result = side->controller->command({gripper_demo::Action::Zero});
+      if (!result.accepted) throw std::runtime_error(prefix + "automatic homing failed: " + result.detail);
+      RCLCPP_INFO(get_logger(), "%s automatic opening homing complete",
+                  name.empty() ? "gripper" : name.c_str());
+    }
     side->state = create_publisher<gripper::msg::GripperState>(topic + "state", 10);
     side->ack = create_publisher<gripper::msg::GripperAck>(topic + "ack", 10);
     auto* target = side.get();
     side->command = create_subscription<gripper::msg::GripperCommand>(topic + "command", 10,
       [target](gripper::msg::GripperCommand::ConstSharedPtr msg) {
         gripper::msg::GripperAck ack;
-        if (msg->action > gripper::msg::GripperCommand::CLEAR) {
+        ack.command_id = target->next_command_id++;
+        if (msg->action > gripper::msg::GripperCommand::SET_CURRENT_THRESHOLD) {
           ack.accepted = false; ack.detail = "unknown action";
         } else {
           gripper_demo::Command command;
+          command.command_id = ack.command_id;
           command.action = static_cast<gripper_demo::Action>(msg->action);
           command.position_m = msg->position_m;
           command.speed_mps = target->speed_mps;
+          command.current_threshold_a = msg->current_threshold_a;
           const auto result = target->controller->command(command);
           ack.accepted = result.accepted; ack.detail = result.detail;
         }
@@ -91,6 +108,7 @@ class GripperNode : public rclcpp::Node {
     const auto f = side.controller->sample();
     gripper::msg::GripperState out;
     out.stamp = now();
+    out.command_id = f.command_id;
     out.valid = f.valid;
     const double invalid = std::numeric_limits<double>::quiet_NaN();
     out.position_m = f.valid ? f.position_m : invalid;

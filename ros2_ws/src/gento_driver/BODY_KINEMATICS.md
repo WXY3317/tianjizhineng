@@ -59,7 +59,7 @@ Z 方向平移 391.5 mm 的单位旋转变换，因此等价于沿旧末端自�
 | 关节 | 额外范围（度） |
 |---|---|
 | J1 | [-11, 11] |
-| J2 | **[-50, 50]** |
+| J2 | **[-50, 80]** |
 | J3 | 保留控制器有符号限位 |
 | J4 | 保留控制器有符号限位 |
 | J5 | [-30, 30] |
@@ -117,6 +117,7 @@ print("朝向误差（度）:", result.orientation_error_deg)
 |---|---|---|
 | `/gento_feedback/body/tcp_pose` | `geometry_msgs/msg/PoseStamped` | 当前六轴反馈角正解得到的 `BD_J6` 位姿 |
 | `/gento_control/body/target_pose` | `geometry_msgs/msg/PoseStamped` | `BD_J6` 位姿逆解后执行 |
+| `/gento_control/body/target_pose_ptp` | `geometry_msgs/msg/PoseStamped` | `BD_J6` 终点位姿逆解后执行关节位置运动，末端路径不保证直线 |
 | `/gento_control/body/preview_pose` | `geometry_msgs/msg/PoseStamped` | `BD_J6` 位姿逆解预览，不执行 |
 | `/gento_control/body/ik_result` | `std_msgs/msg/String` | 逆解结果 JSON，含 `joints_deg` 和 `joints_rad` |
 
@@ -141,8 +142,10 @@ driver 对执行请求独立检查起点、限位、模式、心跳和最大变�
 本地额外限位也应用于现有 `body/target_joints` 通道。
 
 躯干位姿任务读取躯干各轴控制器速度和加速度额定值，并与 launch 中的
-`cartesian_speed`、`cartesian_angular_speed`、`cartesian_joint_speed`、
-`cartesian_joint_acc` 共同限制规划。执行完成须同时满足关节角 `tolerance`、
+`body_speed`、`body_acc`、`body_cartesian_speed`、
+`body_cartesian_angular_speed`、`body_cartesian_joint_speed`、
+`body_cartesian_joint_acc` 共同限制规划，与手臂同类参数独立。
+执行完成须同时满足关节角 `tolerance`、
 末端位置 `body_position_tolerance_mm`（默认 1 mm）和朝向
 `body_orientation_tolerance_deg`（默认 0.2°），并持续 0.5 秒。
 执行位姿误差以目标关节角正解得到的位姿为基准；逆解与原始目标之间另有

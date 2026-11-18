@@ -10,6 +10,7 @@ FREQUENCY = 50
 STREAM_PERIOD = 1. / FREQUENCY
 
 BODY = 3
+HEAD = 2
 CONTROLLED_OBJECTS = (0, 1, BODY)
 STOP_MASK = (1 << 0) | (1 << 1) | (1 << BODY)
 # Keep vendor warnings/errors; the ROS node reports essential lifecycle events.
@@ -20,6 +21,7 @@ class Engine:
     def __init__(self, robot, helpers, ik_type, config, on_upload=None):
         self.robot, self.h, self.ik_type, self.c = robot, helpers, ik_type, config
         self.control_enabled = getattr(config, 'enable_control', True)
+        self.head_control_enabled = getattr(config, 'enable_head_control', False)
         self.on_upload = on_upload
         self.cancel_requested = threading.Event()
         self.cartesian_rate_limits = None
@@ -41,6 +43,11 @@ class Engine:
         if ret < 0:
             raise RuntimeError(f'Link failed: {ret}')
         self.linked = True
+        self.head_dof = self.robot.get_ctrl_obj_dof(HEAD)
+        if not 0 <= self.head_dof <= 3:
+            raise ValueError(f'Invalid head DOF: {self.head_dof}')
+        if self.head_control_enabled and self.control_enabled and self.head_dof != 2:
+            raise ValueError(f'Head control requires exactly two joints; controller reports {self.head_dof}')
         if self.control_enabled:
             self.reset_errors()
         else:
@@ -60,8 +67,8 @@ class Engine:
     def reset_object_error(self, obj):
         """Mirror a vendor Reset button: reset one object, without enabling motion."""
         self.require_control()
-        if obj not in CONTROLLED_OBJECTS:
-            raise ValueError('Reset object must be left=0, right=1 or body=3')
+        if obj not in self.controlled_objects():
+            raise ValueError('Reset object must be an enabled controlled object')
         if self.active:
             raise ValueError('Motion active; stop before requesting error reset')
         self.faulted = True
@@ -82,6 +89,9 @@ class Engine:
         self.check_cancel()
         return result
 
+    def controlled_objects(self):
+        return CONTROLLED_OBJECTS + ((HEAD,) if self.head_control_enabled and self.head_dof == 2 else ())
+
     def reset_errors(self):
         self.require_control()
         if self.active:
@@ -95,8 +105,8 @@ class Engine:
             raise RuntimeError('Controller not connected; restart node to reconnect')
         try:
             reset_failures = []
-            for arm in CONTROLLED_OBJECTS:
-                label = 'body' if arm == BODY else f'arm{arm}'
+            for arm in self.controlled_objects():
+                label = 'body' if arm == BODY else 'head' if arm == HEAD else f'arm{arm}'
                 before = self.recovery_call(self.robot.current_state, arm)
                 # ResetError waits for IDLE; it does not switch a healthy
                 # POSITION/PD/release object back to IDLE on every controller.
@@ -120,7 +130,7 @@ class Engine:
             if reset_failures:
                 self.recovery_stage = 'reset_summary'
                 raise RuntimeError('; '.join(reset_failures))
-            for arm in CONTROLLED_OBJECTS:
+            for arm in self.controlled_objects():
                 if self.recovery_call(self.robot.current_state, arm) != 0:
                     mode_transition_pending = True
                     self.h.check(self.recovery_call(self.robot.switch_to_idle, arm, 3000), f'arm{arm} IDLE')
@@ -146,10 +156,27 @@ class Engine:
             self.head_dof = self.recovery_call(self.robot.get_ctrl_obj_dof, 2)
             if not 0 <= self.head_dof <= 3:
                 raise ValueError(f'Invalid head DOF from controller: {self.head_dof}')
-            for arm in CONTROLLED_OBJECTS:
+            self.head_limits = []
+            if self.head_control_enabled:
+                if self.head_dof != 2:
+                    raise ValueError(f'Head control requires exactly two joints; controller reports {self.head_dof}')
+                for joint in range(2):
+                    pair = []
+                    for suffix in ('LimitNeg', 'LimitPos'):
+                        ret, value = self.recovery_call(self.robot.param_get_float,
+                                                        f'R.H.L{joint}.BASIC.{suffix}')
+                        self.h.check(ret, f'Head joint{joint+1} {suffix}')
+                        pair.append(value)
+                    self.h.finite(pair)
+                    if pair[0] >= pair[1]:
+                        raise ValueError(f'Invalid head joint{joint+1} limits: {pair}')
+                    self.head_limits.append(pair)
+            for arm in self.controlled_objects():
                 self.recovery_stage = f'object{arm}:position'
                 position_attempted = True
-                self.h.check(self.recovery_call(self.robot.switch_to_position_mode, arm, 3000, self.c.speed, self.c.acc), f'arm{arm} POSITION')
+                speed, acc = ((self.c.body_speed, self.c.body_acc) if arm == BODY
+                              else (self.c.speed, self.c.acc))
+                self.h.check(self.recovery_call(self.robot.switch_to_position_mode, arm, 3000, speed, acc), f'arm{arm} POSITION')
                 if self.recovery_call(self.robot.current_state, arm) != 1:
                     raise RuntimeError(f'arm{arm} did not reach POSITION')
             self.recovery_stage = 'feedback_check'
@@ -198,6 +225,13 @@ class Engine:
             self.check_cancel()
             targets.append(solve_step(self,arm,matrices[arm],starts[arm]) if arm in moving else list(starts[arm]))
         return targets
+
+    def solve_endpoint(self, arm, matrix, reference):
+        """Find a legal endpoint IK without requiring a Cartesian path to it."""
+        from .ik import solve_step
+        self.check_cancel()
+        return solve_step(self, arm, matrix, reference,
+                          max_step_deg=float('inf'), endpoint=True)
 
     def sample_body(self, data=None):
         if self.robot.check_link_state() != 1:
@@ -310,6 +344,31 @@ class Engine:
                     raise ValueError(f'Body joint{joint+1} invalid {suffix}: {value}')
                 rated[kind].append(value)
         return {'vel_ratio': ratios[0], 'acc_ratio': ratios[1],
+                'speed': [min(self.c.body_cartesian_joint_speed, v*min(ratios[0],self.c.body_speed)/100*.9)
+                          for v in rated[0]],
+                'acceleration': [min(self.c.body_cartesian_joint_acc, a*min(ratios[1],self.c.body_acc)/100*.9)
+                                 for a in rated[1]]}
+
+    def read_head_rate_limits(self):
+        self.require_control()
+        if not self.head_control_enabled or self.head_dof != 2:
+            raise ValueError('Two-joint head control is unavailable')
+        settings = self.robot.get_sg_dict()['head']['set']
+        ratios = [float(settings['vel_ratio']), float(settings['acc_ratio'])]
+        self.h.finite(ratios)
+        if not all(0 < value <= 100 for value in ratios):
+            raise ValueError('Invalid head speed/acceleration ratios')
+        rated = [[], []]
+        for joint in range(2):
+            for kind, suffix in enumerate(('VelMax', 'AccMax')):
+                ret, value = self.recovery_call(self.robot.param_get_float,
+                                                f'R.H.L{joint}.BASIC.{suffix}')
+                self.h.check(ret, f'Head joint{joint+1} {suffix}')
+                self.h.finite([value])
+                if value <= 0:
+                    raise ValueError(f'Invalid head joint{joint+1} {suffix}: {value}')
+                rated[kind].append(value)
+        return {'vel_ratio': ratios[0], 'acc_ratio': ratios[1],
                 'speed': [min(self.c.cartesian_joint_speed, v*min(ratios[0],self.c.speed)/100*.9)
                           for v in rated[0]],
                 'acceleration': [min(self.c.cartesian_joint_acc, a*min(ratios[1],self.c.acc)/100*.9)
@@ -364,9 +423,10 @@ class Engine:
         self.faulted = True
         try:
             if self.control_enabled and (self.active or force):
-                ret = self.robot.emergency_stop(STOP_MASK)
-                if ret != STOP_MASK:
-                    raise RuntimeError(f'Emergency stop unconfirmed: mask={ret}; use hardware stop')
+                mask = STOP_MASK | ((1 << HEAD) if self.head_control_enabled and self.head_dof == 2 else 0)
+                ret = self.robot.emergency_stop(mask)
+                if ret != mask:
+                    raise RuntimeError(f'Emergency stop unconfirmed: expected={mask}, actual={ret}; use hardware stop')
         finally:
             self.active = False
 
@@ -384,8 +444,8 @@ class Engine:
                 if self.robot.check_link_state() != 1:
                     failures.append('Controller disconnected; IDLE could not be confirmed')
                 else:
-                    for obj in CONTROLLED_OBJECTS:
-                        label = 'body' if obj == BODY else f'arm{obj}'
+                    for obj in self.controlled_objects():
+                        label = 'body' if obj == BODY else 'head' if obj == HEAD else f'arm{obj}'
                         try:
                             state = self.robot.current_state(obj)
                             if state == 100:  # Preserve ERROR for diagnosis.

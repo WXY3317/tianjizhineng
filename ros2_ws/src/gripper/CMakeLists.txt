@@ -44,12 +44,16 @@ install(DIRECTORY "${SDK_LIB}/" DESTINATION lib/${PROJECT_NAME} FILES_MATCHING P
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 if(BUILD_TESTING)
   enable_testing()
-  add_executable(controller_test example/tests.cpp src/controller.cpp)
+  add_executable(controller_test test/controller_test.cpp src/controller.cpp)
   target_include_directories(controller_test PRIVATE src)
   add_test(NAME controller_state_machine COMMAND controller_test)
-  add_executable(calibration_test example/calibration_test.cpp)
+  add_executable(calibration_test test/calibration_test.cpp)
   target_include_directories(calibration_test PRIVATE src)
-  target_compile_definitions(calibration_test PRIVATE DEMO_CALIBRATION_PATH="${CMAKE_CURRENT_SOURCE_DIR}/config/calibration.csv")
+  target_compile_definitions(calibration_test PRIVATE DEMO_CALIBRATION_PATH="${CMAKE_CURRENT_SOURCE_DIR}/config/calibration.csv"
+    EXPECTED_OPEN_WIDTH=0.098 EXPECTED_CLOSED_ANGLE=63.51035118105
+    EXPECTED_MEASURED_ANGLE=49.0485045524 EXPECTED_MEASURED_WIDTH=0.020
+    EXPECTED_MEASURED_ANGLE_2=43.2783673600 EXPECTED_MEASURED_WIDTH_2=0.030
+    EXPECTED_MEASURED_ANGLE_3=25.7894934145 EXPECTED_MEASURED_WIDTH_3=0.060)
   add_test(NAME calibration_mapping COMMAND calibration_test)
 endif()
 ament_export_dependencies(rosidl_default_runtime)

@@ -13,12 +13,12 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
 from sensor_msgs.msg import JointState
-from geometry_msgs.msg import PoseStamped, Pose
+from geometry_msgs.msg import PoseStamped, Pose, Vector3Stamped
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from std_msgs.msg import String, Empty
 from gento_interfaces.srv import DriverQuery
 from gento_interfaces.action import ExecuteTrajectory
-from .conversions import JOINT_NAMES,BODY_JOINT_NAMES,joint_target,body_target,pose_matrix,quaternion,body_target_to_sdk
+from .conversions import JOINT_NAMES,BODY_JOINT_NAMES,HEAD_JOINT_NAMES,joint_target,body_target,head_target,pose_matrix,quaternion,body_target_to_sdk,rotate_tcp_in_body_frame
 from .planning import Planner
 
 
@@ -58,13 +58,19 @@ class Control(Node):
         for arm,side in enumerate(('left','right')):
             self.subs.append(self.create_subscription(PoseStamped,f'{prefix}/{side}/target_pose',
                 lambda msg,a=arm:self.submit('pose',a,msg),1))
+            self.subs.append(self.create_subscription(PoseStamped,f'{prefix}/{side}/target_pose_ptp',
+                lambda msg,a=arm:self.submit('pose_ptp',a,msg),1))
             self.subs.append(self.create_subscription(JointState,f'{prefix}/{side}/target_joints',
                 lambda msg,a=arm:self.submit('joints',a,msg),1))
+            self.subs.append(self.create_subscription(Vector3Stamped,f'{prefix}/{side}/rotate_tcp',
+                lambda msg,a=arm:self.submit('rotate_tcp',a,msg),1))
         self.subs.append(self.create_subscription(JointState,f'{prefix}/body/target_joints',lambda m:self.submit('body',3,m),1))
+        self.subs.append(self.create_subscription(JointState,f'{prefix}/head/target_joints',lambda m:self.submit('head',2,m),1))
         self.subs.append(self.create_subscription(PoseStamped,f'{prefix}/body/target_pose',lambda m:self.submit('body_pose',3,m),1))
+        self.subs.append(self.create_subscription(PoseStamped,f'{prefix}/body/target_pose_ptp',lambda m:self.submit('body_pose_ptp',3,m),1))
         self.subs.append(self.create_subscription(PoseStamped,f'{prefix}/body/preview_pose',lambda m:self.submit('body_pose_preview',3,m),1))
         self.subs.append(self.create_subscription(Empty,f'{prefix}/reset_error',lambda _:self.reset(),1))
-        for obj,side in ((0,'left'),(1,'right'),(3,'body')):
+        for obj,side in ((0,'left'),(1,'right'),(2,'head'),(3,'body')):
             self.subs.append(self.create_subscription(Empty,f'{prefix}/{side}/reset_error',lambda _,o=obj:self.reset(o),1))
         # Observe the single stop topic to cancel planning immediately; only driver calls SDK stop.
         self.subs.append(self.create_subscription(Empty,'/gento_driver/stop',lambda _:self.cancel.set(),1,callback_group=self.group))
@@ -116,7 +122,7 @@ class Control(Node):
                 # RPC timeout does not cancel work in the driver. Keep the task slot
                 # reserved until the reply arrives, or until this node shuts down.
                 response=self.wait(future,timeout=None,interruptible=False)
-        else:response=self.wait(future,timeout=120. if operation=='body_cartesian' else 5.)
+        else:response=self.wait(future,timeout=120. if operation=='body_cartesian' else 20. if operation=='ik_endpoint' else 5.)
         if not response.success: raise ValueError(response.error)
         if operation in ('snapshot','reset','object_reset'): self.session=response.session_id
         result=json.loads(response.result or 'null')
@@ -145,8 +151,8 @@ class Control(Node):
         handle=None
         submitted=False
         try:
-            body_task=kind in ('body','body_pose','body_pose_preview')
-            snapshot_payload={'include_arm_limits':False} if body_task else None
+            body_task=kind in ('body','body_pose','body_pose_ptp','body_pose_preview')
+            snapshot_payload={'include_arm_limits':False, 'include_head_rates':kind=='head'} if body_task or kind=='head' else None
             snapshot=self.rpc('snapshot',snapshot_payload)
             self.check_stamp(msg)
             if not snapshot['config']['enable_control']: raise ValueError('Driver is feedback-only')
@@ -156,7 +162,18 @@ class Control(Node):
             planner=Planner(snapshot,self.rpc,self.cancel)
             lines=[]
             goals=snapshot['matrices']
-            if kind=='pose':
+            if kind=='rotate_tcp':
+                expected=snapshot['config']['body_frame']
+                if msg.header.frame_id!=expected:
+                    raise ValueError(f'Expected frame {expected}')
+                if snapshot['objects'][2]['state'] not in (0,1):
+                    raise ValueError('Body must be stationary for body-frame arm rotation')
+                target=rotate_tcp_in_body_frame(
+                    snapshot['matrices'][arm],snapshot['arm_bases_in_body'][arm],
+                    (msg.vector.x,msg.vector.y,msg.vector.z))
+                plans,goals,info=planner.cartesian(arm,target)
+                lines=list(plans)
+            elif kind in ('pose','pose_ptp'):
                 expected=snapshot['config']['body_frame']
                 native=snapshot['config']['left_frame' if arm==0 else 'right_frame']
                 if msg.header.frame_id==expected:
@@ -169,12 +186,22 @@ class Control(Node):
                     target=pose_matrix(msg.pose,planner.c.sdk_length_to_m)
                 else:
                     raise ValueError(f'Expected frame {expected} or {native}')
-                plans,goals,info=planner.cartesian(arm,target)
-                lines=list(plans)
+                if kind=='pose':
+                    plans,goals,info=planner.cartesian(arm,target)
+                    lines=list(plans)
+                else:
+                    plans,info=planner.pose_ptp(arm,target)
+                    goals=list(goals)
+                    goals[arm]=target
             elif kind=='joints':
                 if msg.velocity or msg.effort: raise ValueError('Position targets only')
                 plans,info=planner.joint(arm,joint_target(arm,msg.name,msg.position))
-            elif kind in ('body_pose','body_pose_preview'):
+            elif kind=='head':
+                if msg.velocity or msg.effort: raise ValueError('Position targets only')
+                if not snapshot['config']['enable_head_control']:
+                    raise ValueError('Head control is disabled')
+                plans,info=planner.head(head_target(msg.name,msg.position))
+            elif kind in ('body_pose','body_pose_ptp','body_pose_preview'):
                 expected=snapshot['config']['body_frame']
                 if msg.header.frame_id!=expected:raise ValueError(f'Expected frame {expected}; no TF conversion')
                 # The torso model always uses mm, independently of arm SDK units.
@@ -196,7 +223,7 @@ class Control(Node):
                                            (result['joints_deg'],result['joints_rad']))
                     self.status('previewed',joints_deg=joints,joints_rad=result['joints_rad'])
                     return
-                lines=[3]
+                lines=[3] if kind=='body_pose' else []
             else:
                 if msg.velocity or msg.effort: raise ValueError('Position targets only')
                 plans={3:[body_target(msg.name,msg.position)]}
@@ -217,12 +244,14 @@ class Control(Node):
                 time.sleep(.02)
                 latest=self.rpc('snapshot',snapshot_payload)
             if latest['session_id']!=snapshot['session_id']: raise ValueError('Driver session changed; replan')
-            goal.start_state.name=JOINT_NAMES+BODY_JOINT_NAMES
-            goal.start_state.position=[math.radians(q) for q in snapshot['joints'][0]+snapshot['joints'][1]+snapshot['body']]
+            goal.start_state.name=JOINT_NAMES+BODY_JOINT_NAMES+(HEAD_JOINT_NAMES if kind=='head' else [])
+            goal.start_state.position=[math.radians(q) for q in
+                                       snapshot['joints'][0]+snapshot['joints'][1]+snapshot['body']+
+                                       (snapshot['head'] if kind=='head' else [])]
             goal.start_state.header.stamp.sec=latest['stamp']['sec']
             goal.start_state.header.stamp.nanosec=latest['stamp']['nanosec']
             for obj,path in plans.items():
-                names=BODY_JOINT_NAMES if obj==3 else JOINT_NAMES[obj*7:(obj+1)*7]
+                names=BODY_JOINT_NAMES if obj==3 else HEAD_JOINT_NAMES if obj==2 else JOINT_NAMES[obj*7:(obj+1)*7]
                 trajectory=JointTrajectory(joint_names=names)
                 for index,q in enumerate(path):
                     point=JointTrajectoryPoint(positions=[math.radians(v) for v in q])
@@ -230,7 +259,8 @@ class Control(Node):
                     point.time_from_start.nanosec=(index%50)*20000000
                     trajectory.points.append(point)
                 goal.trajectories.append(trajectory)
-                settings=snapshot['controller']['body']['set'] if obj==3 else planner.cartesian_rate_limits[obj]
+                settings=(snapshot['controller']['body']['set'] if obj==3 else
+                          snapshot['head_rate_limits'] if obj==2 else planner.cartesian_rate_limits[obj])
                 goal.controller_ratios.extend([settings['vel_ratio'],settings['acc_ratio']])
             goal.line_objects=lines
             goal.line_starts=[as_pose(snapshot['body_matrix'],.001) if a==3 else

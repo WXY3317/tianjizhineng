@@ -1,5 +1,6 @@
 # Measurements and enabled/error_code are meaningful only when valid=true.
 builtin_interfaces/Time stamp
+uint64 command_id
 bool valid
 float64 position_m
 float64 motor_position_rad

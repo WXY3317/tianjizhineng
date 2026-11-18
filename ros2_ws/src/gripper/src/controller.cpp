@@ -30,6 +30,7 @@ void Controller::fail_safe() noexcept {
 }
 Feedback Controller::sample() {
     Feedback f;
+    f.command_id = last_command_id_;
     HardwareState state{};
     try {
         if (!hardware_->read(state)) throw std::runtime_error("state refresh failed");
@@ -75,34 +76,42 @@ Feedback Controller::sample() {
     return f;
 }
 Result Controller::command(const Command& cmd) {
+    if (cmd.action == Action::SetCurrentThreshold &&
+        (!std::isfinite(cmd.current_threshold_a) || cmd.current_threshold_a <= 0))
+        return {false, "current threshold must be finite and positive"};
     if (cmd.action == Action::Move &&
-        (!std::isfinite(cmd.position_m) || cmd.position_m < 0 || cmd.position_m > hardware_->max_position_m() ||
+        (!std::isfinite(cmd.position_m) || cmd.position_m < hardware_->min_position_m() ||
+         cmd.position_m > hardware_->max_position_m() ||
          !std::isfinite(cmd.speed_mps) || cmd.speed_mps <= 0))
-        return {false, "position outside calibrated range or speed invalid"};
+        return {false, "position must be " + std::to_string(hardware_->min_position_m()) +
+                           ".." + std::to_string(hardware_->max_position_m()) +
+                           " m; speed must be finite and positive"};
     try {
-        if (cmd.action == Action::Disable) {
+        if (cmd.action == Action::SetCurrentThreshold) {
+            current_threshold_a_ = cmd.current_threshold_a;
+        } else if (cmd.action == Action::Disable) {
             hardware_->disable(); target_valid_ = false; current_limit_reached_ = false;
         } else if (cmd.action == Action::Clear) {
             hardware_->clear();
             const auto f = sample();
             if (!f.valid || f.error_code != 0) return {false, "fault or communication failure remains"};
+        } else if (cmd.action == Action::Zero) {
+            // The old calibration may be outside its stroke after a multi-turn reset.
+            // Hardware::zero checks raw device feedback before moving; do not run
+            // sample() against an origin known to be untrusted.
+            target_valid_ = false; homed_ = false; current_limit_reached_ = false;
+            if (!hardware_->zero()) { fail_safe(); return {false, "zero failed"}; }
+            hardware_->disable();
+            const auto zeroed = sample();
+            if (!zeroed.valid || zeroed.error_code != 0 || zeroed.enabled ||
+                std::abs(zeroed.motor_position_rad) > 0.03) {
+                fail_safe(); return {false, "zero completion state not confirmed"};
+            }
+            homed_ = true;
         } else {
             const auto f = sample();
             if (!f.valid || f.error_code != 0) return {false, "feedback unavailable or driver fault"};
             switch (cmd.action) {
-            case Action::Zero:
-                target_valid_ = false; homed_ = false; current_limit_reached_ = false;
-                if (!hardware_->zero()) { fail_safe(); return {false, "zero failed"}; }
-                // Manual requires disable after calibration; do not depend on library side effects.
-                hardware_->disable();
-                {
-                    const auto zeroed = sample();
-                    if (!zeroed.valid || zeroed.error_code != 0 || zeroed.enabled) {
-                        fail_safe(); return {false, "zero completion state not confirmed"};
-                    }
-                }
-                homed_ = true;
-                break;
             case Action::Enable:
                 if (!homed_) return {false, "ZERO required before enable"};
                 hardware_->enable_position();
@@ -122,6 +131,7 @@ Result Controller::command(const Command& cmd) {
             default: return {false, "unknown action"};
             }
         }
+        last_command_id_ = cmd.command_id;
         return {true, "accepted"};
     } catch (const std::exception& e) { fail_safe(); return {false, e.what()}; }
 }

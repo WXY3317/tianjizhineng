@@ -54,6 +54,7 @@ ros2 topic pub --once /gento_control/right/rotate_tcp geometry_msgs/msg/Vector3S
 | `/gento_control/body/target_joints` | 躯干六轴绝对关节目标 |
 | `/gento_control/body/target_pose` | 躯干第六轴 `BD_J6` 的绝对位姿目标，执行运动 |
 | `/gento_control/body/preview_pose` | 对躯干位姿目标求解预览，不执行运动 |
+| `/gento_control/body/target_pose_ptp` | 躯干位姿目标，只求终点逆解并执行关节位置运动，末端路径不保证直线 |
 | `/gento_control/head/target_joints` | 头部两轴绝对关节目标 |
 
 躯干关节和头部关节目标的单位为弧度。头部控制需启用 `enable_head_control:=true`。
@@ -66,7 +67,7 @@ ros2 topic pub --once /gento_control/head/target_joints sensor_msgs/msg/JointSta
   '{header: {stamp: now}, name: [head_joint_1, head_joint_2], position: [0.0, 0.0]}'
 ```
 
-躯干位姿目标使用 `body_base` 坐标和完整的位置、姿态。下面先给出不执行运动的预览样例；确认目标后，将话题改为 `/gento_control/body/target_pose` 执行。默认目标高度范围为 0.55～0.76 m，目标仍需满足关节与路径约束。
+躯干位姿目标使用 `body_base` 坐标和完整的位置、姿态。下面先给出不执行运动的预览样例；确认目标后，将话题改为 `/gento_control/body/target_pose` 执行末端直线运动，或改为 `/gento_control/body/target_pose_ptp` 执行终点逆解后的关节位置运动。默认目标高度范围为 0.55～0.76 m，目标仍需满足关节限位。
 
 ```bash
 ros2 topic pub --once /gento_control/body/preview_pose geometry_msgs/msg/PoseStamped \
@@ -77,36 +78,39 @@ ros2 topic pub --once /gento_control/body/preview_pose geometry_msgs/msg/PoseSta
 
 | 控制入口 | 作用 |
 | --- | --- |
-| `/scene/arm_position` | `0`：左右臂依次到初始关节位置；`1`：依次到准备位置 |
+| `/scene/arm_position` | `0`：左右臂依次到初始关节位置；`1`：依次到准备位置；`2`：躯干 TCP 到配置位姿；`9`：依次到下班回收姿态 |
 | `/scene/restore_tool_z` | 在当前法兰位置撤销上一次由 scene 执行的夹具局部 Z 轴旋转 |
 | `/scene/attach_workpiece`（`std_srvs/srv/Trigger`） | 第 5 步人工确认左夹爪抓牢后调用；启动左臂回退、准备位、躯干回零和左臂交接位运动 |
-| `/scene/start_handover`（`std_srvs/srv/Trigger`） | 第 10 步人工确认交接区安全后调用；启动右臂交接流程 |
 | `/scene/detach_workpiece`（`std_srvs/srv/Trigger`） | 工件实际释放后结束位姿跟踪 |
 | MQTT `vs/workpiece/6d_pose` | 提交工件位姿；`position1` 使用关节空间轨迹，`position2` 使用法兰直线轨迹 |
-| `/scene/status`（`std_msgs/msg/String`） | JSON 状态；含 `awaiting_attach`、`awaiting_handover`、`handover_waiting`、`post_grasp_completed` 和 `rejected` |
+| `/scene/status`（`std_msgs/msg/String`） | JSON 状态；含 `awaiting_attach`、`handover_started`、`handover_waiting`、`post_grasp_completed` 和 `rejected` |
 | `/scene/workpiece_pose`（`geometry_msgs/msg/PoseStamped`） | 根据当前持有臂的法兰反馈推算的工件位姿，坐标系为 `body_base` |
 
-`/scene/arm_position` 使用 launch 中的 `left_arm_joint_init`、`right_arm_joint_init`、`left_arm_joint_pre`、`right_arm_joint_pre` 七轴预设，单位弧度。先移动左臂，完成后再移动右臂；任一步失败即停止。需以 `dry_run:=false` 启动 scene。
+`/scene/arm_position` 的编号和七轴弧度目标由 `scene/config/arm_positions.json` 配置。
+每项写 `name`，再填写双臂 `left`/`right` 七轴弧度数组，或躯干 `body_pose` 的位置（米）和朝向（x/y/z/w）；可添加其他 Int8 编号。`1=pre` 供抓取流程使用。
+先移动左臂，完成后再移动右臂；任一步失败即停止。需以 `dry_run:=false` 启动 scene。
+配置修改后重启 scene；可通过 `arm_positions_file:=路径`（真机整体启动为
+`scene_arm_positions_file:=路径`）选择另一份配置。
 
 ```bash
 ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 0}'  # 到初始位置
 ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 1}'  # 到准备位置
+ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 2}'  # 躯干到配置位姿
+ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 9}'  # 到下班回收姿态
 
 ros2 service call /scene/restore_tool_z std_srvs/srv/Trigger '{}'
 # 分别在终端中观察状态与工件位姿：
 ros2 topic echo /scene/status
 ros2 topic echo /scene/workpiece_pose
-# 看到 /scene/status 的 awaiting_attach，且确认左夹爪已抓牢后：
+# 看到 /scene/status 的 awaiting_attach，且确认所选夹爪已抓牢后：
 ros2 service call /scene/attach_workpiece std_srvs/srv/Trigger '{}'
-# 看到 awaiting_handover，且确认交接区域安全后：
-ros2 service call /scene/start_handover std_srvs/srv/Trigger '{}'
 # 工件实际释放后：
 ros2 service call /scene/detach_workpiece std_srvs/srv/Trigger '{}'
 ```
 
-scene 默认接收下面的 MQTT 工件目标。`position1` 是预抓取位置，通过 `/gento_control/{left,right}/target_pose_ptp` 执行；完成后等待 `interval` 秒（默认 1.0 秒），`position2` 作为工件实际位置通过 `/gento_control/{left,right}/target_pose` 执行。第二步继承第一步选定的法兰姿态和绕轴角度，只改变位置；第二步不可达时拒绝，不再另选姿态。Y 正值选左臂，Y 负值选右臂；两个非零目标必须选择同一只手臂。位置单位为米，姿态为 `body_base` 下的单位四元数。`position2` 可省略或填全零占位。工件原点作为夹具尖端目标，法兰到尖端的局部 Z 偏移默认 0.20 m。实际执行需以 `dry_run:=false` 启动 scene。
+scene 的 MQTT 工件目标须包含字符串 `label`。当前支持 `无遮挡正面`（固定左臂抓取并交接右臂）和 `无遮挡背面`（`position1` 的 Y ≥ 0.05 m 用左臂，Y ≤ -0.05 m 用右臂；抓取后回到对应准备姿态和背面终点，不交接）；其他标签拒绝。`position1` 通过 `/gento_control/{left,right}/target_pose_ptp` 执行；完成后等待 `interval` 秒，`position2` 通过 `/gento_control/{left,right}/target_pose` 执行。第二步继承第一步选定的法兰姿态和绕轴角度。位置单位为米，姿态为 `body_base` 下的单位四元数。`position2` 可省略或填全零占位。工件原点作为夹具尖端目标，法兰到尖端的局部 Z 偏移默认 0.20 m。默认 `dry_run:=false`，预览时设置 `dry_run:=true`。
 
-左臂到 `position2` 后，scene 自动发送左夹爪 27 mm 命令并等待夹爪反馈到位；`awaiting_attach` 后才由操作者调用附着服务。左臂依次退回 `position1`、到 `left_arm_joint_pre`、躯干六轴回零、到 `left_post_grasp_joints`。`awaiting_handover` 后才由操作者启动右臂。右臂到 `right_handover_joints` 并收到完成状态后等待 `interval`，再保持姿态沿 `body_base` 的 +Y 方向直线移动 `handover_y_offset_m`（默认 0.07 m）；右夹爪到 27 mm、左夹爪到 0 mm 后右臂退回预备交接位。每段运动等待控制节点报告完成，夹爪动作等待状态到位；夹爪到位本身不证明工件已可靠持有。
+所选手臂到 `position2` 后，scene 自动发送该夹爪 27 mm 命令并等待反馈；`awaiting_attach` 后由操作者确认夹牢并调用附着服务。正面模式下，左臂回退、到 `pre`、躯干回零，再到 `left_post_grasp_joints`，随后自动交接右臂。背面模式下，所选手臂回退、到 `pre`，再到对应的背面终点关节角；不交接。每段运动等待控制节点报告完成；夹爪到位本身不证明工件已可靠持有。
 
 附着期间，scene 根据法兰反馈持续发布工件估计位姿。交接时由左右法兰反馈求右法兰到工件的固定平移与旋转，随后改用右臂跟踪。当前尚未实现右臂放置流程。放置目标若由视觉给出，须用工件目标位姿乘以右法兰到工件固定变换的逆，得到右法兰目标；不能只旋转一个角度。
 

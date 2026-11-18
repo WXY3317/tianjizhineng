@@ -1,85 +1,27 @@
-# RS485 夹爪控制工程
+# RS485 夹爪底层工具
 
-整合日期：2026-10-29。
+本目录保留独立的串口点动和端点标定工具 `gripper_calibrate`，以及可选的供应商运动示例。日常双夹爪 ROS 话题控制位于 [`ros2_ws/src/gripper/`](../ros2_ws/src/gripper/README.md)，其测试已放在该包的 `test/`；此处不再编译 ROS 包的旧命令行 `example/`。
 
-业务代码与标定表来自 `gripper_RS485_so_intel/demo/`；SDK 头文件、x86_64/ARM64 动态库及供应商示例来自 `gripper_RS485_so_arm64/`。原始目录未修改。未复制历史临时日志、远程同步脚本和旧构建产物。
+## 构建
 
-## 目录
-
-```text
-gripper_RS485/
-├── CMakeLists.txt               # 统一构建入口
-├── aarch64-toolchain.cmake      # ARM64 交叉编译工具链
-├── run.sh                      # 根目录构建的启动入口
-├── demo/                       # ROS2 功能包，example/ 保留命令行示例
-├── include/                    # 配套 SDK 头文件
-├── lib/arm/                    # ARM64 SDK
-├── lib/x86/                    # x86_64 SDK（同样来自 ARM64 压缩包）
-├── src/                        # 供应商示例及 CSV 日志工具
-└── docs/                       # API 手册、Intel demo 历史说明
-```
-
-## 原生构建（x86_64 或 ARM64 Linux）
-
-依赖：C++17 编译器、CMake >= 3.16、Eigen3 开发包。根据目标处理器自动选择 `lib/x86` 或 `lib/arm`，其他架构会报错。
+依赖 C++17、CMake >= 3.16 和 Eigen3。按目标处理器自动选择 `lib/x86` 或 `lib/arm`。
 
 ```sh
 cd gripper_RS485
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j2
-ctest --test-dir build --output-on-failure
-./run.sh --help
+cmake --build build --target gripper_calibrate -j2
+./build/gripper_calibrate --help
 ```
 
-默认构建业务程序 `build/demo/example/gripper_demo`、诊断工具 `gripper_inspect` 和测试。供应商运动示例默认关闭，增加 `-DGRIPPER_BUILD_EXAMPLES=ON` 可构建四个示例。`combined_loop_demo.cpp` 保留为参考，未加入构建。
-
-## ARM64 交叉编译
-
-主机需安装 `aarch64-linux-gnu-g++`，并准备目标平台兼容的头文件/开发环境与 Eigen3。
-
-```sh
-cmake -S . -B build_arm -DCMAKE_TOOLCHAIN_FILE=aarch64-toolchain.cmake -DCMAKE_BUILD_TYPE=Release
-cmake --build build_arm -j2
-```
-
-交叉编译产物须在 ARM64 Linux 上运行；当前没有配置模拟器。目标端重新原生构建最直接。复制交叉构建的产物时，须保证动态库及标定表路径可用：当前业务程序内置构建时的标定表绝对路径，尚未实现可搬迁安装包；根目录 `run.sh` 默认运行 `build/demo/example/gripper_demo`。
-
-## 运行
-
-确认同一台 ID 1 夹爪的既有零位有效后：
-
-```sh
-./run.sh --use-existing-zero --current-threshold-a 0.5 /dev/ttyUSB0 1 115200
-```
-
-程序启动后不自动使能或运动，保持标准输入打开，按步骤发送命令并读取 ACK 和反馈：
-
-```text
-ENABLE 1
-MOVE 2 0.060 0.010
-DISABLE 3
-QUIT
-```
-
-MOVE 参数为命令编号、开度（m）、速度（m/s）。开度范围 0～0.098 m。ACK 不表示运动到位，必须读取反馈再决定后续动作。标准输出为 JSON Lines，SDK 日志通过启动脚本输出到标准错误。
-
-支持 `CLEAR 编号`、`ZERO 编号`。ZERO 会主动张开，且依赖现有标定端点检查，不是未知零位下的通用恢复方法。标定表仅适用于原 ID 1 夹爪；零位或机构变化后需重新标定。
-
-反馈电流绝对值达到默认 0.5 A 时，取消原目标并保持捕获的原始电机位置。它不是硬件限流或恒力控制；力反馈是模型估算。控制逻辑及原标定表保持原样，所有 SDK 头文件与库均使用 ARM64 包版本。
-
-## 验证状态
-
-本机 x86_64：业务程序、诊断工具、四个供应商示例编译通过；状态机和标定测试 2/2 通过；根启动脚本 `--help` 通过。SDK 头文件有既有成员初始化顺序警告。
-
-ARM64 交叉编译及真实夹爪通信/运动未验证。历史实机记录位于 `docs/Intel-demo历史说明.md`，不代表当前 SDK 组合的实机验证结果。
+供应商运动示例默认关闭；使用 `-DGRIPPER_BUILD_EXAMPLES=ON` 可构建 `position_loop_demo`、`velocity_loop_demo`、`torque_loop_demo` 和 `zero_demo`。独立文本命令控制示例仍在 [`gripper_RS485_so/demo/`](../gripper_RS485_so/demo/README.md)，不由本目录的 CMake 构建。使用任一串口工具前先停止占用该串口的 ROS 节点。
 
 ## ROS2 话题功能包
 
-功能包已迁移至 `ros2_ws/src/gripper/`，包名 `gripper`，内部包含 SDK、业务代码、消息、配置和示例。使用说明见 [gripper README](../ros2_ws/src/gripper/README.md)。本目录根 CMake 仍可构建迁移后的命令行示例。
+`tianji` 上的工作区统一使用 `ros2_ws/build/`、`install/`、`log/`。部署与启动命令见 [工作区说明](../ros2_ws/README.md)。
 
 ## 右夹爪 ID 2：点动与端点标定
 
-新增的 `build/gripper_calibrate` 是独立串口工具，操作前停止占用该串口的 ROS 节点。它固定 115200 波特率、电机方向 `+1`。`open` 发 `-0.5 rad/s`，`close` 发 `+0.5 rad/s`，每次最多 5 秒；结束时发送停止与失能。电流达到 0.5 A、驱动报错或通信失败时尝试停止并失能；这是软件采样阈值，不是硬件限流。操作时夹爪应空载、行程无遮挡，观察实物运动；不要连续顶住机械限位。命令均不自动清错。
+新增的 `build/gripper_calibrate` 是独立串口工具，操作前停止占用该串口的 ROS 节点。它固定 115200 波特率、电机方向 `+1`。`open` 发负角速度，`close` 发正角速度，速度默认 0.5 rad/s、范围 0.05～0.5 rad/s；每次最多 5 秒，结束时发送停止与失能。点动电流阈值默认 0.5 A，可用第三个点动参数指定 0～5 A，`0` 关闭此软件电流阈值；驱动报错或通信失败仍尝试停止并失能。该阈值不是硬件限流。操作时夹爪应空载、行程无遮挡，观察实物运动；不要连续顶住机械限位。命令均不自动清错。
 
 在目标机器上构建（或用 ARM64 工具链交叉编译），以下命令在 `gripper_RS485/` 目录执行：
 
@@ -140,7 +82,7 @@ nvidia@vision:~/wxy/tianjizhineng/gripper_RS485$
 
 右表第三次修正仅调整 80～93 mm，使用最新复测 84→83、86→84、90→85 mm，80 mm 以下映射保持不变；上一版本保存在 `right_calibration_v3.csv`。90 mm 目标对应电机角度约 0.212 rad，接近全开机械端，复测时应监测电流并避免连续顶限位。
 
-当前右夹爪重新确认全开实际宽度为 85 mm，设零前角度约 -51.4629478455 rad，已在该位置重新设零。原 93 mm 的 `right_calibration.csv` 暂不可用于位置控制；需在此次零位下实测完全闭合角度后，用 `--open-width-mm 85 --open-angle-rad 0 --closed-angle-rad 实测闭合角度` 生成新表。
+2026-11-02 右夹爪曾确认全开实际宽度为 85 mm，设零前角度约 -51.4629478455 rad，已在该位置重新设零。当时原 93 mm 的 `right_calibration.csv` 暂不可用于位置控制；需在此次零位下实测完全闭合角度后，用 `--open-width-mm 85 --open-angle-rad 0 --closed-angle-rad 实测闭合角度` 生成新表。
 
 ## Tianji 串口固定名称
 
@@ -159,4 +101,20 @@ readlink -f /dev/gripper_rs485
 
 最后一条应解析到当前 RS485 适配器，例如 `/dev/ttyUSB0`。后续可用 `port:=/dev/gripper_rs485` 和 `PORT=/dev/gripper_rs485`。这个规则只创建稳定设备名，不影响电机零位或标定表。
 
-2026-11-02 右夹爪 ID 2 重新确认全开 85 mm 并在全开处设零，完全闭合角度 56.6882591248 rad。当前 `right_calibration.csv` 已按 85 mm/0 mm 端点重新生成，中间开度仍是机构模型估算；先前 93 mm 表保存在 `right_calibration_93mm.csv`，不可用于当前零位/机构状态。
+2026-11-02 右夹爪 ID 2 重新确认全开 85 mm 并在全开处设零，完全闭合角度 56.6882591248 rad。当时 `right_calibration.csv` 已按 85 mm/0 mm 端点重新生成，中间开度仍是机构模型估算；先前 93 mm 表保存在 `right_calibration_93mm.csv`，不可用于当前零位/机构状态。
+
+2026-11-06 右夹爪 ID 2 再次确认全开 86 mm，并在此处设零；全闭角度复读为 55.2002983093 rad。当前 `right_calibration.csv` 已重建为 86 mm/0 mm 两端标定，旧 85 mm 表保存在 `right_calibration_85mm.csv`。中间开度仍由机构模型估算，需要重新实测。该右侧驱动器曾在断电后于同一全开位置出现约五圈角度偏移，重新上电后须核对实际开度与编码器角度，不能只凭 CSV 存在就认为零位有效。
+
+2026-11-06 右夹爪 ID 2 重新执行 `zero_demo 2` 后，现场确认机械全开实际宽度 **98 mm**。当时将 **63.5037384033 rad** 写入表作为 0 mm 端点；用户现确认这个全闭角度并未独立验证，因此它只是暂用估计，不能据此认定右侧 0 mm 指令安全或准确。此前 86 mm 表保存在 `right_calibration_86mm.csv`。驱动器断电后须重新确认零点。
+
+随后右侧实测发现：原端点表在电机角度约 **26.60555 rad** 时反馈约 **60 mm**，接触面实测约 **45 mm**。第一次修正用该测量点执行 `refine_calibration.py --point 60:45`，原端点表保存在 `right_calibration_98mm_endpoints.csv`。
+
+第一次修正后，电机角度 **19.7244053 rad** 时反馈 60 mm，现场实测 **56 mm**。第二次修正从端点原表重新生成，使用原端点模型宽度 **60.0065013→45 mm**、**70.7547302→56 mm** 两个实测锚点；一次修正表保存在 `right_calibration_98mm_one_anchor.csv`。
+
+第二次修正后，右侧请求 60 mm，静止电机角度约 **18.009 rad**，现场实测 **59 mm 多**；本次精度核对约在 1 mm 内。其他中间位置尚未实测确认。
+
+随后实测右侧在第二次修正表下的四个点：目标/实测 **20→13、30→25、50→50、70→66 mm**，静止电机角度分别约 **46.655、38.732、23.528、13.588 rad**。第三次右表从端点原表按这些点与先前的 45、56 mm 测量一次性重建，保持 0/98 mm 端点；第二次修正表保存在 `right_calibration_98mm_two_anchors.csv`。测量值取整至毫米，其他开度及往返重复性仍需复核。
+
+2026-11-07 设备重新上电并执行 `zero_demo 2` 后，右侧机械全开再次确认 **98 mm**，但第三次表在本次零位下目标/实测为 **5→12、10→22、15→31、20→37、25→42、30→47、35→52、40→57、45→62、50→66、55→71、60→75、65→80、70→83、75→85、80→87 mm**。原表在电机角度 **29.69662 rad** 时反馈 40 mm、实测约 57 mm。当前 `right_calibration.csv` 用这些点从第三次表修正生成，第三次表保存在 `right_calibration_98mm_six_anchors.csv`。之后用户确认本次上电右侧在 61.209 rad 时物理全闭为 0 mm；现已将表内旧的 63.5037384033 rad 估计端点修正为 61.2092854977 rad，并保留已测的中间角度映射。0～12 mm 之间仍需进一步核对。下次上电后的适用性尚未验证。
+
+此表部署后，本次上电的独立下发验证：**50 mm 指令实测 50 mm**（静止角度 33.94968 rad），**20 mm 指令实测 20 mm**（静止角度 51.61164 rad）；两次均在到位后失能。其余目标尚未用新表独立复测。

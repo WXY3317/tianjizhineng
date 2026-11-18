@@ -3,8 +3,15 @@
 #include "motor_driver.hpp"
 #include <stdexcept>
 #include <thread>
+#include <filesystem>
 
 namespace gripper_demo {
+namespace {
+std::string calibration_path(int id) {
+    return (std::filesystem::read_symlink("/proc/self/exe").parent_path() /
+            (id == 2 ? "right_calibration.csv" : "calibration.csv")).string();
+}
+}
 // Keep SDK cout logging off the JSON message stream; all SDK access is serialized.
 class VendorOutput {
 public:
@@ -15,10 +22,10 @@ private:
 };
 class Rs485Hardware final : public Hardware {
 public:
-    Rs485Hardware(const std::string& port, int id, int baud) : calibration_(DEMO_CALIBRATION_PATH) {
+    Rs485Hardware(const std::string& port, int id, int baud) : calibration_(calibration_path(id)), motor_id_(id) {
         VendorOutput logs;
-        if (port.empty() || id != 1 || baud <= 0)
-            throw std::invalid_argument("current calibration belongs to motor ID 1");
+        if (port.empty() || (id != 1 && id != 2) || baud <= 0)
+            throw std::invalid_argument("calibration available only for motor IDs 1 and 2");
         MotorDriverConfig config;
         config.motor_id = static_cast<std::uint16_t>(id);
         config.protocol_type = "smodule_modbus";
@@ -108,11 +115,14 @@ public:
     void hold_position(double angle, float speed_mps) override {
         VendorOutput logs;
         const double width = calibration_.width(angle);
-        const double speed = calibration_.angular_speed(std::clamp(width, 0.0, 0.098), speed_mps);
+        const double speed = calibration_.angular_speed(std::clamp(width, 0.0, calibration_.open_width()), speed_mps);
         motor_->motor_pos_cmd(static_cast<float>(angle), static_cast<float>(speed));
     }
+    double open_width() const override { return calibration_.open_width(); }
+    double min_width() const override { return 0.0; }
 private:
     Calibration calibration_;
+    int motor_id_;
     std::shared_ptr<MotorDriver> motor_;
 };
 std::unique_ptr<Hardware> make_hardware(const std::string& port, int id, int baud) {

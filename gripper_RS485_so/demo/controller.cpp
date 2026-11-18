@@ -11,6 +11,11 @@ Controller::Controller(std::unique_ptr<Hardware> hardware, double current_thresh
     if (!hardware_) throw std::invalid_argument("hardware is null");
     if (!std::isfinite(current_threshold_a_) || current_threshold_a_ <= 0)
         throw std::invalid_argument("current threshold must be finite and positive");
+    open_width_ = hardware_->open_width();
+    min_width_ = hardware_->min_width();
+    if (!std::isfinite(open_width_) || open_width_ <= 0 ||
+        !std::isfinite(min_width_) || min_width_ < 0 || min_width_ >= open_width_)
+        throw std::invalid_argument("invalid calibrated open width");
 }
 Controller::~Controller() { hardware_->shutdown(); }
 void Controller::init(bool use_existing_zero) {
@@ -78,9 +83,11 @@ Feedback Controller::sample() {
 }
 Result Controller::command(const Command& cmd) {
     if (cmd.action == Action::Move &&
-        (!std::isfinite(cmd.position_m) || cmd.position_m < 0 || cmd.position_m > 0.098 ||
+        (!std::isfinite(cmd.position_m) || cmd.position_m < min_width_ || cmd.position_m > open_width_ ||
          !std::isfinite(cmd.speed_mps) || cmd.speed_mps <= 0))
-        return {false, "position must be 0..0.098 m; speed must be finite and positive"};
+        return {false, "position must be " + std::to_string(min_width_) +
+                           ".." + std::to_string(open_width_) +
+                           " m; speed must be finite and positive"};
     try {
         if (cmd.action == Action::Disable) {
             hardware_->disable(); target_valid_ = false; current_limit_reached_ = false;

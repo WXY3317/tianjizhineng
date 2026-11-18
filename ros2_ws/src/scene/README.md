@@ -9,7 +9,7 @@ cd ~/wxy/tianjizhineng/ros2_ws
 
 首次构建或源码更新后使用 `./run_scene.sh --build`。脚本自动加载 ROS 和工作区环境。
 
-默认 `dry_run:=true`：每个目标只打印换算后的法兰位置 `flange_position` 和四元数 `flange_orientation`，并在 `/scene/status` 的 `previewed` 事件中发布这两个字段；坐标系为 `body_base`。不会向手臂控制话题发送消息。确认结果后，单独启动时用 `./run_scene.sh dry_run:=false` 执行；随真机一起启动时用 `start_scene:=true scene_dry_run:=false`。
+默认 `dry_run:=false`，收到有效目标后会执行运动。预览时使用 `./run_scene.sh dry_run:=true`；预览只在 `/scene/status` 的 `previewed` 事件中发布换算后的法兰位置和姿态，不发送运动命令。
 
 MQTT 视觉目标是 `body_base` 下的工件位姿；工件原点作为夹具尖端目标，工件局部 Z 轴作为夹具局部 Z 轴方向，绕该轴的角度允许调整。控制器逆解目标表示第 7 轴法兰。默认夹具尖端相对法兰沿法兰局部 +Z 方向偏移 0.20 m，坐标轴平行。scene 直接按目标姿态减去这段偏移，得到发给手臂的法兰目标。请先在 `dry_run:=true` 核对法兰目标方向；若实际沿局部 -Z，使用 `tool_tip_offset_z_m:=-0.20`。随真机启动时对应参数为 `scene_tool_tip_offset_z_m`。
 
@@ -19,21 +19,24 @@ MQTT 视觉目标是 `body_base` 下的工件位姿；工件原点作为夹具�
 默认订阅本机 Broker 的 MQTT 主题 **`vs/workpiece/6d_pose`**。
 如需其他 Broker，可向脚本传入 `mqtt_host:=... mqtt_port:=... mqtt_topic:=...`。
 
-消息以 UTF-8 发送。支持标准 JSON，也兼容示意图里未加引号的三个顶层字段名：
+消息以 UTF-8 发送。`label` 是字符串；支持标准 JSON，也兼容未加引号的顶层字段名：
 
 ```json
 {
+  "label": "无遮挡正面",
   "position1": {"x": 0.12, "y": -0.08, "z": 0.39},
   "position2": {"x": 0.12, "y": -0.08, "z": 0.35},
   "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0}
 }
 ```
 
+当前执行 `无遮挡正面` 和 `无遮挡背面`。正面固定由左臂抓取并继续原交接流程；背面按 `position1` 的 Y 值选臂：Y ≥ 0.05 m 用左臂，Y ≤ -0.05 m 用右臂。背面抓取后回退 `position1`、该臂 `pre` 姿态，再到对应的 `back_left_post_grasp_joints` 或 `back_right_post_grasp_joints`；不启动左右臂交接。其他四种标签会拒绝。
+
 位置单位为米，姿态为 `body_base` 下的 `xyzw` 单位四元数，两个目标共用姿态。
-按 `position1`、`position2` 顺序执行；**目标在 `body_base` 中的 Y > 0 选左臂，Y < 0 选右臂**。
-两点分别表示同一只手臂的预抓取位置和工件实际位置，Y 符号不同时在运动前拒绝。
+按 `position1`、`position2` 顺序执行。
+两点分别表示同一只手臂的预抓取位置和工件实际位置；背面模式下两点选出的手臂不同时会拒绝。
 `position2` 可以省略；恰好为 `(0,0,0)` 时视为占位并跳过。
-其他 Y = 0 的目标会被拒绝。MQTT retained 消息被忽略。
+背面模式下，非占位目标 Y = 0 会被拒绝。MQTT retained 消息被忽略。
 
 节点直接使用 MQTT 给出的 `body_base` 工件位姿，换算为法兰位姿后依次发布：
 `position1` 使用 `/gento_control/{left,right}/target_pose_ptp`，按关节空间轨迹到目标；
@@ -46,38 +49,45 @@ MQTT 视觉目标是 `body_base` 下的工件位姿；工件原点作为夹具�
 需要控制节点；绕轴候选先尝试原始姿态，再按绝对角度从小到大尝试。
 可在 `/scene/status` 查看发送、完成及拒绝原因。
 
-到达 `position2` 后，scene 向左夹爪发送 27 mm 命令，等待夹爪到位或触发电流阈值并保持当前位置。电流保持可能发生在 27 mm 之前，不能单凭反馈确认抓牢；收到 `awaiting_attach` 状态后，操作者确认实物已夹牢，再手动调用下面的附着服务。服务会依次执行四段运动，并等待每段确认完成后再发送下一段：先从当前位姿沿法兰直线轨迹退回本次实际到达的 `position1` 法兰位姿（包含选定的局部 Z 轴旋转）；再让左臂回到 `left_arm_joint_pre` 关节准备姿态；随后通过 `/gento_control/body/target_joints` 将六个躯干关节回到 0；躯干完成后，通过 `/gento_control/left/target_joints` 到 `left_post_grasp_joints`。默认最终关节角（弧度）为 `[2.845654625621635, 0.4907167724907257, -2.826141844584338, -1.5708835932574963, -2.0122948143793824, 0.49986229777117597, -1.035084966187757]`。单独启动可用 `left_post_grasp_joints:='[j1,j2,j3,j4,j5,j6,j7]'` 覆盖；随真机启动使用 `scene_left_post_grasp_joints`。初次抓取仅支持左臂。左臂到达交接点后，scene 发布 `awaiting_handover`，等待操作者手动调用 `/scene/start_handover`。
+到达 `position2` 后，scene 向所选手臂夹爪发送 27 mm 命令，等待夹爪到位或触发电流阈值并保持当前位置。电流保持可能发生在 27 mm 之前，不能单凭反馈确认抓牢；收到 `awaiting_attach` 状态后，操作者确认实物已夹牢，再手动调用下面的附着服务。正面模式会依次回退到 `position1`、左臂 `pre`、躯干六轴回零、左臂 `left_post_grasp_joints`，之后自动交接右臂。背面模式会依次回退到 `position1`、所选手臂 `pre`、该臂的背面终点关节角，不进行交接。每段运动均等待完成反馈才继续。
 
 scene 将所选绕轴角和法兰到夹具尖端的偏移作为固定变换，
 每次收到该手臂的新鲜法兰位姿，就在 `/scene/workpiece_pose` 发布工件在 `body_base` 下的估计位姿。
-四段运动期间也持续更新，工件姿态按法兰反馈乘以先前局部 Z 轴旋转的逆旋转求得。`header.stamp` 沿用法兰位姿的时间戳。服务成功只表示退回命令已发送；左臂到交接点查看 `awaiting_handover`，全部完成查看 `post_grasp_completed`，失败查看 `rejected`。释放工件时调用分离服务，停止发布。必须由操作者或抓取流程在确认夹牢后调用附着服务；
+四段运动期间也持续更新，工件姿态按法兰反馈乘以先前局部 Z 轴旋转的逆旋转求得。`header.stamp` 沿用法兰位姿的时间戳。服务成功只表示退回命令已发送；左臂到交接点查看 `handover_started`，全部完成查看 `post_grasp_completed`，失败查看 `rejected`。释放工件时调用分离服务，停止发布。必须由操作者或抓取流程在确认夹牢后调用附着服务；
 仅到达 `position2` 不表示已夹牢。scene 重启后需重新建立附着状态。
 
 ```bash
 ros2 service call /scene/attach_workpiece std_srvs/srv/Trigger '{}'
 ros2 topic echo /scene/status
-# 看到 awaiting_handover 且确认交接区安全后执行：
-ros2 service call /scene/start_handover std_srvs/srv/Trigger '{}'
 ros2 topic echo /scene/workpiece_pose
 ros2 service call /scene/detach_workpiece std_srvs/srv/Trigger '{}'
 ```
 
-手动启动交接后，右臂先到 `right_handover_joints`；控制节点确认到位后等待 `interval`（默认 1.0 秒），再保持姿态沿 `body_base` 的 +Y 直线运动 7 cm。随后右夹爪到 27 mm 或触发电流保持，切换工件附着到右臂，左夹爪到 0 mm，最后右臂退回预备交接关节位。右夹爪到位时根据双臂当前法兰反馈计算右法兰到工件的完整固定变换，并用右臂反馈持续发布工件位姿。`right_handover_joints` 和 `handover_y_offset_m` 可在单独启动时覆盖，随真机启动时加 `scene_` 前缀。夹爪反馈错误或 15 秒未到位时流程停止，需检查现场并重启 scene。
+左臂到达交接点后，右臂自动先到 `right_handover_joints`；控制节点确认到位后等待 `interval`（默认 1.0 秒），再保持姿态沿 `body_base` 的 +Y 直线运动 7 cm。随后右夹爪到 27 mm 或触发电流保持，切换工件附着到右臂，左夹爪到 0 mm，右臂先退回预备交接关节位，再到 `right_arm_joint_pre` 准备姿态。右夹爪到位时根据双臂当前法兰反馈计算右法兰到工件的完整固定变换，并用右臂反馈持续发布工件位姿。`right_handover_joints` 和 `handover_y_offset_m` 可在单独启动时覆盖，随真机启动时加 `scene_` 前缀。夹爪反馈错误或 15 秒未到位时流程停止，需检查现场并重启 scene。
 
 该位姿由法兰位姿和固定夹具几何推算，不是工件的独立视觉测量；前提是工件夹取后相对夹具不滑动。
 附着期间 scene 不接受新的 MQTT 工件目标，释放后可处理下一件。
 
-左右臂关节预设可通过 `/scene/arm_position`（`std_msgs/msg/Int8`）触发：
-`0` 到 `init` 初始位置，`1` 到 `pre` 准备位置。节点先发送左臂，等待控制节点确认完成，
-再发送右臂；任一步失败即停止。关节角配置为弧度，启动时可用
-`left_arm_joint_init`、`right_arm_joint_init`、`left_arm_joint_pre`、
-`right_arm_joint_pre` 覆盖七轴数组；随真机一起启动时参数加 `scene_` 前缀。
+左右臂关节预设写在 `config/arm_positions.json`，单位弧度。每项包含 Int8 编号和 `name`。双臂关节姿态填写 `left`、`right` 两组七轴弧度数组；
+躯干 TCP 位姿填写 `body_pose.position`（米，body_base 坐标系）和
+`body_pose.orientation`（单位四元数 x/y/z/w），执行末端直线轨迹；填写 `body_pose_ptp` 的相同字段时，只求终点逆解，再由控制器执行关节位置运动，末端不保证直线。躯干关节预设填写 `body_joints` 六轴弧度数组。默认 `0=init`、`1=pre`、`2=body_photo`（关节空间运动）、`3=body_home`、
+`9=home`（下班回收）。
+可添加其他编号（-128～127）的姿态；`1=pre` 供抓取流程使用，应保留。
+修改配置后重新启动 scene；也可用 `arm_positions_file:=/绝对路径/arm_positions.json`
+指定另一份文件。通过 `/scene/arm_position`（`std_msgs/msg/Int8`）发送编号；
+双臂姿态先发送左臂，确认完成后再发送右臂；躯干位姿直接发送到
+`/gento_control/body/target_pose`，`body_pose_ptp` 发到 `/gento_control/body/target_pose_ptp`；躯干关节预设发送到 `/gento_control/body/target_joints`。任一步失败即停止。
 此功能仅在 `dry_run:=false` 且 scene 和控制节点空闲时执行。例如：
 
 ```bash
 ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 0}'
 ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 1}'
+ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 2}'
+ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 3}'
+ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 9}'
 ```
+
+随 `run_real_robot.sh` 启动时，使用 `scene_arm_positions_file:=/绝对路径/arm_positions.json` 覆盖配置。
 
 通过 `/scene/status` 观察 `arm_position_sent`、`arm_position_step_completed` 和
 `arm_position_completed`。启动或更新代码后需要重新构建并重启 scene 节点。

@@ -5,7 +5,8 @@ from pathlib import Path
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -26,21 +27,25 @@ def default_sdk_root():
 
 def generate_launch_description():
     # 各项为（默认值，参数类型）；可在启动时用 参数名:=值 覆盖。
-    # 例如：./run_real_robot.sh cartesian_speed:=0.02
+    # 例如：./run_real_robot.sh body_cartesian_speed:=0.02
     # 节点将这些参数声明为只读，修改后需重启节点；所有数值参数必须为有限正数。
     defaults = {
         # SDK 根目录，包含 PYTHON_SDK/GentoRobot.py；优先读取 GENTO_SDK_ROOT，否则向上查找。
         'sdk_root': (default_sdk_root(), str),
         # 默认只读：不清错、不切换模式、不创建控制订阅。
         'enable_control': ('false', bool),
+        'enable_head_control': ('true', bool),
         # 机器人控制器 IPv4 地址，不是部署用 ARM 主机的 SSH 地址。
         'ip': (CONTROLLER_IP, str),
-        # 启动 POSITION 比例及离线规划速度百分比：5.0=5%，允许 (0,10]；不是末端 m/s。
+        # 手臂/头部启动 POSITION 比例及离线规划速度百分比：5.0=5%，允许 (0,10]；不是末端 m/s。
         # 已校验轨迹播放时临时使用 SDK 全局 100%，避免重复限速；结束/停止后恢复。
-        'speed': ('8.0', float),
-        # 启动 POSITION 比例及离线规划加速度百分比：5.0=5%，允许 (0,10]；播放时同上。
+        'speed': ('10.0', float),
+        # 手臂/头部启动 POSITION 比例及离线规划加速度百分比：5.0=5%，允许 (0,10]；播放时同上。
         'acc': ('6.0', float),
-        # 每个关节相对本次起点的最大角度变化，单位度；同时检查目标和轨迹点，不是相邻点步长。
+        # 躯干 POSITION 比例及离线规划速度/加速度百分比，独立于手臂，范围 (0,10]。
+        'body_speed': ('10.0', float),
+        'body_acc': ('6.0', float),
+        # 兼容旧启动参数；关节目标不再受相对起点角度限制，仍检查控制器实际关节限位。
         'max_delta': ('120.0', float),
         # 运动执行超时，单位秒；不含离线规划时间。直线轨迹规划也须为到位确认预留时间。
         'timeout': ('60.0', float),
@@ -57,15 +62,20 @@ def generate_launch_description():
         # 完整上传点集由控制器播放；拆分架构仅支持 trajectory。
         'cartesian_execution': ('trajectory', str),
         # 实际反馈 TCP 到规划线段的最大距离，单位 m；默认 5 mm，超出时软件急停。
-        'cartesian_path_tolerance': ('0.005', float),
-        # 末端直线规划的线速度上限，单位 m/s；0.05=5 cm/s，含平滑加减速，实际可能因重规划/调度而降低。
+        'cartesian_path_tolerance': ('0.008', float),
+        # 手臂末端直线规划的线速度上限，单位 m/s；含平滑加减速。
         'cartesian_speed': ('0.08', float),
-        # 末端姿态 SLERP 的角速度上限，单位 rad/s；0.1 约为 5.73°/s，姿态保持时不产生旋转。
+        # 手臂末端姿态 SLERP 的角速度上限，单位 rad/s。
         'cartesian_angular_speed': ('0.2', float),
-        # 直线 IK 关节速度配置上限，单位度/s；实际还受各关节 VelMax × 控制器比例 × 90% 约束。
+        # 手臂直线 IK 关节速度配置上限，单位度/s；实际还受各关节 VelMax × 控制器比例 × 90% 约束。
         'cartesian_joint_speed': ('20.0', float),
-        # 直线 IK 关节加速度配置上限，单位度/s²；实际还受各关节 AccMax × 控制器比例 × 90% 约束。
+        # 手臂直线 IK 关节加速度配置上限，单位度/s²；实际还受各关节 AccMax × 控制器比例 × 90% 约束。
         'cartesian_joint_acc': ('25.0', float),
+        # 躯干 BD_J6 直线逆解独立限速；实际速度还受六轴额定值、body_speed/body_acc 与轨迹重定时约束。
+        'body_cartesian_speed': ('0.08', float),  # m/s
+        'body_cartesian_angular_speed': ('0.2', float),  # rad/s
+        'body_cartesian_joint_speed': ('20.0', float),  # 度/s
+        'body_cartesian_joint_acc': ('25.0', float),  # 度/s²
         # 左臂位姿反馈和目标使用的 SDK 基坐标系名称；仅校验名称，不执行 TF 变换，也不改变实际坐标轴。
         'left_frame': ('left_arm_sdk_base', str),
         # 右臂 SDK 基坐标系名称，必须与 left_frame 不同；左右臂位姿目标可独立发送。
@@ -73,11 +83,12 @@ def generate_launch_description():
         # 躯干固定基座：原点在第 1 轴中心、轴方向与配置 AGV 平行；不做 TF 转换。
         'body_frame': ('body_base', str),
         # 躯干 BD_J6 位姿逆解目标在 body_base 中的高度范围，单位 m；上下限均包含。
-        'body_z_min_m': ('0.55', float),
+        'body_z_min_m': ('0.4', float),
         'body_z_max_m': ('0.76', float),
         # 躯干到位须同时满足关节容差、末端位置和朝向容差，持续 0.5 秒。
         'body_position_tolerance_mm': ('1.0', float),
         'body_orientation_tolerance_deg': ('0.2', float),
+
     }
     declarations = [DeclareLaunchArgument(k, default_value=v) for k, (v, _) in defaults.items()]
     params = {k: ParameterValue(LaunchConfiguration(k), value_type=t) for k, (_, t) in defaults.items()}
@@ -93,10 +104,8 @@ def generate_launch_description():
         DeclareLaunchArgument('scene_interval', default_value='1.0'),
         DeclareLaunchArgument('scene_tool_tip_offset_z_m', default_value='0.20'),
         DeclareLaunchArgument('scene_allow_tool_z_rotation', default_value='true'),
-        DeclareLaunchArgument('scene_left_arm_joint_init', default_value='[0, 0, 0, 0, 0, 0, 0]'),
-        DeclareLaunchArgument('scene_right_arm_joint_init', default_value='[0, 0, 0, 0, 0, 0, 0]'),
-        DeclareLaunchArgument('scene_left_arm_joint_pre', default_value='[1.91, 0.80, -2.0, -1.0, 0, 0, 0]'),
-        DeclareLaunchArgument('scene_right_arm_joint_pre', default_value='[0.25, -0.45, 0.3, -1.0, 0, 0, 0]'),
+        DeclareLaunchArgument('scene_arm_positions_file',
+                              default_value=PathJoinSubstitution([FindPackageShare('scene'), 'config', 'arm_positions.json'])),
         DeclareLaunchArgument('scene_left_post_grasp_joints',
                               default_value='[2.845654625621635, 0.4907167724907257, '
                                             '-2.826141844584338, -1.5708835932574963, '
@@ -107,6 +116,10 @@ def generate_launch_description():
                                             '-0.19600047499896323, -1.5263951506241609, '
                                             '-1.1898433109620943, -0.5670400206804377, '
                                             '-1.070166084152843]'),
+        DeclareLaunchArgument('scene_back_left_post_grasp_joints',
+                              default_value='[2.840, 0.40, -2.850, -1.57, -2.01, 0.50, -1.03]'),
+        DeclareLaunchArgument('scene_back_right_post_grasp_joints',
+                              default_value='[0.220, -0.4, -0.20, -1.520, -1.190, -0.560, -1.1]'),
         DeclareLaunchArgument('scene_handover_y_offset_m', default_value='0.07'),
         DeclareLaunchArgument('start_control', default_value='true', description='Start control node when enable_control is true'),
         Node(package='gento_driver', executable='bridge',
@@ -131,10 +144,10 @@ def generate_launch_description():
                  'allow_tool_z_rotation': ParameterValue(LaunchConfiguration('scene_allow_tool_z_rotation'), value_type=bool),
                  'left_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_left_post_grasp_joints'), value_type=str),
                  'right_handover_joints': ParameterValue(LaunchConfiguration('scene_right_handover_joints'), value_type=str),
+                 'back_left_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_back_left_post_grasp_joints'), value_type=str),
+                 'back_right_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_back_right_post_grasp_joints'), value_type=str),
                  'handover_y_offset_m': ParameterValue(LaunchConfiguration('scene_handover_y_offset_m'), value_type=float),
-                 **{f'{side}_arm_joint_{position}': ParameterValue(
-                     LaunchConfiguration(f'scene_{side}_arm_joint_{position}'), value_type=str)
-                    for side in ('left', 'right') for position in ('init', 'pre')}}],
+                 'arm_positions_file': LaunchConfiguration('scene_arm_positions_file')}],
              condition=IfCondition(LaunchConfiguration('start_scene'))),
         GroupAction(condition=IfCondition(LaunchConfiguration('enable_control')), actions=[
             Node(package='gento_control', executable='control', name='gento_control',

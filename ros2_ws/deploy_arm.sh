@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build ARM64 SDK, sync sources, and build the ROS package without starting it.
+# Build ARM64 SDK, sync sources, and build the ROS workspace without starting it.
 set -euo pipefail
 workspace_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 exec python3 - "$workspace_dir" "$@" <<'PY'
@@ -14,7 +14,7 @@ import sys
 
 workspace = Path(sys.argv[1])
 project = workspace.parent
-parser = argparse.ArgumentParser(prog='deploy_arm.sh', description='Cross-build ARM64 SDK and deploy the project via SSH; never starts robot control.')
+parser = argparse.ArgumentParser(prog='deploy_arm.sh', description='Cross-build ARM64 SDK and deploy the ROS workspace via SSH; never starts robot control.')
 parser.add_argument('--host', default='tianji', help='SSH host or configured alias')
 parser.add_argument('--user', default='nvidia')
 parser.add_argument('--remote-dir', default='/home/nvidia/wxy/tianjizhineng')
@@ -83,6 +83,7 @@ preflight += r"""python3 - <<'CHECK_ROBOT_PROCESSES'
 import sys
 from pathlib import Path
 executables = ('/gento_driver/bridge', '/gento_control/control', '/gento_feedback/feedback',
+               '/gripper/gripper_node',
                '/gento_dual_arm/bridge', '/gento_driver/arm_control', '/gento_driver/dual_arm_control')
 active = []
 for process in Path('/proc').iterdir():
@@ -115,10 +116,25 @@ remote_script('mkdir -p ' + shlex.quote(remote_dir) + '\n')
 exclusions = '''
 .git/ .vscode/ .idea/ __pycache__/ .pytest_cache/ *.egg-info/
 build/ install/ log/ build_real/ install_real/ log_real/
+build_gripper_*/ install_gripper_*/ log_gripper_*/
 artifacts/ *.so *.dll *.exe /tianji-robot-SDK/FXPlatform
 '''.split()
 rsync = ['rsync', '-az', '--stats', '--protect-args', '-e', shlex.join(ssh)]
 run([*rsync, *(f'--exclude={item}' for item in exclusions), str(project) + '/', remote + ':' + remote_dir + '/'])
+# The broad *.so exclusion protects the host SDK. Stage only the ARM gripper
+# libraries needed when the same source tree is built on tianji.
+gripper_arm_lib = workspace / 'src/gripper/sdk/lib/arm'
+for name in ('libgripper_lib.so', 'libgrip_pawl_lib.so', 'libcan_motor_driver.so'):
+    source = gripper_arm_lib / name
+    if not source.is_file():
+        parser.error(f'Missing ARM gripper library: {source}')
+    header = source.read_bytes()[:20]
+    if header[:4] != b'\x7fELF' or len(header) < 20 or int.from_bytes(header[18:20], 'little') != 183:
+        parser.error(f'Not an ARM64 gripper library: {source}')
+remote_script('mkdir -p ' + shlex.quote(remote_dir + '/ros2_ws/src/gripper/sdk/lib/arm') + '\n')
+run([*rsync, *(str(gripper_arm_lib / name) for name in
+              ('libgripper_lib.so', 'libgrip_pawl_lib.so', 'libcan_motor_driver.so')),
+     remote + ':' + remote_dir + '/ros2_ws/src/gripper/sdk/lib/arm/'])
 # Stage separately so an incomplete upload never replaces the target library.
 staged = remote_library + '.upload'
 run([*rsync, str(library), remote + ':' + staged])
@@ -140,7 +156,7 @@ print('ARM64 SDK checksum, architecture and loading verified')
 remote_script('python3 - <<\'VERIFY_ARM_SDK\'\n' + verify + 'VERIFY_ARM_SDK\n')
 
 if not args.skip_remote_build:
-    print('4/4 Build ROS package on ARM64 host (no robot connection)', flush=True)
+    print('4/4 Build all ROS packages on ARM64 host (no robot connection)', flush=True)
     # rsync intentionally keeps unrelated files; retire only known removed implementations.
     obsolete = ['src/gento_dual_arm',
                 'build_real/gento_dual_arm',
@@ -153,7 +169,9 @@ if not args.skip_remote_build:
                 'src/gento_driver/gento_driver/trajectory_diagnostics.py',
                 'src/gento_driver/gento_driver/diagnostics.py',
                 'install_real/gento_driver/lib/gento_driver/arm_control',
-                'install_real/gento_driver/lib/gento_driver/dual_arm_control']
+                'install_real/gento_driver/lib/gento_driver/dual_arm_control',
+                'install/gento_driver/lib/gento_driver/arm_control',
+                'install/gento_driver/lib/gento_driver/dual_arm_control']
     cleanup = f'''import shutil, uuid
 from pathlib import Path
 workspace = Path({(remote_dir + '/ros2_ws')!r})
@@ -168,9 +186,10 @@ for relative in {obsolete!r}:
     remote_script("python3 - <<'RETIRE_REMOVED_MODULES'\n" + cleanup + 'RETIRE_REMOVED_MODULES\n')
     remote_script(f'''source {shlex.quote(setup)}
 cd {shlex.quote(remote_dir + '/ros2_ws')}
-colcon --log-base log_real build --base-paths src --packages-up-to gento_driver --build-base build_real --install-base install_real --symlink-install
-source install_real/setup.bash
+colcon --log-base log build --base-paths src --build-base build --install-base install --symlink-install
+source install/setup.bash
 ros2 launch gento_driver dual_arm.launch.py --show-args
+ros2 launch gripper dual_gripper.launch.py --show-args
 ''')
 print(('Dry run finished. ' if args.dry_run else 'Deployment complete. ') + remote + ':' + remote_dir)
 print('No controller connection, error reset, mode switch, or motion was requested.')

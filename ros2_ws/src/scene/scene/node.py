@@ -10,6 +10,7 @@ from pathlib import Path
 
 import paho.mqtt.client as mqtt
 import rclpy
+from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import PoseStamped
 from gripper.msg import GripperCommand, GripperState
 from rclpy.executors import ExternalShutdownException
@@ -18,8 +19,9 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import Int8, String
 from std_srvs.srv import Trigger
 
+from .arm_positions import load_arm_positions
 from .geometry import (flange_target_from_tip, joint5_restore_waypoints,
-                       parse_targets, rotate_vector, rotation_matrix, quaternion_multiply,
+                       parse_vision_message, rotate_vector, rotation_matrix, quaternion_multiply,
                        route_targets, tool_z_rotation_matrix,
                        tool_z_rotations, undo_tool_z_matrix, undo_tool_z_rotation,
                        workpiece_pose_from_flange)
@@ -48,10 +50,13 @@ class VisionTargets(Node):
                                '-0.19600047499896323, -1.5263951506241609, '
                                '-1.1898433109620943, -0.5670400206804377, '
                                '-1.070166084152843]')
+        self.declare_parameter('back_left_post_grasp_joints',
+                               '[2.840, 0.40, -2.850, -1.57, -2.01, 0.50, -1.03]')
+        self.declare_parameter('back_right_post_grasp_joints',
+                               '[0.220, -0.4, -0.20, -1.520, -1.190, -0.560, -1.1]')
         self.declare_parameter('handover_y_offset_m', .07)
-        for side in ('left', 'right'):
-            for position in ('init', 'pre'):
-                self.declare_parameter(f'{side}_arm_joint_{position}', '[0, 0, 0, 0, 0, 0, 0]')
+        self.declare_parameter('arm_positions_file',
+                               str(Path(get_package_share_directory('scene')) / 'config' / 'arm_positions.json'))
         host = self.get_parameter('mqtt_host').value
         port = self.get_parameter('mqtt_port').value
         topic = self.get_parameter('mqtt_topic').value
@@ -71,23 +76,14 @@ class VisionTargets(Node):
             self.left_post_grasp_joints = tuple(float(v) for v in joint_values)
         except (TypeError, ValueError) as exc:
             raise ValueError(f'Invalid left_post_grasp_joints: {exc}') from exc
-        self.arm_positions = {}
+        self.arm_positions = load_arm_positions(self.get_parameter('arm_positions_file').value)
         self.right_handover_joints = self.parse_joint_parameter('right_handover_joints')
+        self.back_post_grasp_joints = {
+            'left': self.parse_joint_parameter('back_left_post_grasp_joints'),
+            'right': self.parse_joint_parameter('back_right_post_grasp_joints')}
         self.handover_y_offset_m = float(self.get_parameter('handover_y_offset_m').value)
         if not math.isfinite(self.handover_y_offset_m) or self.handover_y_offset_m <= 0:
             raise ValueError('handover_y_offset_m must be positive and finite')
-        for side in ('left', 'right'):
-            for position in ('init', 'pre'):
-                key = f'{side}_arm_joint_{position}'
-                try:
-                    values = json.loads(self.get_parameter(key).value)
-                    if (not isinstance(values, list) or len(values) != 7 or
-                            any(isinstance(v, bool) or not isinstance(v, (int, float)) or
-                                not math.isfinite(v) for v in values)):
-                        raise ValueError('expected seven finite joint angles in radians')
-                except (TypeError, ValueError) as exc:
-                    raise ValueError(f'Invalid {key}: {exc}') from exc
-                self.arm_positions[position, side] = tuple(float(v) for v in values)
         if (not host or not 1 <= port <= 65535 or not topic or self.max_arm_pose_age_ns <= 0
                 or not math.isfinite(self.interval) or self.interval < 0
                 or not -1. <= self.tool_tip_offset_z_m <= 1.):
@@ -109,9 +105,9 @@ class VisionTargets(Node):
         self.position1_solution = None
         self.position1_goal = None
         self.grasp_target = None
+        self.vision_label = None
         self.attached_workpiece = None
         self.post_grasp_targets = []
-        self.handover_ready = False
         self.gripper_pending = None
         self.gripper_states = {}
         self.workpiece_relative = None
@@ -132,6 +128,10 @@ class VisionTargets(Node):
         self.joint_publishers = {
             side: self.create_publisher(JointState, f'/gento_control/{side}/target_joints', 1)
             for side in ('left', 'right')}
+        self.body_pose_publisher = self.create_publisher(
+            PoseStamped, '/gento_control/body/target_pose', 1)
+        self.body_pose_ptp_publisher = self.create_publisher(
+            PoseStamped, '/gento_control/body/target_pose_ptp', 1)
         self.body_joint_publisher = self.create_publisher(
             JointState, '/gento_control/body/target_joints', 1)
         self.gripper_publishers = {side: self.create_publisher(
@@ -147,7 +147,6 @@ class VisionTargets(Node):
         self.create_subscription(Int8, '/scene/arm_position', self.on_arm_position, 10)
         self.create_service(Trigger, '/scene/restore_tool_z', self.restore_tool_z)
         self.create_service(Trigger, '/scene/attach_workpiece', self.attach_workpiece)
-        self.create_service(Trigger, '/scene/start_handover', self.start_handover)
         self.create_service(Trigger, '/scene/detach_workpiece', self.detach_workpiece)
         self.create_timer(.05, self.tick)
 
@@ -222,14 +221,16 @@ class VisionTargets(Node):
             response.success, response.message = False, 'No completed position2 target ready for attachment'
         else:
             side, yaw_deg = self.grasp_target
-            if side != 'left' or self.position1_goal[0] != side:
-                response.success, response.message = False, 'Post-grasp motion is configured only for the left arm'
+            if self.position1_goal[0] != side or (side == 'right' and
+                    getattr(self, 'vision_label', None) != '无遮挡背面'):
+                response.success, response.message = False, 'Grasp arm does not match the active vision label'
             elif self.control_state in ('running', 'recovering'):
                 response.success, response.message = False, 'Arm control is busy'
             elif (self.target_publishers[side].get_subscription_count() == 0 or
                   self.joint_publishers[side].get_subscription_count() == 0 or
-                  self.body_joint_publisher.get_subscription_count() == 0):
-                response.success, response.message = False, 'Left arm motion subscriber is unavailable'
+                  (getattr(self, 'vision_label', None) != '无遮挡背面' and
+                   self.body_joint_publisher.get_subscription_count() == 0)):
+                response.success, response.message = False, f'{side} arm motion subscriber is unavailable'
             elif (flange := self.current_arm_pose(side)) is None:
                 response.success, response.message = False, f'No fresh {side} flange pose'
             else:
@@ -241,16 +242,24 @@ class VisionTargets(Node):
                     response.success, response.message = False, f'Invalid flange pose: {exc}'
                 else:
                     _, retreat_position, retreat_orientation = self.position1_goal
-                    self.post_grasp_targets = [
-                        ('retreat', 'cartesian', retreat_position, retreat_orientation),
-                        ('pre', 'joints', self.arm_positions['pre', 'left'], None),
-                        ('body_zero', 'body_joints', (0.,) * 6, None),
-                        ('transfer', 'joints', self.left_post_grasp_joints, None),
-                    ]
+                    if getattr(self, 'vision_label', None) == '无遮挡背面':
+                        self.post_grasp_targets = [
+                            (f'{side}_retreat', 'cartesian', retreat_position, retreat_orientation),
+                            (f'{side}_grasp_pre', 'joints', self.arm_positions['pre', side], None),
+                            (f'{side}_back_destination', 'joints',
+                             self.back_post_grasp_joints[side], None),
+                        ]
+                    else:
+                        self.post_grasp_targets = [
+                            ('retreat', 'cartesian', retreat_position, retreat_orientation),
+                            ('pre', 'joints', self.arm_positions['pre', 'left'], None),
+                            ('body_zero', 'body_joints', (0.,) * 6, None),
+                            ('transfer', 'joints', self.left_post_grasp_joints, None),
+                        ]
                     self.grasp_target = None
                     self.report('workpiece_attached', arm=side, tool_z_rotation_deg=yaw_deg)
                     response.success = self.send_post_grasp_next()
-                    response.message = ('Workpiece attached; retreat started, then left pre joints, body zero and left joint transfer'
+                    response.message = ('Workpiece attached; retreat started, then configured post-grasp steps'
                                         if response.success else
                                         'Workpiece attached, but retreat could not start; check /scene/status')
         return response
@@ -262,25 +271,6 @@ class VisionTargets(Node):
                     not math.isfinite(v) for v in values)):
             raise ValueError(f'{name} must contain seven finite joint angles')
         return tuple(float(v) for v in values)
-
-    def start_handover(self, _request, response):
-        if self.dry_run or not self.handover_ready or self.state != 'idle':
-            response.success, response.message = False, 'Left transfer point has not completed or scene is busy'
-            return response
-        if self.attached_workpiece is None or self.attached_workpiece[0] != 'left':
-            response.success, response.message = False, 'Workpiece is not attached to left arm'
-            return response
-        if self.current_arm_pose('right') is None or self.current_arm_pose('left') is None:
-            response.success, response.message = False, 'Fresh poses from both arms are required'
-            return response
-        if self.control_state in ('running', 'recovering'):
-            response.success, response.message = False, 'Arm control is busy'
-            return response
-        self.handover_ready = False
-        self.post_grasp_targets = [('right_pre', 'joints', self.right_handover_joints, None)]
-        response.success = self.send_post_grasp_next()
-        response.message = 'Right arm handover started' if response.success else 'Right arm control subscriber unavailable'
-        return response
 
     def send_gripper(self, side, position, step):
         publisher = self.gripper_publishers[side]
@@ -311,7 +301,7 @@ class VisionTargets(Node):
         at_target = (message.at_target and
                      abs(message.position_m - target) <= .002 and
                      abs(message.target_position_m - target) <= .002)
-        held_by_current_limit = (step in ('left_grasp', 'right_grasp') and
+        held_by_current_limit = (step in ('left_grasp', 'right_grasp', 'right_direct_grasp') and
                                  message.target_active and message.current_limit_reached and
                                  message.holding_position and
                                  math.isfinite(message.position_m) and
@@ -323,7 +313,7 @@ class VisionTargets(Node):
         self.report('gripper_completed', arm=side, step=step,
                     completion='current_limit_hold' if held_by_current_limit else 'at_target',
                     position_m=message.position_m)
-        if step == 'left_grasp':
+        if step in ('left_grasp', 'right_direct_grasp'):
             self.state = 'idle'
             self.report('awaiting_attach', command="ros2 service call /scene/attach_workpiece std_srvs/srv/Trigger '{}'")
         elif step == 'right_grasp':
@@ -334,7 +324,8 @@ class VisionTargets(Node):
                 self.report('rejected', reason=str(exc))
                 return
             self.post_grasp_targets = [('left_release', 'gripper', 0., None),
-                                       ('right_retreat', 'joints', self.right_handover_joints, None)]
+                                       ('right_retreat', 'joints', self.right_handover_joints, None),
+                                       ('right_home_pre', 'joints', self.arm_positions['pre', 'right'], None)]
             self.state = 'next'
             self.next_at = time.monotonic() + .2
         elif step == 'left_release':
@@ -423,7 +414,6 @@ class VisionTargets(Node):
             side, _ = self.attached_workpiece
             self.attached_workpiece = None
             self.workpiece_relative = None
-            self.handover_ready = False
             self.grasp_target = None
             response.success, response.message = True, f'{side} workpiece detached'
             self.report('workpiece_detached', arm=side)
@@ -466,9 +456,9 @@ class VisionTargets(Node):
 
     def on_arm_position(self, message):
         """Move both arms to the configured joint preset, one arm at a time."""
-        position = {0: 'init', 1: 'pre'}.get(message.data)
+        position = self.arm_positions.get(message.data)
         if position is None:
-            self.report('rejected', reason='Arm position must be 0 (init) or 1 (pre)')
+            self.report('rejected', reason=f'Unknown arm position ID: {message.data}')
             return
         with self.queue_lock:
             if (self.dry_run or self.state != 'idle' or self.queue is not None or
@@ -477,6 +467,49 @@ class VisionTargets(Node):
                 return
             if self.control_state in ('running', 'recovering'):
                 self.report('rejected', reason='Arm control is busy')
+                return
+            pose_kind = next((kind for kind in ('body_pose', 'body_pose_ptp')
+                              if (position, kind) in self.arm_positions), None)
+            if pose_kind is not None:
+                publisher = (self.body_pose_publisher if pose_kind == 'body_pose'
+                             else self.body_pose_ptp_publisher)
+                if publisher.get_subscription_count() == 0:
+                    self.report('rejected', reason='No body pose control subscriber')
+                    return
+                self.preset_name = position
+                self.preset_targets = []
+                xyz, xyzw = self.arm_positions[position, pose_kind]
+                target = PoseStamped()
+                target.header.stamp = self.get_clock().now().to_msg()
+                target.header.frame_id = 'body_base'
+                target.pose.position.x, target.pose.position.y, target.pose.position.z = xyz
+                (target.pose.orientation.x, target.pose.orientation.y,
+                 target.pose.orientation.z, target.pose.orientation.w) = xyzw
+                self.waiting_task_id = None
+                self.saw_motion = False
+                self.sent_at = time.monotonic()
+                self.state = 'waiting'
+                publisher.publish(target)
+                self.report('arm_position_sent', arm='body', position=position,
+                            position_m=list(xyz), orientation_xyzw=list(xyzw))
+                return
+            if (position, 'body_joints') in self.arm_positions:
+                if self.body_joint_publisher.get_subscription_count() == 0:
+                    self.report('rejected', reason='No body joint control subscriber')
+                    return
+                self.preset_name = position
+                self.preset_targets = []
+                target = JointState()
+                target.header.stamp = self.get_clock().now().to_msg()
+                target.name = [f'body_joint_{index}' for index in range(1, 7)]
+                target.position = list(self.arm_positions[position, 'body_joints'])
+                self.waiting_task_id = None
+                self.saw_motion = False
+                self.sent_at = time.monotonic()
+                self.state = 'waiting'
+                self.body_joint_publisher.publish(target)
+                self.report('arm_position_sent', arm='body', position=position,
+                            joints_rad=list(target.position))
                 return
             for side in ('left', 'right'):
                 if self.joint_publishers[side].get_subscription_count() == 0:
@@ -632,6 +665,22 @@ class VisionTargets(Node):
             self.waiting_task_id = task_id
         if task_id != self.waiting_task_id:
             return
+        if (getattr(self, 'preset_name', None) is not None and
+                any((self.preset_name, kind) in getattr(self, 'arm_positions', {})
+                    for kind in ('body_pose', 'body_pose_ptp', 'body_joints'))):
+            if state in ('running', 'recovering'):
+                self.saw_motion = True
+            elif state == 'completed':
+                self.last_task_id = task_id
+                self.state = 'idle'
+                self.report('arm_position_completed', position=self.preset_name)
+                self.preset_name = None
+            elif state in ('rejected', 'fault', 'stopped'):
+                self.last_task_id = task_id
+                self.preset_name = None
+                self.state = 'idle'
+                self.report('rejected', reason=f'Body position control {state}: {status.get("reason", "")}')
+            return
         if getattr(self, 'preset_targets', None):
             if state in ('running', 'recovering'):
                 self.saw_motion = True
@@ -672,8 +721,10 @@ class VisionTargets(Node):
                 else:
                     self.state = 'idle'
                     if step == 'transfer':
-                        self.handover_ready = True
-                        self.report('awaiting_handover', command="ros2 service call /scene/start_handover std_srvs/srv/Trigger '{}'")
+                        self.post_grasp_targets = [('right_pre', 'joints', self.right_handover_joints, None)]
+                        self.state = 'next'
+                        self.next_at = time.monotonic() + .2
+                        self.report('handover_started', step='right_pre')
                     else:
                         self.report('post_grasp_completed', arm=self.attached_workpiece[0])
             elif state in ('rejected', 'fault', 'stopped'):
@@ -749,8 +800,11 @@ class VisionTargets(Node):
             self.next_at = time.monotonic() + (self.interval if self.targets and not restoring else .2)
             self.report('restore_completed' if restoring else 'step_completed',
                         remaining=len(self.targets), **record)
-            if not restoring and self.target_index == 2 and side == 'left':
-                self.send_gripper('left', .027, 'left_grasp')
+            if not restoring and self.target_index == 2:
+                if side == 'left':
+                    self.send_gripper('left', .027, 'left_grasp')
+                elif getattr(self, 'vision_label', None) == '无遮挡背面':
+                    self.send_gripper('right', .027, 'right_direct_grasp')
         elif (state == 'rejected' and not self.saw_motion and not self.restore_mode
               and self.allow_tool_z_rotation
               and self.retryable_ik_rejection(status.get('reason', '')) and
@@ -847,7 +901,8 @@ class VisionTargets(Node):
         try:
             if not self.dry_run and self.control_state in ('running', 'recovering'):
                 raise ValueError('Arm control is busy')
-            routed = route_targets(parse_targets(payload))
+            label, parsed = parse_vision_message(payload)
+            routed = route_targets(parsed, label=label)
             if not routed:
                 raise ValueError('No target position to execute')
             if len(routed) == 2 and routed[0][0] != routed[1][0]:
@@ -857,6 +912,7 @@ class VisionTargets(Node):
             self.position1_solution = None
             self.position1_goal = None
             self.grasp_target = None
+            self.vision_label = label
             self.yaw_candidates = None
             self.yaw_index = 0
             for side, target in routed:

@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -60,12 +61,22 @@ struct Session {
     }
     ~Session() { if (motor && bus) stop(); }
 };
-void check(MotorDriver& motor, bool enabled) {
+void check(MotorDriver& motor, bool enabled, double jog_current_threshold_a = 0.5) {
     if (interrupted || !motor.refresh_state()) throw std::runtime_error("interrupted or feedback failed");
-    if (motor.get_error_id() != 0) throw std::runtime_error("driver fault");
+    const auto error = motor.get_error_id();
+    if (error != 0)
+        throw std::runtime_error("driver fault, error bitmap=" +
+                                 std::to_string(static_cast<unsigned>(error)));
     if (motor.enabled() != enabled) throw std::runtime_error("unexpected enable state");
     const double current = motor.get_motor_current();
-    if (!std::isfinite(current) || std::abs(current) >= 0.5) throw std::runtime_error("0.5 A jog current threshold reached");
+    if (!std::isfinite(current) || (jog_current_threshold_a > 0 && std::abs(current) >= jog_current_threshold_a)) {
+        std::ostringstream detail;
+        detail << std::setprecision(12) << "jog current threshold reached threshold_a=" << jog_current_threshold_a
+               << " current_a=" << current
+               << " angle_rad=" << motor.get_motor_pos()
+               << " speed_rad_s=" << motor.get_motor_spd();
+        throw std::runtime_error(detail.str());
+    }
 }
 void print_state(MotorDriver& motor) {
     check(motor, false);
@@ -77,13 +88,14 @@ void print_state(MotorDriver& motor) {
 
 int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--help") {
-        std::cout << "Usage: gripper_calibrate PORT ID status|open|close|set-open-zero [duration_ms|expected_angle_rad]\n"
-                  << "open/close: 100..5000 ms at -/+0.5 motor rad/s, then stop and disable.\n"
+        std::cout << "Usage: gripper_calibrate PORT ID status|open|close|set-open-zero [duration_ms|expected_angle_rad] [speed_rad_s] [jog_current_threshold_a]\n"
+                  << "open/close: 100..5000 ms at -/+speed_rad_s (default 0.5, range 0.05..0.5), then stop and disable.\n"
+                  << "Jog current threshold defaults to 0.5 A; 0 disables this software threshold.\n"
                   << "set-open-zero: requires expected angle within 0.03 rad of current angle.\n";
         return 0;
     }
     try {
-        if (argc < 4 || argc > 5) throw std::invalid_argument("use --help for syntax");
+        if (argc < 4 || argc > 7) throw std::invalid_argument("use --help for syntax");
         const std::string port(argv[1]), action(argv[3]);
         const int id = number(argv[2]);
         if (port.empty() || port.front() != '/' || id < 1 || id > 127 || access(port.c_str(), R_OK | W_OK) != 0)
@@ -92,8 +104,16 @@ int main(int argc, char** argv) {
             throw std::invalid_argument("unknown action");
         if ((action == "status" && argc != 4) || (action == "set-open-zero" && argc != 5))
             throw std::invalid_argument("wrong number of arguments");
-        const int duration = (action == "open" || action == "close") ? (argc == 5 ? number(argv[4]) : 1000) : 0;
+        const bool jog = action == "open" || action == "close";
+        if (!jog && argc >= 6) throw std::invalid_argument("wrong number of arguments");
+        const int duration = jog ? (argc >= 5 ? number(argv[4]) : 1000) : 0;
         if (duration && (duration < 100 || duration > 5000)) throw std::invalid_argument("duration must be 100..5000 ms");
+        const double speed = jog && argc >= 6 ? real(argv[5]) : 0.5;
+        const double jog_current_threshold_a = jog && argc == 7 ? real(argv[6]) : 0.5;
+        if (jog && (speed < 0.05 || speed > 0.5))
+            throw std::invalid_argument("jog speed must be 0.05..0.5 rad/s");
+        if (jog && (jog_current_threshold_a < 0 || jog_current_threshold_a > 5))
+            throw std::invalid_argument("jog current threshold must be 0..5 A");
         const double expected = action == "set-open-zero" ? real(argv[4]) : 0;
         std::signal(SIGINT, on_signal); std::signal(SIGTERM, on_signal);
         idle_port(port.c_str());
@@ -126,13 +146,20 @@ int main(int argc, char** argv) {
         motor.set_motor_control_mode(MotorDriver::SPD); session.speed = true;
         motor.motor_spd_cmd(0); check(motor, false);
         const double before = motor.get_motor_pos();
-        motor.enable(); std::this_thread::sleep_for(std::chrono::milliseconds(500)); check(motor, true);
-        const float command = action == "open" ? -0.5f : 0.5f;
+        motor.enable(); std::this_thread::sleep_for(std::chrono::milliseconds(500)); check(motor, true, jog_current_threshold_a);
+        const float command = static_cast<float>(action == "open" ? -speed : speed);
         motor.motor_spd_cmd(command);
-        const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(duration);
+        const auto started = std::chrono::steady_clock::now();
+        const auto end = started + std::chrono::milliseconds(duration);
         double peak_current = 0;
         while (std::chrono::steady_clock::now() < end) {
-            check(motor, true);
+            try { check(motor, true, jog_current_threshold_a); }
+            catch (const std::exception& e) {
+                const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now()-started).count();
+                throw std::runtime_error(std::string(e.what()) + " before_rad=" +
+                    std::to_string(before) + " elapsed_ms=" + std::to_string(elapsed));
+            }
             peak_current = std::max(peak_current, std::abs(static_cast<double>(motor.get_motor_current())));
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }

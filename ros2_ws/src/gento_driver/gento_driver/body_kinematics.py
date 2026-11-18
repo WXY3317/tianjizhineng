@@ -17,7 +17,8 @@ from scipy.spatial.transform import Rotation
 
 
 # J3/J4 signed bounds must come from the controller (the drawing is unsigned).
-_CAPS_DEG = (11.0, 50.0, None, None, 30.0, 170.0)
+_CAPS_DEG = ((-11.0, 11.0), (-50.0, 80.0), None, None,
+             (-30.0, 30.0), (-170.0, 170.0))
 _DEFAULT_CORD = Path(__file__).resolve().parent / "data" / "luna_body.Cord"
 # The controller's R.A{0,1}.L0.DH.D is 158.6 mm on this robot. SDK FK starts
 # before arm joint 1 by this distance along SDK +Z; Cord LA_J1/RA_J1 are at
@@ -116,7 +117,8 @@ class LunaBodyKinematics:
 
     joint_limits_deg: six [LimitNeg, LimitPos] pairs in SDK joint order, or None
     for feedback-only FK (inverse is then disabled). Supplied limit pairs
-    are intersected with J1 +/-11, J2 +/-50, J5 +/-30, J6 +/-170 degrees.
+    are intersected with J1 [-11, 11], J2 [-50, 80], J5 [-30, 30],
+    and J6 [-170, 170] degrees.
     J3/J4 keep the controller's signed limits; no sign is guessed from a drawing.
     Current angles may lie outside the stricter user bounds; solved angles never
     do. Such a reference is only clipped to obtain a legal numerical seed.
@@ -135,8 +137,8 @@ class LunaBodyKinematics:
             raise ValueError("Every joint lower limit must be less than its upper limit")
         for i, cap in enumerate(_CAPS_DEG):
             if cap is not None:
-                bounds[i, 0] = max(bounds[i, 0], -cap)
-                bounds[i, 1] = min(bounds[i, 1], cap)
+                bounds[i, 0] = max(bounds[i, 0], cap[0])
+                bounds[i, 1] = min(bounds[i, 1], cap[1])
         if np.any(bounds[:, 0] >= bounds[:, 1]):
             raise ValueError("Controller limits and user caps have no usable intersection")
         self._bounds_deg = bounds

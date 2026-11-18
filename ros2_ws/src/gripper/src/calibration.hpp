@@ -52,7 +52,7 @@ public:
         return percent * interpolate(angle, points_[i].angle_rad, points_[i+1].angle_rad, points_[i].force_per_percent, points_[i+1].force_per_percent);
     }
     double closed_angle() const { return points_.back().angle_rad; }
-    double max_width() const { return points_.front().width_m; }
+    double max_width() const { return std::round(points_.front().width_m * 1e6) / 1e6; }
 private:
     static double interpolate(double x, double a, double b, double va, double vb) { return va+(x-a)*(vb-va)/(b-a); }
     void check_angle(double angle) const {

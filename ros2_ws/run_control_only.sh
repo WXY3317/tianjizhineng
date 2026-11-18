@@ -23,13 +23,13 @@ fi
 source "$ros_setup"
 cd "$workspace_dir"
 if [[ "${1:-}" == "--build" ]]; then
-  colcon --log-base log_real build --base-paths src --packages-up-to gento_control \
-    --build-base build_real --install-base install_real --symlink-install
+  colcon --log-base log build --base-paths src --packages-up-to gento_control \
+    --build-base build --install-base install --symlink-install
   shift
 fi
-if [[ ! -f install_real/gento_control/share/gento_control/package.xml ]]; then
+if [[ ! -f install/gento_control/share/gento_control/package.xml ]]; then
   echo "Build first: $0 --build" >&2
   exit 1
 fi
-source install_real/setup.bash
+source install/setup.bash
 exec ros2 run gento_control control "$@"

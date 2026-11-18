@@ -38,6 +38,40 @@ def test_planner_cancel_and_joint_limit_rejection():
     with pytest.raises(ValueError,match='max_delta'):planner.joint(0,[10.]*7)
 
 
+def test_pose_ptp_solves_endpoint_and_plans_joint_motion_without_cartesian_samples():
+    source=snapshot()
+    calls=[]
+    def rpc(operation,payload):
+        calls.append((operation,payload))
+        return [2.,0.,0.,0.,0.,0.,0.]
+    planner=Planner(source,rpc,threading.Event())
+    target=[row[:] for row in source['matrices'][0]]
+    target[0][3]=2.
+    plans,info=planner.pose_ptp(0,target)
+    assert len(calls)==1 and calls[0][0]=='ik_endpoint'
+    assert calls[0][1]['matrix']==target
+    assert plans[0][0]==[0.]*7 and plans[0][-1]==[2.,0.,0.,0.,0.,0.,0.]
+    assert info['path_type']=='joint_ptp'
+
+
+def test_head_target_and_planner_use_two_named_joints_and_controller_limits():
+    import math
+    from gento_control.conversions import head_target
+    source=snapshot()
+    source.update(head=[10.,-5.],head_limits=[[-20.,20.],[-10.,10.]],
+                  head_rate_limits={'vel_ratio':5.,'acc_ratio':5.,
+                                    'speed':[5.,5.],'acceleration':[10.,10.]})
+    target=head_target(['head_joint_2','head_joint_1'],[math.radians(-4.),math.radians(11.)])
+    plans,_=Planner(source,lambda *args:None,threading.Event()).head(target)
+    assert list(plans)==[2]
+    assert plans[2][0]==[10.,-5.]
+    assert plans[2][-1]==pytest.approx([11.,-4.])
+    with pytest.raises(ValueError,match='head joint1 exceeds limits'):
+        Planner(source,lambda *args:None,threading.Event()).head([21.,-4.])
+    with pytest.raises(ValueError,match='Expected exactly'):
+        head_target(['head_joint_1','head_joint_1'],[0.,0.])
+
+
 @pytest.mark.parametrize('max_age,age,valid',[(.2,.5,False),(2.,1.5,True),(2.,2.5,False),(2.,-.1,False)])
 def test_target_age_uses_driver_configuration(max_age,age,valid):
     from gento_control.node import Control
@@ -105,3 +139,24 @@ def test_body_target_to_sdk_uses_full_rotation_and_translation():
     target = [[1, 0, 0, 100], [0, 1, 0, 300], [0, 0, 1, 300], [0, 0, 0, 1]]
     actual = body_target_to_sdk(target, base, .001)
     assert actual == [[0, 1, 0, 100], [-1, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+
+
+def test_rotate_tcp_in_body_frame_keeps_position_and_uses_fixed_axes():
+    import math
+    from gento_control.conversions import rotate_tcp_in_body_frame
+    current = [[1, 0, 0, 120], [0, 1, 0, 230], [0, 0, 1, 340], [0, 0, 0, 1]]
+    # SDK X points along body Y; body X rotation therefore maps to SDK -Y.
+    base = [[0, -1, 0, 100], [1, 0, 0, 200], [0, 0, 1, 300], [0, 0, 0, 1]]
+    target = rotate_tcp_in_body_frame(current, base, (math.pi/2, 0, 0))
+    assert [target[i][3] for i in range(3)] == [120, 230, 340]
+    expected = [[0, 0, -1], [0, 1, 0], [1, 0, 0]]
+    for i in range(3):
+        assert target[i][:3] == pytest.approx(expected[i], abs=1e-12)
+    assert current[0][0] == 1  # Input snapshot is not mutated.
+
+
+def test_rotate_tcp_in_body_frame_rejects_invalid_angles():
+    from gento_control.conversions import rotate_tcp_in_body_frame
+    identity = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+    with pytest.raises(ValueError, match='Non-finite'):
+        rotate_tcp_in_body_frame(identity, identity, (float('nan'), 0, 0))

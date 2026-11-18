@@ -18,7 +18,7 @@ from gento_interfaces.srv import DriverQuery
 from gento_interfaces.action import ExecuteTrajectory
 from gento_driver.engine import Engine
 from gento_driver.node import Bridge
-from gento_driver.conversions import JOINT_NAMES,BODY_JOINT_NAMES
+from gento_driver.conversions import JOINT_NAMES,BODY_JOINT_NAMES,HEAD_JOINT_NAMES
 from gento_driver.safety import validate_goal
 from gento_control.node import Control
 from gento_feedback.node import Feedback
@@ -132,6 +132,90 @@ def test_body_action_clamps_unit_roundoff_but_rejects_actual_limit_violation():
         validate_goal(goal,state,hardware,2_000_000_000)
 
 
+def test_arm_action_clamps_limit_roundoff_but_rejects_actual_violation():
+    joints=[0.,105.,0.,0.,0.,0.,0.]
+    state={'session_id':'arm-roundoff','joints':[joints,[0.]*7],
+           'body':[0.]*6}
+    rates={'vel_ratio':5.,'acc_ratio':5.,'speed':[100.]*7,
+           'acceleration':[1000.]*7}
+    hardware=SimpleNamespace(
+        c=SimpleNamespace(command_max_age=1.,max_delta=120.,timeout=60.),
+        robot=SimpleNamespace(max_point=5000),
+        limits=[[[-180.,180.],[-105.,105.]]+[[-180.,180.]]*5,
+                [[-180.,180.]]*7],
+        read_cartesian_rate_limits=lambda moving:{0:rates})
+    goal=ExecuteTrajectory.Goal(session_id='arm-roundoff',task_id='test')
+    goal.start_state=JointState(name=JOINT_NAMES+BODY_JOINT_NAMES,
+                               position=[math.radians(x) for x in joints+[0.]*13])
+    goal.start_state.header.stamp.sec=2
+    goal.trajectories=[JointTrajectory(joint_names=JOINT_NAMES[:7])]
+    goal.controller_ratios=[5.,5.]
+    for index in range(5):
+        point=JointTrajectoryPoint(positions=[math.radians(x) for x in joints])
+        point.time_from_start.nanosec=index*20000000
+        goal.trajectories[0].points.append(point)
+    plans,_=validate_goal(goal,state,hardware,2_000_000_000)
+    assert plans[0][0][1]==105.
+    goal.trajectories[0].points[0].positions[1]=math.radians(105.+1e-6)
+    with pytest.raises(ValueError,match='object0 joint2 exceeds limits/max_delta'):
+        validate_goal(goal,state,hardware,2_000_000_000)
+
+
+def test_head_action_requires_two_joint_start_and_rejects_limit_violation():
+    state={'session_id':'head-test','joints':[[0.]*7,[0.]*7],
+           'body':[0.]*6,'head':[0.,0.],
+           'controller':{'head':{'set':{'vel_ratio':5.,'acc_ratio':5.}}}}
+    rates={'vel_ratio':5.,'acc_ratio':5.,'speed':[5.,5.],
+           'acceleration':[10.,10.]}
+    hardware=SimpleNamespace(c=SimpleNamespace(command_max_age=1.,max_delta=5.,timeout=60.),
+        head_limits=[[-20.,20.],[-10.,10.],],robot=SimpleNamespace(max_point=5000),
+        read_cartesian_rate_limits=lambda moving:{},read_head_rate_limits=lambda:rates,
+        check_cancel=lambda:None)
+    goal=ExecuteTrajectory.Goal(session_id='head-test',task_id='head-task')
+    goal.start_state=JointState(name=JOINT_NAMES+BODY_JOINT_NAMES+HEAD_JOINT_NAMES,
+                               position=[0.]*22)
+    goal.start_state.header.stamp.sec=2
+    goal.trajectories=[JointTrajectory(joint_names=HEAD_JOINT_NAMES)]
+    goal.controller_ratios=[5.,5.]
+    for index in range(51):
+        t=index/50
+        s=t*t*t*(10+t*(-15+6*t))
+        point=JointTrajectoryPoint(positions=[math.radians(s),0.])
+        point.time_from_start.sec=index//50
+        point.time_from_start.nanosec=(index%50)*20000000
+        goal.trajectories[0].points.append(point)
+    plans,_=validate_goal(goal,state,hardware,2_000_000_000)
+    assert list(plans)==[2] and len(plans[2][-1])==2
+    goal.trajectories[0].points[-1].positions[0]=math.radians(21.)
+    with pytest.raises(ValueError,match='exceeds limits'):
+        validate_goal(goal,state,hardware,2_000_000_000)
+
+
+def test_head_rate_limits_use_sdk_set_section():
+    settings={'vel_ratio':5.,'acc_ratio':6.}
+    hardware=SimpleNamespace(
+        require_control=lambda:None,head_control_enabled=True,head_dof=2,
+        robot=SimpleNamespace(
+            get_sg_dict=lambda:{'head':{'set':settings}},
+            param_get_float=lambda name:(0,100. if name.endswith('VelMax') else 200.)),
+        h=SimpleNamespace(finite=lambda values:None,check=lambda ret,context:None),
+        c=SimpleNamespace(cartesian_joint_speed=1000.,cartesian_joint_acc=1000.,speed=100.,acc=100.),
+        recovery_call=lambda fn,*args:fn(*args))
+    limits=Engine.read_head_rate_limits(hardware)
+    assert limits['vel_ratio']==5. and limits['acc_ratio']==6.
+    assert limits['speed']==[4.5,4.5] and limits['acceleration']==[10.8,10.8]
+
+
+def test_head_playback_ratio_check_uses_sdk_set_section():
+    bridge=SimpleNamespace(active={
+        'plans':{2:[[0.,0.]]},
+        'goal':SimpleNamespace(controller_ratios=[5.,6.]),
+    })
+    Bridge.check_playback_ratios(bridge,{
+        'controller':{'head':{'set':{'vel_ratio':5.,'acc_ratio':6.}}},
+    })
+
+
 def send(g,goal,heartbeat=True):
     client=ActionClient(g.client,ExecuteTrajectory,'/gento_driver/execute')
     assert client.wait_for_server(timeout_sec=3.)
@@ -165,6 +249,33 @@ def test_end_to_end_planning_execution_and_feedback_record_have_one_link(graph):
     assert record['samples'] and record['samples'][0]['joint_matching']
     # Driver has no position/pose target subscriptions: those belong to control.
     assert not any('target_pose' in s.topic_name or 'target_joints' in s.topic_name for s in g.driver.subscriptions)
+
+
+def test_pose_ptp_uses_one_endpoint_ik_and_joint_trajectory(graph):
+    g=graph
+    ik=g.robot.inverse_kinematics
+    calls=[]
+    def count_ik(arm,params):
+        calls.append(arm)
+        return ik(arm,params)
+    g.robot.inverse_kinematics=count_ik
+    pub=g.client.create_publisher(PoseStamped,'/gento_control/left/target_pose_ptp',1)
+    until(lambda:pub.get_subscription_count()>0)
+    msg=PoseStamped()
+    msg.header.frame_id='left_arm_sdk_base'
+    msg.header.stamp=g.client.get_clock().now().to_msg()
+    msg.pose.orientation.w=1.
+    msg.pose.position.x=.001
+    pub.publish(msg)
+    until(lambda:('run',1) in g.robot.calls)
+    until(lambda:not g.control.busy)
+    assert calls==[0]
+    assert ('upload',0) in g.robot.calls
+    until(lambda:bool(list(g.path.glob('*.json'))))
+    record=json.loads(next(g.path.glob('*.json')).read_text())
+    assert record['outcome']=='completed'
+    assert record['plan']['line_objects']==[]
+    assert record['plan']['plan_info']['path_type']=='joint_ptp'
 
 
 def test_stale_session_is_rejected_before_hardware(graph):
@@ -405,6 +516,39 @@ def test_body_pose_streams_verified_line_points(graph):
     record=json.loads(next(g.path.glob('*.json')).read_text())
     assert record['outcome']=='completed'
     assert '3' in record['samples'][-1]['line_errors']
+
+
+def test_body_pose_ptp_executes_endpoint_ik_without_line_constraint(graph):
+    from gento_driver.body_kinematics import LunaBodyKinematics, pose_error
+    from gento_control.node import as_pose
+    g = graph
+    model = LunaBodyKinematics()
+    goal = [0., 27.1, -54.2, 27.1, 0., 0.]
+    with g.driver.sdk_lock:
+        g.robot.body_positions = [0., 26.9165676, -53.8331352, 26.9165676, 0., 0.]
+    commanded = []
+    original = g.robot.runtime_set_joint_pos_cmd
+    def capture(obj, joints):
+        if obj == 3:
+            commanded.append(list(joints))
+        return original(obj, joints)
+    g.robot.runtime_set_joint_pos_cmd = capture
+    publisher = g.client.create_publisher(PoseStamped, '/gento_control/body/target_pose_ptp', 1)
+    until(lambda: publisher.get_subscription_count() > 0)
+    message = PoseStamped()
+    message.header.frame_id = 'body_base'
+    message.header.stamp = g.client.get_clock().now().to_msg()
+    message.pose = as_pose(model.forward(goal), .001)
+    publisher.publish(message)
+    until(lambda: bool(commanded), timeout=15.)
+    until(lambda: not g.control.busy, timeout=15.)
+    assert not g.driver.failed
+    assert len(commanded) == 1
+    assert pose_error(model.forward(commanded[-1]), model.forward(goal))[0] < .1
+    until(lambda: bool(list(g.path.glob('*.json'))))
+    record = json.loads(next(g.path.glob('*.json')).read_text())
+    assert record['outcome'] == 'completed'
+    assert record['plan']['line_objects'] == []
 
 
 def test_stop_interrupts_body_cartesian_stream(graph):
@@ -786,6 +930,24 @@ def test_hardware_global_ratios_never_raise_configured_planning_limits(graph):
         assert caps['acceleration']==[8.1]*7
         assert caps['planning_vel_ratio']==5.
         g.robot.ratios[0]=[5.,5.]
+
+
+def test_body_rate_limits_are_independent_of_arm_settings(graph):
+    g=graph
+    with g.driver.sdk_lock:
+        original=g.robot.param_get_float
+        g.robot.param_get_float=lambda name: (0,100.) if name.startswith('R.B.L') else original(name)
+        g.driver.c.speed=1.
+        g.driver.c.acc=1.
+        g.driver.c.cartesian_joint_speed=.1
+        g.driver.c.cartesian_joint_acc=.1
+        g.driver.c.body_speed=8.
+        g.driver.c.body_acc=6.
+        g.driver.c.body_cartesian_joint_speed=20.
+        g.driver.c.body_cartesian_joint_acc=25.
+        rates=g.hardware.read_body_rate_limits()
+        assert rates['speed']==pytest.approx([4.5]*6)
+        assert rates['acceleration']==pytest.approx([4.5]*6)
 
 
 def test_partial_ratio_setup_restores_both_arms_without_starting(graph):

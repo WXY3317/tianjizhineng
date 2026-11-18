@@ -24,6 +24,8 @@ public:
     virtual void move(double position_m, float speed_mps) = 0;
     virtual void hold_position(double motor_position_rad, float speed_mps) = 0;
     virtual void shutdown() noexcept = 0;
+    virtual double open_width() const { return 0.098; }
+    virtual double min_width() const { return 0.0; }
 };
 std::unique_ptr<Hardware> make_hardware(const std::string& port, int id, int baud);
 
@@ -45,6 +47,9 @@ private:
     double target_m_{0.0};
     float target_speed_mps_{0.01f};
     double current_threshold_a_{0.5};
+    double open_width_{0.098};
+    double min_width_{0.0};
     bool current_limit_reached_{false};
+    std::uint64_t last_command_id_{0};
 };
 } // namespace gripper_demo

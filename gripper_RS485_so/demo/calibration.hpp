@@ -29,11 +29,12 @@ public:
             points_.push_back(p);
         }
         if (points_.size() < 3 || std::abs(points_.front().angle_rad) > 1e-9 ||
-            std::abs(points_.front().width_m-0.098) > 1e-9 || std::abs(points_.back().width_m) > 1e-9)
-            throw std::runtime_error("calibration endpoints must be zero angle / 98 mm and closed / 0 mm");
+            points_.front().width_m <= 0 || points_.front().width_m > 0.2 ||
+            std::abs(points_.back().width_m) > 1e-9)
+            throw std::runtime_error("calibration endpoints must be zero angle / positive open width and closed / 0 mm");
     }
     double angle(double width) const {
-        if (!std::isfinite(width) || width < 0 || width > 0.098)
+        if (!std::isfinite(width) || width < 0 || width > open_width())
             throw std::invalid_argument("width outside measured range");
         const auto i = width_segment(width);
         return interpolate(width, points_[i].width_m, points_[i+1].width_m, points_[i].angle_rad, points_[i+1].angle_rad);
@@ -51,6 +52,7 @@ public:
         return percent * interpolate(angle, points_[i].angle_rad, points_[i+1].angle_rad, points_[i].force_per_percent, points_[i+1].force_per_percent);
     }
     double closed_angle() const { return points_.back().angle_rad; }
+    double open_width() const { return std::round(points_.front().width_m * 1e6) / 1e6; }
 private:
     static double interpolate(double x, double a, double b, double va, double vb) { return va+(x-a)*(vb-va)/(b-a); }
     void check_angle(double angle) const {
@@ -60,7 +62,7 @@ private:
                                                    points_[i].width_m, points_[i+1].width_m);
         // Feedback tolerance in physical units, independent of varying mechanism Jacobian.
         constexpr double tolerance_m = 0.0002;
-        if (measured_width < -tolerance_m || measured_width > 0.098+tolerance_m)
+        if (measured_width < -tolerance_m || measured_width > open_width()+tolerance_m)
             throw std::runtime_error("feedback outside calibrated stroke: angle_rad="+std::to_string(angle)+
                                      " width_m="+std::to_string(measured_width));
     }

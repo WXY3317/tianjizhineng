@@ -37,7 +37,7 @@ def plan_body_line(snapshot, goal, rates, checkpoint):
         return {}, {'planned_duration_s': 0., 'body_start_matrix': start,
                     'body_target_matrix': goal}
     checkpoint()
-    solved_goal = model.inverse(goal, origin, max_joint_delta_deg=c.max_delta,
+    solved_goal = model.inverse(goal, origin, max_joint_delta_deg=None,
                                 checkpoint=checkpoint)
     if not solved_goal.success:
         raise ValueError(f'Body Cartesian goal IK failed: {solved_goal.message}')
@@ -64,8 +64,8 @@ def plan_body_line(snapshot, goal, rates, checkpoint):
     spline=CubicSpline(times,joints,axis=0,
                        bc_type=((1,np.zeros(6)),(1,np.zeros(6))))
     joint_distance=np.abs(joints[-1]-joints[0])
-    duration=max(1.,1.875*distance_mm/1000/c.cartesian_speed,
-                 1.875*math.radians(angle_deg)/c.cartesian_angular_speed,
+    duration=max(1.,1.875*distance_mm/1000/c.body_cartesian_speed,
+                 1.875*math.radians(angle_deg)/c.body_cartesian_angular_speed,
                  *(1.875*d/v for d,v in zip(joint_distance,rates['speed'])),
                  *(math.sqrt(5.774*d/a) for d,a in zip(joint_distance,rates['acceleration'])))
     path_min,path_max=min(z_min,start[2][3]),max(z_max,start[2][3])
@@ -89,7 +89,7 @@ def plan_body_line(snapshot, goal, rates, checkpoint):
         for index,(t,q) in enumerate(zip(fractions,path)):
             checkpoint()
             for joint,(value,initial,(lo,hi)) in enumerate(zip(q,origin,limits)):
-                if not lo-1e-10<=value<=hi+1e-10 or abs(value-initial)>c.max_delta+1e-10:
+                if not lo-1e-10<=value<=hi+1e-10:
                     raise ValueError(f'Body Cartesian joint{joint+1} exceeds limits/max_delta at point {index}')
             actual=model.forward(q)
             if not path_min-.1<=actual[2][3]<=path_max+.1:

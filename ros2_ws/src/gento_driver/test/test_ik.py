@@ -94,3 +94,16 @@ def test_stop_interrupts_fallback_before_more_ik_calls():
     with pytest.raises(ValueError,match='cancelled'):
         engine.solve([POSE,POSE],[REFERENCE,[0.]*7],moving=[0])
     assert len(calls)==2
+
+
+def test_endpoint_ik_can_select_a_distant_legal_branch():
+    calls=[]
+    def solver(arm,p):
+        calls.append(list(p.m_Input_IK_RefJoint))
+        return success(p) if p.m_Input_IK_RefJoint[1]>=5. else exceeded(p)
+    engine=hardware(solver)
+    engine.c.max_delta=20.
+    solution=engine.solve_endpoint(0,POSE,REFERENCE)
+    assert solution[1]>=5.
+    assert max(abs(a-b) for a,b in zip(solution,REFERENCE))<=20.
+    assert any(seed[1]>=5. for seed in calls)

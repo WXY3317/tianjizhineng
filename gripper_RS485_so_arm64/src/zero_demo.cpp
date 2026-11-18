@@ -17,11 +17,11 @@ static void shutdown_gripper(std::shared_ptr<GripperController> gripper) {
     std::cout << "[SHUTDOWN] Motor deinitialized" << std::endl;
 }
 
-static MotorDriverConfig make_motor_config() {
+static MotorDriverConfig make_motor_config(int motor_id) {
     MotorDriverConfig config;
-    config.motor_id = 1;
-    config.protocol_type = "";
-    config.bus_type = "";
+    config.motor_id = static_cast<std::uint16_t>(motor_id);
+    config.protocol_type = "smodule_modbus";
+    config.bus_type = "Rs485";
     config.bus_interface = "/dev/ttyUSB0";
     config.motor_type = "smodule_r35";
     config.motor_direction = 1;
@@ -33,12 +33,28 @@ static MotorDriverConfig make_motor_config() {
 
 // ──────────────────── Main ────────────────────
 
-int main() {
+int main(int argc, char** argv) {
+    int motor_id = 1;
+    if (argc == 2) {
+        try {
+            std::size_t used = 0;
+            motor_id = std::stoi(argv[1], &used);
+            if (used != std::string(argv[1]).size() || (motor_id != 1 && motor_id != 2))
+                throw std::invalid_argument("invalid motor ID");
+        } catch (...) {
+            std::cerr << "Usage: zero_demo [1|2]\n";
+            return 2;
+        }
+    } else if (argc != 1) {
+        std::cerr << "Usage: zero_demo [1|2]\n";
+        return 2;
+    }
     std::cout << "======================================" << std::endl;
     std::cout << "  Gripper Zero Calibration Demo" << std::endl;
     std::cout << "======================================" << std::endl;
 
-    auto gripper = GripperController::create(make_motor_config());
+    std::cout << "[TARGET] Motor ID " << motor_id << std::endl;
+    auto gripper = GripperController::create(make_motor_config(motor_id));
     if (!gripper) {
         std::cout << "[ERROR] Failed to create gripper controller" << std::endl;
         return 1;

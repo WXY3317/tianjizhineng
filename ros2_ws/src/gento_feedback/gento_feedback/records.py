@@ -13,12 +13,13 @@ def save_record(directory,record):
     for sample in record['samples']:
         sample['joint_matching']={}
         for obj,path_points in record['plan']['plans'].items():
-            q=sample['body'] if obj=='3' else sample['joints'][int(obj)]
+            q=(sample['body'] if obj=='3' else sample['head'] if obj=='2'
+               else sample['joints'][int(obj)])
             nearest=min(range(len(path_points)),key=lambda i:sum((a-b)**2 for a,b in zip(q,path_points[i])))
             sample['joint_matching'][obj]={'nearest_index':nearest,
                 'error_deg':[a-b for a,b in zip(q,path_points[nearest])]}
             tracking=sample.get('tracking',[])
-            if obj!='3' and len(tracking)>int(obj) and tracking[int(obj)].get('available'):
+            if obj in ('0','1') and len(tracking)>int(obj) and tracking[int(obj)].get('available'):
                 command=tracking[int(obj)]['command_joints_deg']
                 match=min(range(len(path_points)),key=lambda i:sum((a-b)**2 for a,b in zip(command,path_points[i])))
                 sample['joint_matching'][obj]['command_nearest_index']=match

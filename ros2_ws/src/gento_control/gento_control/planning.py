@@ -9,7 +9,7 @@ def validate_target(start,target,limits,max_delta):
     if len(target)!=7: raise ValueError('Expected seven joints')
     finite(target)
     for index,(a,b,(lo,hi)) in enumerate(zip(start,target,limits)):
-        if not lo<=b<=hi or abs(b-a)>max_delta:
+        if not lo<=b<=hi:
             raise ValueError(f'joint{index+1} exceeds limits/max_delta')
 
 
@@ -43,6 +43,15 @@ class Planner:
         targets,plans,info=prepare_cartesian(self,self.snapshot['joints'],self.snapshot['matrices'],goals)
         return {a:[list(points[i*7:(i+1)*7]) for i in range(count)] for a,(points,count) in plans.items()},goals,info
 
+    def pose_ptp(self, arm, matrix):
+        """Solve only the endpoint, then interpolate a validated joint path."""
+        self.check_cancel()
+        target=self.rpc('ik_endpoint',{'arm':arm,'matrix':matrix,
+                                       'reference':self.snapshot['joints'][arm]})
+        self.check_cancel()
+        plans,info=self.joint(arm,target)
+        return plans,{'path_type':'joint_ptp','endpoint_joints_deg':target,**info}
+
     def body_pose(self,matrix):
         self.check_cancel()
         result=self.rpc('body_ik',{'matrix':matrix,'reference':self.snapshot['body']})
@@ -53,7 +62,7 @@ class Planner:
         if len(joints)!=6:raise ValueError('Body IK must return six joints')
         finite(joints)
         for i,(q,start,(lo,hi)) in enumerate(zip(joints,self.snapshot['body'],self.snapshot['body_limits'])):
-            if not lo<=q<=hi or not start-self.c.max_delta<=q<=start+self.c.max_delta:
+            if not lo<=q<=hi:
                 raise ValueError(f'Body joint{i+1} exceeds limits/max_delta')
         return {3:[joints]},{'body_target_matrix':matrix,'body_ik':result}
 
@@ -85,3 +94,25 @@ class Planner:
             s=t*t*t*(10+t*(-15+6*t))
             path.append([a+s*(b-a) for a,b in zip(start,target)])
         return {arm:path},{'planned_duration_s':steps/50}
+
+    def head(self,target):
+        start=self.snapshot['head']
+        if len(start)!=2 or len(target)!=2 or len(self.snapshot['head_limits'])!=2:
+            raise ValueError('Head control requires two joint feedback values')
+        finite(target)
+        for index,(a,b,(lo,hi)) in enumerate(zip(start,target,self.snapshot['head_limits'])):
+            if not lo<=b<=hi:
+                raise ValueError(f'head joint{index+1} exceeds limits/max_delta')
+        limits=self.snapshot['head_rate_limits']
+        duration=max([1.]+[1.875*abs(b-a)/v for a,b,v in zip(start,target,limits['speed'])]
+                     +[math.sqrt(5.774*abs(b-a)/v) for a,b,v in zip(start,target,limits['acceleration'])]) * 1.02
+        steps=math.ceil(duration*50)
+        if steps+1>5000 or steps/50+1>=self.c.timeout:
+            raise ValueError('Head trajectory exceeds timeout/capacity')
+        path=[]
+        for index in range(steps+1):
+            self.check_cancel()
+            t=index/steps
+            s=t*t*t*(10+t*(-15+6*t))
+            path.append([a+s*(b-a) for a,b in zip(start,target)])
+        return {2:path},{'planned_duration_s':steps/50}

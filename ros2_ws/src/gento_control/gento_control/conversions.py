@@ -4,6 +4,7 @@ import math
 
 JOINT_NAMES = [f'{side}_joint_{i}' for side in ('left', 'right') for i in range(1, 8)]
 BODY_JOINT_NAMES = [f'body_joint_{i}' for i in range(1, 7)]
+HEAD_JOINT_NAMES = ['head_joint_1', 'head_joint_2']
 
 
 def body_target(names, positions):
@@ -12,6 +13,14 @@ def body_target(names, positions):
     finite(positions)
     values = dict(zip(names, positions))
     return [math.degrees(values[name]) for name in BODY_JOINT_NAMES]
+
+
+def head_target(names, positions):
+    if len(names) != 2 or len(set(names)) != 2 or set(names) != set(HEAD_JOINT_NAMES) or len(positions) != 2:
+        raise ValueError('Expected exactly head_joint_1..2 and two absolute positions')
+    finite(positions)
+    values = dict(zip(names, positions))
+    return [math.degrees(values[name]) for name in HEAD_JOINT_NAMES]
 
 
 def finite(values):
@@ -58,6 +67,38 @@ def body_target_to_sdk(body_target, sdk_base_in_body, sdk_length_to_m):
             result[i][j] = sum(rotation[k][i] * body_target[k][j] for k in range(3))
         result[i][3] = sum(rotation[k][i] * (body_target[k][3] - translation[k]) for k in range(3))
     return result
+
+
+def rotate_tcp_in_body_frame(current_sdk, sdk_base_in_body, angles):
+    """Rotate the measured TCP around fixed body_base axes, keeping its origin fixed.
+
+    angles are X/Y/Z radians; combined rotations use Rz @ Ry @ Rx.
+    """
+    if len(angles) != 3:
+        raise ValueError('Expected X, Y, Z rotation angles')
+    finite(angles)
+    if len(current_sdk) != 4 or len(sdk_base_in_body) != 4 or any(
+            len(row) != 4 for row in current_sdk + sdk_base_in_body):
+        raise ValueError('Invalid arm transform')
+    finite(v for row in current_sdk + sdk_base_in_body for v in row)
+    x, y, z = angles
+    cx, sx = math.cos(x), math.sin(x)
+    cy, sy = math.cos(y), math.sin(y)
+    cz, sz = math.cos(z), math.sin(z)
+    delta = [[cz*cy, cz*sy*sx-sz*cx, cz*sy*cx+sz*sx],
+             [sz*cy, sz*sy*sx+cz*cx, sz*sy*cx-cz*sx],
+             [-sy, cy*sx, cy*cx]]
+    base = sdk_base_in_body
+    # R_sdk_target = R_body_sdk^T R_delta R_body_sdk R_sdk_current.
+    in_body = [[sum(base[i][k]*current_sdk[k][j] for k in range(3))
+                for j in range(3)] for i in range(3)]
+    rotated = [[sum(delta[i][k]*in_body[k][j] for k in range(3))
+                for j in range(3)] for i in range(3)]
+    target = [row[:] for row in current_sdk]
+    for i in range(3):
+        for j in range(3):
+            target[i][j] = sum(base[k][i]*rotated[k][j] for k in range(3))
+    return target
 
 
 def quaternion(m):

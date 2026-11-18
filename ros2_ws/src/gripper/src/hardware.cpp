@@ -1,6 +1,10 @@
 #include "controller.hpp"
 #include "calibration.hpp"
 #include "motor_driver.hpp"
+#include "gripper.h"
+#include <chrono>
+#include <cmath>
+#include <iostream>
 #include <stdexcept>
 #include <thread>
 
@@ -15,7 +19,8 @@ private:
 };
 class Rs485Hardware final : public Hardware {
 public:
-    Rs485Hardware(const std::string& port, int id, int baud, const std::string& calibration_path) : calibration_(calibration_path.empty() ? DEMO_CALIBRATION_PATH : calibration_path) {
+    Rs485Hardware(const std::string& port, int id, int baud, const std::string& calibration_path)
+        : calibration_(calibration_path.empty() ? DEMO_CALIBRATION_PATH : calibration_path), motor_id_(id) {
         VendorOutput logs;
         if (port.empty() || (id < 1 || id > 247) || baud <= 0)
             throw std::invalid_argument("port must be nonempty, Modbus ID must be 1..247 and baud must be positive");
@@ -34,9 +39,16 @@ public:
     }
     void init() override {
         VendorOutput logs;
-        const auto init_result = motor_->init_motor();
+        auto init_result = motor_->init_motor();
+        for (int retry = 0; init_result != 0 && retry < 2; ++retry) {
+            std::cerr << "[INIT] Motor ID " << motor_id_ << " init_motor returned "
+                      << static_cast<unsigned>(init_result) << "; retrying\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            init_result = motor_->init_motor();
+        }
         if (init_result != 0)
-            throw std::runtime_error("driver initialization failed: init_motor return code " +
+            throw std::runtime_error("motor ID " + std::to_string(motor_id_) +
+                                     " driver initialization failed: init_motor return code " +
                                      std::to_string(static_cast<unsigned>(init_result)));
         motor_->set_bus_control_enabled(true);
         motor_->disable();
@@ -56,32 +68,34 @@ public:
     }
     bool zero() override {
         VendorOutput logs;
-        motor_->set_motor_control_mode(MotorDriver::CUR);
-        motor_->enable();
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        // Use the vendor's torque based homing, exactly as zero_demo does.
+        // The previous low speed homing could mistake friction mid-stroke for
+        // the opening stop and overwrite the zero point there.
+        motor_->disable();
+        if (!motor_->refresh_state() || !std::isfinite(motor_->get_motor_pos()) ||
+            std::abs(motor_->get_motor_spd()) > 0.05)
+            throw std::runtime_error("homing initial state invalid");
+        GripperController sdk(motor_); // Shares the already initialized bus and motor.
         try {
-            if (!motor_->refresh_state() || !motor_->enabled() || motor_->get_error_id())
-                throw std::runtime_error("homing state invalid");
-            motor_->motor_torque_cmd(-17.0f); // Same opening torque as installed library.
-            const auto deadline = std::chrono::steady_clock::now()+std::chrono::seconds(10);
-            double last = motor_->get_motor_pos(); int stable = 0; bool stopped = false;
-            while (std::chrono::steady_clock::now() < deadline) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                if (!motor_->refresh_state() || motor_->get_error_id())
-                    throw std::runtime_error("homing feedback failure");
-                const double now = motor_->get_motor_pos();
-                if (!std::isfinite(now)) throw std::runtime_error("homing position invalid");
-                stable = std::abs(now-last) < 0.00523598775598 ? stable+1 : 0;
-                last = now;
-                if (stable >= 3) { stopped = true; break; }
-            }
-            motor_->motor_torque_cmd(0); motor_->disable();
-            // Refuse to replace the calibrated origin when stopped away from known open end.
-            if (!stopped || std::abs(last) > 0.0174532925199433) return false;
-            return motor_->set_motor_zero();
+            sdk.clear_error();
+            if (!motor_->refresh_state() || motor_->get_error_id() != 0)
+                throw std::runtime_error("homing driver fault remains");
+            sdk.enable();
+            if (!sdk.enabled())
+                throw std::runtime_error("homing enable failed");
+            const bool ok = sdk.initialize_zero();
+            sdk.disable();
+            if (!ok)
+                throw std::runtime_error("SDK initialize_zero failed");
+            if (!motor_->refresh_state() || motor_->get_error_id() != 0 || motor_->enabled() ||
+                !std::isfinite(motor_->get_motor_pos()) ||
+                std::abs(motor_->get_motor_pos()) > 0.03)
+                throw std::runtime_error("homing zero feedback invalid");
+            std::cerr << "[HOMING] SDK initialize_zero succeeded; angle_rad="
+                      << motor_->get_motor_pos() << '\n';
+            return true;
         } catch (...) {
-            try { motor_->motor_torque_cmd(0); } catch (...) {}
-            try { motor_->disable(); } catch (...) {}
+            try { sdk.disable(); } catch (...) {}
             throw;
         }
     }
@@ -115,8 +129,10 @@ public:
         motor_->motor_pos_cmd(static_cast<float>(angle), static_cast<float>(speed));
     }
     double max_position_m() const override { return calibration_.max_width(); }
+    double min_position_m() const override { return 0.0; }
 private:
     Calibration calibration_;
+    int motor_id_;
     std::shared_ptr<MotorDriver> motor_;
 };
 std::unique_ptr<Hardware> make_hardware(const std::string& port, int id, int baud, const std::string& calibration_path) {

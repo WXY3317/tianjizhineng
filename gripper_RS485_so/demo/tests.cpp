@@ -11,6 +11,8 @@ public:
     bool connected{true}, zero_ok{true}, throw_move{false}, throw_hold{false}, follow_moves{true};
     int holds{0}; double held_angle{0};
     int moves{0}, shutdowns{0};
+    double minimum_width_m{0};
+    double min_width() const override { return minimum_width_m; }
     void init() override {}
     bool read(HardwareState& out) override { out = state; return connected; }
     bool zero() override { return zero_ok; }

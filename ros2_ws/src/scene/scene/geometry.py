@@ -4,7 +4,9 @@ import math
 import re
 
 
-_BARE_KEYS = re.compile(r'([,{]\s*)(position1|position2|orientation)(\s*:)')
+_BARE_KEYS = re.compile(r'([,{]\s*)(label|position1|position2|orientation)(\s*:)')
+VISION_LABELS = ('无遮挡正面', '无遮挡背面', '无遮挡侧面',
+                 '有遮挡正面', '有遮挡背面', '有遮挡侧面')
 
 
 def _vector(value, names, label):
@@ -24,12 +26,7 @@ def _unit_quaternion(value, label):
     return tuple(v/norm for v in q)
 
 
-def parse_targets(payload):
-    """Return [(position, orientation), ...] in body_base, metres and xyzw.
-
-    Accept JSON and the pictured form with bare top-level field names.
-    A zero position is retained: its meaning belongs to the scene policy.
-    """
+def _parse_payload(payload):
     if isinstance(payload, bytes):
         payload = payload.decode('utf-8')
     if not isinstance(payload, str) or len(payload) > 4096:
@@ -38,20 +35,42 @@ def parse_targets(payload):
     value = json.loads(payload)
     if not isinstance(value, dict) or not {'position1', 'orientation'} <= set(value):
         raise ValueError('Vision payload needs position1 and orientation')
-    if set(value) - {'position1', 'position2', 'orientation'}:
+    if set(value) - {'label', 'position1', 'position2', 'orientation'}:
         raise ValueError('Unexpected vision payload field')
+    return value
+
+
+def parse_targets(payload):
+    """Return positions and orientation in body_base; retain an all-zero position2."""
+    value = _parse_payload(payload)
     q = _unit_quaternion(value['orientation'], 'orientation')
     return [(_vector(value[key], 'xyz', key), q)
             for key in ('position1', 'position2') if key in value]
 
 
-def route_targets(targets):
+def parse_vision_message(payload):
+    """Return (label, targets) for the labeled vision protocol."""
+    value = _parse_payload(payload)
+    label = value.get('label')
+    if not isinstance(label, str) or label not in VISION_LABELS:
+        raise ValueError('Vision label must be one of: ' + ', '.join(VISION_LABELS))
+    return label, parse_targets(payload)
+
+
+def route_targets(targets, *, label=None):
     """Choose arm by body_base Y sign; omit an all-zero second placeholder."""
     routed = []
+    if label not in (None, '无遮挡正面', '无遮挡背面'):
+        raise ValueError(f'Unsupported grasp label: {label}')
     for index, target in enumerate(targets):
         position = target[0]
         if index == 1 and position == (0., 0., 0.):
             continue
+        if label == '无遮挡正面':
+            routed.append(('left', target))
+            continue
+        if label == '无遮挡背面' and index == 0 and abs(position[1]) < .05:
+            raise ValueError('无遮挡背面 position1 requires Y >= 0.05 m or <= -0.05 m')
         if position[1] == 0.:
             raise ValueError(f'position{index+1} needs nonzero Y to choose an arm')
         routed.append(('left' if position[1] > 0. else 'right', target))

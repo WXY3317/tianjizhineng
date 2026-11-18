@@ -1,5 +1,6 @@
 import json
 import time
+from pathlib import Path
 import pytest
 import rclpy
 from sensor_msgs.msg import JointState
@@ -99,6 +100,24 @@ def test_mqtt_forward_only_publishes_bd_j6_feedback():
     pose.header.frame_id='body_base'
     MqttFeedback.forward(bridge,topic,pose)
     assert bridge.mqtt.publish.call_count==1
+
+
+def test_mqtt_forwards_body_bd_j6_pose_in_body_base():
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    bridge=SimpleNamespace(connected=True,mqtt=MagicMock(),get_logger=MagicMock())
+    bridge.mqtt.publish.return_value.rc=0
+    pose=PoseStamped()
+    pose.header.frame_id='body_base'
+    pose.header.stamp.sec=123
+    pose.pose.position.z=.565
+    pose.pose.orientation.w=1.
+    MqttFeedback.forward(bridge,'gento/feedback/body_pose_bd_j6',pose,None)
+    topic,payload=bridge.mqtt.publish.call_args.args
+    assert topic=='gento/feedback/body_pose_bd_j6'
+    assert json.loads(payload)['frame_id']=='body_base'
+    assert json.loads(payload)['position']['z']==.565
+    assert bridge.mqtt.publish.call_args.kwargs=={'qos':0,'retain':False}
 
 
 def test_body_pose_uses_measured_matrix_stamp_and_fixed_mm_scale():
@@ -233,3 +252,16 @@ def test_diagnostics_distinguish_command_path_from_measured_path(tmp_path):
         assert matching['nearest_index']==0 and matching['command_nearest_index']==1
     finally:
         node.close();node.destroy_node();rclpy.shutdown()
+
+
+def test_head_trajectory_record_matches_head_feedback(tmp_path):
+    from gento_feedback.records import save_record
+    record={'created_ns':123,'plan':{'task_id':'head','plans':{'2':[[0.,0.],[1.,-1.]]}},
+            'samples':[{'head':[.9,-1.1],'joints':[[0.]*7,[0.]*7],
+                        'body':[0.]*6,'tracking':[{},{}]}]}
+    path=save_record(tmp_path,record)
+    saved=json.loads(Path(path).read_text())
+    matching=saved['samples'][0]['joint_matching']['2']
+    assert matching['nearest_index']==1
+    assert matching['error_deg']==pytest.approx([-.1,-.1])
+    assert 'command_nearest_index' not in matching

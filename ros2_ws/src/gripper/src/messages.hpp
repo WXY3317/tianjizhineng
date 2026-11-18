@@ -3,13 +3,16 @@
 #include <string>
 
 namespace gripper_demo {
-enum class Action : std::uint8_t { Move = 0, Zero = 1, Enable = 2, Disable = 3, Clear = 4 };
+enum class Action : std::uint8_t { Move = 0, Zero = 1, Enable = 2, Disable = 3, Clear = 4, SetCurrentThreshold = 5 };
 struct Command {
     Action action{Action::Move};
     double position_m{0.0};
     float speed_mps{0.01f};
+    std::uint64_t command_id{0};
+    double current_threshold_a{0.5};
 };
 struct Feedback {
+    std::uint64_t command_id{0};
     std::uint64_t stamp_ns{0};  // Unix time; ROS adapter can replace with node clock.
     double position_m{0.0};
     double motor_position_rad{0.0}; // Raw SDK angle for calibration checks.
