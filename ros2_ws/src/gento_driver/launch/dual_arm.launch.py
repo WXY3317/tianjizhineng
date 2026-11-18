@@ -116,9 +116,9 @@ def generate_launch_description():
                                             '-0.19600047499896323, -1.5263951506241609, '
                                             '-1.1898433109620943, -0.5670400206804377, '
                                             '-1.070166084152843]'),
-        DeclareLaunchArgument('scene_back_left_post_grasp_joints',
+        DeclareLaunchArgument('scene_front_left_post_grasp_joints',
                               default_value='[2.840, 0.40, -2.850, -1.57, -2.01, 0.50, -1.03]'),
-        DeclareLaunchArgument('scene_back_right_post_grasp_joints',
+        DeclareLaunchArgument('scene_front_right_post_grasp_joints',
                               default_value='[0.220, -0.4, -0.20, -1.520, -1.190, -0.560, -1.1]'),
         DeclareLaunchArgument('scene_handover_y_offset_m', default_value='0.07'),
         DeclareLaunchArgument('start_control', default_value='true', description='Start control node when enable_control is true'),
@@ -144,8 +144,8 @@ def generate_launch_description():
                  'allow_tool_z_rotation': ParameterValue(LaunchConfiguration('scene_allow_tool_z_rotation'), value_type=bool),
                  'left_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_left_post_grasp_joints'), value_type=str),
                  'right_handover_joints': ParameterValue(LaunchConfiguration('scene_right_handover_joints'), value_type=str),
-                 'back_left_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_back_left_post_grasp_joints'), value_type=str),
-                 'back_right_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_back_right_post_grasp_joints'), value_type=str),
+                 'front_left_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_front_left_post_grasp_joints'), value_type=str),
+                 'front_right_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_front_right_post_grasp_joints'), value_type=str),
                  'handover_y_offset_m': ParameterValue(LaunchConfiguration('scene_handover_y_offset_m'), value_type=float),
                  'arm_positions_file': LaunchConfiguration('scene_arm_positions_file')}],
              condition=IfCondition(LaunchConfiguration('start_scene'))),

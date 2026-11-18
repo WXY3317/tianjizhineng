@@ -108,9 +108,9 @@ ros2 service call /scene/attach_workpiece std_srvs/srv/Trigger '{}'
 ros2 service call /scene/detach_workpiece std_srvs/srv/Trigger '{}'
 ```
 
-scene 的 MQTT 工件目标须包含字符串 `label`。当前支持 `无遮挡正面`（固定左臂抓取并交接右臂）和 `无遮挡背面`（`position1` 的 Y ≥ 0.05 m 用左臂，Y ≤ -0.05 m 用右臂；抓取后回到对应准备姿态和背面终点，不交接）；其他标签拒绝。`position1` 通过 `/gento_control/{left,right}/target_pose_ptp` 执行；完成后等待 `interval` 秒，`position2` 通过 `/gento_control/{left,right}/target_pose` 执行。第二步继承第一步选定的法兰姿态和绕轴角度。位置单位为米，姿态为 `body_base` 下的单位四元数。`position2` 可省略或填全零占位。工件原点作为夹具尖端目标，法兰到尖端的局部 Z 偏移默认 0.20 m。默认 `dry_run:=false`，预览时设置 `dry_run:=true`。
+scene 的 MQTT 工件目标须包含字符串 `label`。当前支持 `无遮挡背面`（固定左臂抓取并交接右臂）和 `无遮挡正面`（`position1` 的 Y ≥ 0.05 m 用左臂，Y ≤ -0.05 m 用右臂；抓取后回到对应准备姿态和正面终点，不交接）；其他标签拒绝。`position1` 通过 `/gento_control/{left,right}/target_pose_ptp` 执行；完成后等待 `interval` 秒，`position2` 通过 `/gento_control/{left,right}/target_pose` 执行。第二步继承第一步选定的法兰姿态和绕轴角度。位置单位为米，姿态为 `body_base` 下的单位四元数。`position2` 可省略或填全零占位。工件原点作为夹具尖端目标，法兰到尖端的局部 Z 偏移默认 0.20 m。默认 `dry_run:=false`，预览时设置 `dry_run:=true`。
 
-所选手臂到 `position2` 后，scene 自动发送该夹爪 27 mm 命令并等待反馈；`awaiting_attach` 后由操作者确认夹牢并调用附着服务。正面模式下，左臂回退、到 `pre`、躯干回零，再到 `left_post_grasp_joints`，随后自动交接右臂。背面模式下，所选手臂回退、到 `pre`，再到对应的背面终点关节角；不交接。每段运动等待控制节点报告完成；夹爪到位本身不证明工件已可靠持有。
+所选手臂到 `position2` 后，scene 自动发送该夹爪 27 mm 命令并等待反馈；`awaiting_attach` 后由操作者确认夹牢并调用附着服务。背面模式下，左臂回退、到 `pre`、躯干回零，再到 `left_post_grasp_joints`，随后自动交接右臂。正面模式下，所选手臂回退、到 `pre`，再到对应的正面终点关节角；不交接。每段运动等待控制节点报告完成；夹爪到位本身不证明工件已可靠持有。
 
 附着期间，scene 根据法兰反馈持续发布工件估计位姿。交接时由左右法兰反馈求右法兰到工件的固定平移与旋转，随后改用右臂跟踪。当前尚未实现右臂放置流程。放置目标若由视觉给出，须用工件目标位姿乘以右法兰到工件固定变换的逆，得到右法兰目标；不能只旋转一个角度。
 

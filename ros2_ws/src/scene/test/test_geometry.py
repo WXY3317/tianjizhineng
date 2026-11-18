@@ -33,16 +33,16 @@ def test_targets_route_by_y_and_keep_order():
 
 
 def test_labeled_front_and_back_route_before_motion():
-    front = '''{"label":"无遮挡正面","position1":{"x":0.12,"y":-0.08,"z":0.39},
+    back = '''{"label":"无遮挡背面","position1":{"x":0.12,"y":-0.08,"z":0.39},
         "position2":{"x":0.12,"y":-0.08,"z":0.35},
         "orientation":{"x":0,"y":0,"z":0,"w":1}}'''
-    label, targets = parse_vision_message(front)
-    assert [side for side, _ in route_targets(targets, label=label)] == ['left', 'left']
-    back = front.replace('无遮挡正面', '无遮挡背面')
     label, targets = parse_vision_message(back)
+    assert [side for side, _ in route_targets(targets, label=label)] == ['left', 'left']
+    front = back.replace('无遮挡背面', '无遮挡正面')
+    label, targets = parse_vision_message(front)
     assert [side for side, _ in route_targets(targets, label=label)] == ['right', 'right']
     with pytest.raises(ValueError, match='0.05'):
-        route_targets([((.12, .049, .39), targets[0][1])], label='无遮挡背面')
+        route_targets([((.12, .049, .39), targets[0][1])], label='无遮挡正面')
     with pytest.raises(ValueError, match='Unsupported grasp label'):
         route_targets(targets, label='无遮挡侧面')
     with pytest.raises(ValueError, match='label'):

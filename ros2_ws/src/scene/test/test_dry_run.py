@@ -93,7 +93,7 @@ def test_dry_run_uses_body_base_object_targets_without_body_feedback(monkeypatch
     reports = []
     logs = []
     payload = json.dumps({
-        'label': '无遮挡正面',
+        'label': '无遮挡背面',
         'position1': {'x': .1, 'y': .2, 'z': .3},
         'position2': {'x': .2, 'y': .3, 'z': .4},
         'orientation': {'x': 0, 'y': math.sqrt(.5), 'z': 0, 'w': math.sqrt(.5)},
@@ -170,7 +170,7 @@ def test_scene_rejects_two_positions_on_different_arms(monkeypatch):
     VisionTargets = import_scene_node(monkeypatch)
     reports = []
     payload = json.dumps({
-        'label': '无遮挡背面',
+        'label': '无遮挡正面',
         'position1': {'x': .5, 'y': .2, 'z': .6},
         'position2': {'x': .5, 'y': -.2, 'z': .6},
         'orientation': {'x': 0, 'y': 0, 'z': 0, 'w': 1},
@@ -477,7 +477,7 @@ def test_completed_position2_exposes_grasp_target(monkeypatch, tmp_path):
     assert scene.state == 'idle'
 
 
-def test_back_right_position2_commands_right_gripper(monkeypatch, tmp_path):
+def test_front_right_position2_commands_right_gripper(monkeypatch, tmp_path):
     VisionTargets = import_scene_node(monkeypatch)
     sent = []
     scene = SimpleNamespace(
@@ -486,7 +486,7 @@ def test_back_right_position2_commands_right_gripper(monkeypatch, tmp_path):
         targets=[('right', (.5, -.2, .4), (0., 0., 0., 1.), (.5, -.2, .6))],
         yaw_candidates=[(15., (0., 0., 0., 1.))], yaw_index=0,
         restore_mode=False, joint_restore_steps=None,
-        tool_z_angle_file=tmp_path / 'tool_z.json', vision_label='无遮挡背面',
+        tool_z_angle_file=tmp_path / 'tool_z.json', vision_label='无遮挡正面',
         save_last_rotation=lambda record: None,
         save_record=lambda path, record: None,
         send_gripper=lambda side, position, step: sent.append((side, position, step)),
@@ -562,7 +562,7 @@ def test_right_retreat_then_pre_before_handover_completes(monkeypatch):
     assert reports[-1] == ('post_grasp_completed', {'arm': 'right'})
 
 
-def test_back_right_grasp_attaches_and_uses_right_post_grasp_route(monkeypatch):
+def test_front_right_grasp_attaches_and_uses_right_post_grasp_route(monkeypatch):
     VisionTargets = import_scene_node(monkeypatch)
     import scene.node as scene_module
     monkeypatch.setattr(scene_module.time, 'monotonic', lambda: 100.)
@@ -583,7 +583,7 @@ def test_back_right_grasp_attaches_and_uses_right_post_grasp_route(monkeypatch):
     destination = (.22, -.4, -.2, -1.52, -1.19, -.56, -1.1)
     scene.grasp_target = ('right', 30.)
     scene.position1_goal = ('right', (.1, -.2, .3), (0., 0., 0., 1.))
-    scene.vision_label = '无遮挡背面'
+    scene.vision_label = '无遮挡正面'
     scene.queue = None
     scene.control_state = 'completed'
     scene.target_publishers = {'right': SimpleNamespace(get_subscription_count=lambda: 1)}
@@ -591,21 +591,21 @@ def test_back_right_grasp_attaches_and_uses_right_post_grasp_route(monkeypatch):
     scene.current_arm_pose = lambda side: SimpleNamespace()
     scene.publish_workpiece_pose = lambda pose: None
     scene.arm_positions = {('pre', 'right'): (1.,) * 7}
-    scene.back_post_grasp_joints = {'right': destination}
+    scene.front_post_grasp_joints = {'right': destination}
     scene.send_post_grasp_next = lambda: True
     response = SimpleNamespace(success=None, message='')
     VisionTargets.attach_workpiece(scene, None, response)
     assert response.success and scene.attached_workpiece == ('right', 30.)
     assert [step[0] for step in scene.post_grasp_targets] == [
-        'right_retreat', 'right_grasp_pre', 'right_back_destination']
+        'right_retreat', 'right_grasp_pre', 'right_front_destination']
     assert scene.post_grasp_targets[-1][2] == destination
 
     scene.state = 'waiting'
     scene.post_grasp_targets = [scene.post_grasp_targets[-1]]
-    scene.waiting_task_id = 'back-destination-task'
+    scene.waiting_task_id = 'front-destination-task'
     scene.last_task_id = None
     VisionTargets.on_control_status(scene, SimpleNamespace(data=json.dumps({
-        'state': 'completed', 'task_id': 'back-destination-task'})))
+        'state': 'completed', 'task_id': 'front-destination-task'})))
     assert scene.state == 'idle' and scene.post_grasp_targets == []
     assert reports[-1] == ('post_grasp_completed', {'arm': 'right'})
 

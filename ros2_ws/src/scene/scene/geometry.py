@@ -66,11 +66,11 @@ def route_targets(targets, *, label=None):
         position = target[0]
         if index == 1 and position == (0., 0., 0.):
             continue
-        if label == '无遮挡正面':
+        if label == '无遮挡背面':
             routed.append(('left', target))
             continue
-        if label == '无遮挡背面' and index == 0 and abs(position[1]) < .05:
-            raise ValueError('无遮挡背面 position1 requires Y >= 0.05 m or <= -0.05 m')
+        if label == '无遮挡正面' and index == 0 and abs(position[1]) < .05:
+            raise ValueError('无遮挡正面 position1 requires Y >= 0.05 m or <= -0.05 m')
         if position[1] == 0.:
             raise ValueError(f'position{index+1} needs nonzero Y to choose an arm')
         routed.append(('left' if position[1] > 0. else 'right', target))

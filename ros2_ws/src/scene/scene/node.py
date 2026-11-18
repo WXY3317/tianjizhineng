@@ -50,9 +50,9 @@ class VisionTargets(Node):
                                '-0.19600047499896323, -1.5263951506241609, '
                                '-1.1898433109620943, -0.5670400206804377, '
                                '-1.070166084152843]')
-        self.declare_parameter('back_left_post_grasp_joints',
+        self.declare_parameter('front_left_post_grasp_joints',
                                '[2.840, 0.40, -2.850, -1.57, -2.01, 0.50, -1.03]')
-        self.declare_parameter('back_right_post_grasp_joints',
+        self.declare_parameter('front_right_post_grasp_joints',
                                '[0.220, -0.4, -0.20, -1.520, -1.190, -0.560, -1.1]')
         self.declare_parameter('handover_y_offset_m', .07)
         self.declare_parameter('arm_positions_file',
@@ -78,9 +78,9 @@ class VisionTargets(Node):
             raise ValueError(f'Invalid left_post_grasp_joints: {exc}') from exc
         self.arm_positions = load_arm_positions(self.get_parameter('arm_positions_file').value)
         self.right_handover_joints = self.parse_joint_parameter('right_handover_joints')
-        self.back_post_grasp_joints = {
-            'left': self.parse_joint_parameter('back_left_post_grasp_joints'),
-            'right': self.parse_joint_parameter('back_right_post_grasp_joints')}
+        self.front_post_grasp_joints = {
+            'left': self.parse_joint_parameter('front_left_post_grasp_joints'),
+            'right': self.parse_joint_parameter('front_right_post_grasp_joints')}
         self.handover_y_offset_m = float(self.get_parameter('handover_y_offset_m').value)
         if not math.isfinite(self.handover_y_offset_m) or self.handover_y_offset_m <= 0:
             raise ValueError('handover_y_offset_m must be positive and finite')
@@ -222,13 +222,13 @@ class VisionTargets(Node):
         else:
             side, yaw_deg = self.grasp_target
             if self.position1_goal[0] != side or (side == 'right' and
-                    getattr(self, 'vision_label', None) != '无遮挡背面'):
+                    getattr(self, 'vision_label', None) != '无遮挡正面'):
                 response.success, response.message = False, 'Grasp arm does not match the active vision label'
             elif self.control_state in ('running', 'recovering'):
                 response.success, response.message = False, 'Arm control is busy'
             elif (self.target_publishers[side].get_subscription_count() == 0 or
                   self.joint_publishers[side].get_subscription_count() == 0 or
-                  (getattr(self, 'vision_label', None) != '无遮挡背面' and
+                  (getattr(self, 'vision_label', None) != '无遮挡正面' and
                    self.body_joint_publisher.get_subscription_count() == 0)):
                 response.success, response.message = False, f'{side} arm motion subscriber is unavailable'
             elif (flange := self.current_arm_pose(side)) is None:
@@ -242,12 +242,12 @@ class VisionTargets(Node):
                     response.success, response.message = False, f'Invalid flange pose: {exc}'
                 else:
                     _, retreat_position, retreat_orientation = self.position1_goal
-                    if getattr(self, 'vision_label', None) == '无遮挡背面':
+                    if getattr(self, 'vision_label', None) == '无遮挡正面':
                         self.post_grasp_targets = [
                             (f'{side}_retreat', 'cartesian', retreat_position, retreat_orientation),
                             (f'{side}_grasp_pre', 'joints', self.arm_positions['pre', side], None),
-                            (f'{side}_back_destination', 'joints',
-                             self.back_post_grasp_joints[side], None),
+                            (f'{side}_front_destination', 'joints',
+                             self.front_post_grasp_joints[side], None),
                         ]
                     else:
                         self.post_grasp_targets = [
@@ -803,7 +803,7 @@ class VisionTargets(Node):
             if not restoring and self.target_index == 2:
                 if side == 'left':
                     self.send_gripper('left', .027, 'left_grasp')
-                elif getattr(self, 'vision_label', None) == '无遮挡背面':
+                elif getattr(self, 'vision_label', None) == '无遮挡正面':
                     self.send_gripper('right', .027, 'right_direct_grasp')
         elif (state == 'rejected' and not self.saw_motion and not self.restore_mode
               and self.allow_tool_z_rotation

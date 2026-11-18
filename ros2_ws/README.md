@@ -148,7 +148,7 @@ ros2 topic pub --once /gento_control/left/target_joints sensor_msgs/msg/JointSta
 
 `scene` 默认订阅 MQTT `/vision_target`。消息使用米和 `xyzw` 单位四元数，
 `position1`、`position2` 是 `body_base` 下依次执行的工件位置，也是夹具尖端目标，二者共用 `orientation`。
-MQTT 须包含 `label` 字符串。`无遮挡正面` 由左臂抓取并交接；`无遮挡背面` 按 `position1` 的 Y ≥ 0.05 m 选左臂、Y ≤ -0.05 m 选右臂，抓取后不交接。全零 `position2` 为占位并跳过。
+MQTT 须包含 `label` 字符串。`无遮挡背面` 由左臂抓取并交接；`无遮挡正面` 按 `position1` 的 Y ≥ 0.05 m 选左臂、Y ≤ -0.05 m 选右臂，抓取后不交接。全零 `position2` 为占位并跳过。
 节点直接使用 `body_base` 工件位姿，再按法兰局部 +Z 默认 0.20 m 的夹具长度换算法兰目标。默认 `dry_run:=false` 会执行运动；设置 `dry_run:=true` 可预览法兰位置和姿态。MQTT retained 消息会被忽略。查看 `/scene/status` 了解处理结果。
 完整消息格式见 [scene 功能包说明](src/scene/README.md)。
 
