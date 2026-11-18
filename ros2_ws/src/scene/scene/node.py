@@ -50,6 +50,8 @@ class VisionTargets(Node):
                                '-0.19600047499896323, -1.5263951506241609, '
                                '-1.1898433109620943, -0.5670400206804377, '
                                '-1.070166084152843]')
+        self.declare_parameter('right_post_grasp_joints', '[]')
+        self.declare_parameter('left_handover_joints', '[]')
         self.declare_parameter('front_left_post_grasp_joints',
                                '[2.840, 0.40, -2.850, -1.57, -2.01, 0.50, -1.03]')
         self.declare_parameter('front_right_post_grasp_joints',
@@ -78,6 +80,10 @@ class VisionTargets(Node):
             raise ValueError(f'Invalid left_post_grasp_joints: {exc}') from exc
         self.arm_positions = load_arm_positions(self.get_parameter('arm_positions_file').value)
         self.right_handover_joints = self.parse_joint_parameter('right_handover_joints')
+        # The reverse handover positions are not measured yet. Keep that route disabled
+        # until both safe, measured joint targets are configured.
+        self.right_post_grasp_joints = self.parse_optional_joint_parameter('right_post_grasp_joints')
+        self.left_handover_joints = self.parse_optional_joint_parameter('left_handover_joints')
         self.front_post_grasp_joints = {
             'left': self.parse_joint_parameter('front_left_post_grasp_joints'),
             'right': self.parse_joint_parameter('front_right_post_grasp_joints')}
@@ -196,7 +202,7 @@ class VisionTargets(Node):
         side, yaw_deg = self.attached_workpiece
         flange_position = tuple(getattr(flange.pose.position, axis) for axis in 'xyz')
         flange_orientation = tuple(getattr(flange.pose.orientation, axis) for axis in 'xyzw')
-        if side == 'right' and getattr(self, 'workpiece_relative', None) is not None:
+        if getattr(self, 'workpiece_relative', None) is not None:
             offset, relative_q = self.workpiece_relative
             rotated = rotate_vector(flange_orientation, offset)
             position = tuple(a + b for a, b in zip(flange_position, rotated))
@@ -221,14 +227,13 @@ class VisionTargets(Node):
             response.success, response.message = False, 'No completed position2 target ready for attachment'
         else:
             side, yaw_deg = self.grasp_target
-            if self.position1_goal[0] != side or (side == 'right' and
-                    getattr(self, 'vision_label', None) != '无遮挡正面'):
+            if self.position1_goal[0] != side:
                 response.success, response.message = False, 'Grasp arm does not match the active vision label'
             elif self.control_state in ('running', 'recovering'):
                 response.success, response.message = False, 'Arm control is busy'
             elif (self.target_publishers[side].get_subscription_count() == 0 or
                   self.joint_publishers[side].get_subscription_count() == 0 or
-                  (getattr(self, 'vision_label', None) != '无遮挡正面' and
+                  (getattr(self, 'vision_label', None) == '无遮挡背面' and
                    self.body_joint_publisher.get_subscription_count() == 0)):
                 response.success, response.message = False, f'{side} arm motion subscriber is unavailable'
             elif (flange := self.current_arm_pose(side)) is None:
@@ -249,12 +254,19 @@ class VisionTargets(Node):
                             (f'{side}_front_destination', 'joints',
                              self.front_post_grasp_joints[side], None),
                         ]
-                    else:
+                    elif side == 'left':
                         self.post_grasp_targets = [
                             ('retreat', 'cartesian', retreat_position, retreat_orientation),
                             ('pre', 'joints', self.arm_positions['pre', 'left'], None),
                             ('body_zero', 'body_joints', (0.,) * 6, None),
                             ('transfer', 'joints', self.left_post_grasp_joints, None),
+                        ]
+                    else:
+                        self.post_grasp_targets = [
+                            ('right_retreat', 'cartesian', retreat_position, retreat_orientation),
+                            ('right_grasp_pre', 'joints', self.arm_positions['pre', 'right'], None),
+                            ('body_zero', 'body_joints', (0.,) * 6, None),
+                            ('right_transfer', 'joints', self.right_post_grasp_joints, None),
                         ]
                     self.grasp_target = None
                     self.report('workpiece_attached', arm=side, tool_z_rotation_deg=yaw_deg)
@@ -271,6 +283,12 @@ class VisionTargets(Node):
                     not math.isfinite(v) for v in values)):
             raise ValueError(f'{name} must contain seven finite joint angles')
         return tuple(float(v) for v in values)
+
+    def parse_optional_joint_parameter(self, name):
+        values = json.loads(self.get_parameter(name).value)
+        if values == []:
+            return None
+        return self.parse_joint_parameter(name)
 
     def send_gripper(self, side, position, step):
         publisher = self.gripper_publishers[side]
@@ -301,7 +319,8 @@ class VisionTargets(Node):
         at_target = (message.at_target and
                      abs(message.position_m - target) <= .002 and
                      abs(message.target_position_m - target) <= .002)
-        held_by_current_limit = (step in ('left_grasp', 'right_grasp', 'right_direct_grasp') and
+        held_by_current_limit = (step in ('left_grasp', 'right_grasp', 'right_direct_grasp',
+                                         'left_handover_grasp') and
                                  message.target_active and message.current_limit_reached and
                                  message.holding_position and
                                  math.isfinite(message.position_m) and
@@ -316,53 +335,68 @@ class VisionTargets(Node):
         if step in ('left_grasp', 'right_direct_grasp'):
             self.state = 'idle'
             self.report('awaiting_attach', command="ros2 service call /scene/attach_workpiece std_srvs/srv/Trigger '{}'")
-        elif step == 'right_grasp':
+        elif step in ('right_grasp', 'left_handover_grasp'):
+            receiving = 'right' if step == 'right_grasp' else 'left'
+            releasing = 'left' if receiving == 'right' else 'right'
             try:
-                self.capture_right_attachment()
+                if receiving == 'right':
+                    self.capture_right_attachment()
+                else:
+                    self.capture_attachment('left')
             except ValueError as exc:
                 self.state = 'fault'
                 self.report('rejected', reason=str(exc))
                 return
-            self.post_grasp_targets = [('left_release', 'gripper', 0., None),
-                                       ('right_retreat', 'joints', self.right_handover_joints, None),
-                                       ('right_home_pre', 'joints', self.arm_positions['pre', 'right'], None)]
+            handover_joints = (self.right_handover_joints if receiving == 'right'
+                               else self.left_handover_joints)
+            self.post_grasp_targets = [(f'{releasing}_release', 'gripper', 0., None),
+                                       (f'{receiving}_retreat', 'joints', handover_joints, None)]
+            if receiving == 'right':
+                self.post_grasp_targets.append(
+                    ('right_home_pre', 'joints', self.arm_positions['pre', 'right'], None))
             self.state = 'next'
             self.next_at = time.monotonic() + .2
-        elif step == 'left_release':
+        elif step in ('left_release', 'right_release'):
             self.post_grasp_targets.pop(0)
             self.state = 'next'
             self.next_at = time.monotonic() + .2
 
-    def capture_right_attachment(self):
-        left = self.current_arm_pose('left')
-        right = self.current_arm_pose('right')
-        if left is None or right is None:
+    def capture_attachment(self, receiving):
+        releasing = 'left' if receiving == 'right' else 'right'
+        source = self.current_arm_pose(releasing)
+        target = self.current_arm_pose(receiving)
+        if source is None or target is None:
             raise ValueError('Fresh poses from both arms are required for workpiece transfer')
-        left_p = tuple(getattr(left.pose.position, axis) for axis in 'xyz')
-        left_q = tuple(getattr(left.pose.orientation, axis) for axis in 'xyzw')
-        right_p = tuple(getattr(right.pose.position, axis) for axis in 'xyz')
-        right_q = tuple(getattr(right.pose.orientation, axis) for axis in 'xyzw')
+        source_p = tuple(getattr(source.pose.position, axis) for axis in 'xyz')
+        source_q = tuple(getattr(source.pose.orientation, axis) for axis in 'xyzw')
+        target_p = tuple(getattr(target.pose.position, axis) for axis in 'xyz')
+        target_q = tuple(getattr(target.pose.orientation, axis) for axis in 'xyzw')
         work_p, work_q = workpiece_pose_from_flange(
-            left_p, left_q, self.tool_tip_offset_z_m, self.attached_workpiece[1])
-        inverse_q = (-right_q[0], -right_q[1], -right_q[2], right_q[3])
-        self.workpiece_relative = (rotate_vector(inverse_q, tuple(a-b for a, b in zip(work_p, right_p))),
+            source_p, source_q, self.tool_tip_offset_z_m, self.attached_workpiece[1])
+        inverse_q = (-target_q[0], -target_q[1], -target_q[2], target_q[3])
+        self.workpiece_relative = (rotate_vector(inverse_q, tuple(a-b for a, b in zip(work_p, target_p))),
                                    quaternion_multiply(inverse_q, work_q))
-        self.attached_workpiece = ('right', 0.)
-        self.publish_workpiece_pose(right)
-        self.report('workpiece_transferred', arm='right')
+        self.attached_workpiece = (receiving, 0.)
+        self.publish_workpiece_pose(target)
+        self.report('workpiece_transferred', arm=receiving)
+
+    def capture_right_attachment(self):
+        VisionTargets.capture_attachment(self, 'right')
 
     def send_post_grasp_next(self):
         step, mode, target, orientation = self.post_grasp_targets[0]
         side = 'right' if step.startswith('right_') else 'left'
         if mode == 'gripper':
             return self.send_gripper(side, target, step)
-        if step == 'right_approach':
-            flange = self.current_arm_pose('right')
+        if step in ('right_approach', 'left_approach'):
+            approach_side = step.split('_')[0]
+            flange = self.current_arm_pose(approach_side)
             if flange is None:
                 self.state = 'fault'
-                self.report('rejected', reason='No fresh right flange pose for handover approach')
+                self.report('rejected', reason=f'No fresh {approach_side} flange pose for handover approach')
                 return False
-            target = (flange.pose.position.x, flange.pose.position.y + self.handover_y_offset_m,
+            direction = 1 if approach_side == 'right' else -1
+            target = (flange.pose.position.x, flange.pose.position.y + direction * self.handover_y_offset_m,
                       flange.pose.position.z)
             orientation = tuple(getattr(flange.pose.orientation, axis) for axis in 'xyzw')
         publisher = (self.body_joint_publisher if mode == 'body_joints' else
@@ -712,11 +746,14 @@ class VisionTargets(Node):
                 if step == 'right_pre':
                     self.post_grasp_targets = [('right_approach', 'cartesian', None, None),
                                                ('right_grasp', 'gripper', .027, None)]
+                elif step == 'left_pre':
+                    self.post_grasp_targets = [('left_approach', 'cartesian', None, None),
+                                               ('left_handover_grasp', 'gripper', .027, None)]
                 if getattr(self, 'post_grasp_targets', None):
                     self.state = 'next'
                     self.next_at = time.monotonic() + (
-                        self.interval if step == 'right_pre' else .2)
-                    if step == 'right_pre':
+                        self.interval if step in ('right_pre', 'left_pre') else .2)
+                    if step in ('right_pre', 'left_pre'):
                         self.report('handover_waiting', wait_s=self.interval)
                 else:
                     self.state = 'idle'
@@ -725,6 +762,11 @@ class VisionTargets(Node):
                         self.state = 'next'
                         self.next_at = time.monotonic() + .2
                         self.report('handover_started', step='right_pre')
+                    elif step == 'right_transfer':
+                        self.post_grasp_targets = [('left_pre', 'joints', self.left_handover_joints, None)]
+                        self.state = 'next'
+                        self.next_at = time.monotonic() + .2
+                        self.report('handover_started', step='left_pre')
                     else:
                         self.report('post_grasp_completed', arm=self.attached_workpiece[0])
             elif state in ('rejected', 'fault', 'stopped'):
@@ -803,7 +845,7 @@ class VisionTargets(Node):
             if not restoring and self.target_index == 2:
                 if side == 'left':
                     self.send_gripper('left', .027, 'left_grasp')
-                elif getattr(self, 'vision_label', None) == '无遮挡正面':
+                elif getattr(self, 'vision_label', None) in ('无遮挡正面', '无遮挡背面'):
                     self.send_gripper('right', .027, 'right_direct_grasp')
         elif (state == 'rejected' and not self.saw_motion and not self.restore_mode
               and self.allow_tool_z_rotation
@@ -907,6 +949,9 @@ class VisionTargets(Node):
                 raise ValueError('No target position to execute')
             if len(routed) == 2 and routed[0][0] != routed[1][0]:
                 raise ValueError('position1 and position2 must use the same arm for translation')
+            if (label == '无遮挡背面' and routed[0][0] == 'right' and
+                    (self.right_post_grasp_joints is None or self.left_handover_joints is None)):
+                raise ValueError('Back right-arm handover requires configured right_post_grasp_joints and left_handover_joints')
             self.targets = []
             self.target_index = 0
             self.position1_solution = None

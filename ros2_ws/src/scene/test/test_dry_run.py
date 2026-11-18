@@ -185,6 +185,52 @@ def test_scene_rejects_two_positions_on_different_arms(monkeypatch):
     assert 'same arm' in reports[-1][1]['reason']
 
 
+def test_back_right_requires_measured_handover_joints_before_motion(monkeypatch):
+    VisionTargets = import_scene_node(monkeypatch)
+    reports = []
+    payload = json.dumps({
+        'label': '无遮挡背面',
+        'position1': {'x': .5, 'y': -.2, 'z': .6},
+        'position2': {'x': .5, 'y': -.2, 'z': .5},
+        'orientation': {'x': 0, 'y': 0, 'z': 0, 'w': 1},
+    }).encode()
+    scene = SimpleNamespace(
+        state='idle', queue_lock=threading.Lock(), queue=payload,
+        control_state=None, dry_run=False, targets=[],
+        right_post_grasp_joints=None, left_handover_joints=None,
+        report=lambda state, **details: reports.append((state, details)),
+        send_next=lambda: (_ for _ in ()).throw(AssertionError('Motion must not start')),
+    )
+    VisionTargets.tick(scene)
+    assert reports[-1][0] == 'rejected'
+    assert 'right_post_grasp_joints' in reports[-1][1]['reason']
+
+
+def test_back_right_queues_reverse_handover_after_attach(monkeypatch):
+    VisionTargets = import_scene_node(monkeypatch)
+    reports = []
+    scene = SimpleNamespace(
+        grasp_target=('right', 30.), position1_goal=('right', (.1, -.2, .3), (0., 0., 0., 1.)),
+        vision_label='无遮挡背面', state='idle', queue=None, gripper_pending=None,
+        attached_workpiece=None, control_state='completed',
+        target_publishers={'right': SimpleNamespace(get_subscription_count=lambda: 1)},
+        joint_publishers={'right': SimpleNamespace(get_subscription_count=lambda: 1)},
+        body_joint_publisher=SimpleNamespace(get_subscription_count=lambda: 1),
+        current_arm_pose=lambda side: SimpleNamespace(),
+        publish_workpiece_pose=lambda pose: None,
+        arm_positions={('pre', 'right'): (1.,) * 7},
+        right_post_grasp_joints=(2.,) * 7,
+        send_post_grasp_next=lambda: True,
+        report=lambda state, **details: reports.append((state, details)),
+    )
+    response = SimpleNamespace(success=None, message='')
+    VisionTargets.attach_workpiece(scene, None, response)
+    assert response.success
+    assert [step[0] for step in scene.post_grasp_targets] == [
+        'right_retreat', 'right_grasp_pre', 'body_zero', 'right_transfer']
+    assert scene.post_grasp_targets[-1][2] == (2.,) * 7
+
+
 def test_workpiece_pose_tracks_flange_only_while_attached(monkeypatch):
     VisionTargets = import_scene_node(monkeypatch)
     import scene.node as scene_module
@@ -519,6 +565,58 @@ def test_handover_uses_right_feedback(monkeypatch):
     assert scene.attached_workpiece[0] == 'right'
     assert scene.workpiece_relative[0] == pytest.approx((0., 0., .4))
     assert reports[-1][0] == 'workpiece_transferred'
+
+
+def test_reverse_handover_moves_left_toward_right_and_tracks_left_flange(monkeypatch):
+    VisionTargets = import_scene_node(monkeypatch)
+    reports, published, sent = [], [], []
+    def pose(y):
+        return SimpleNamespace(
+            header=SimpleNamespace(stamp=SimpleNamespace(sec=1, nanosec=0)),
+            pose=SimpleNamespace(position=SimpleNamespace(x=.5, y=y, z=.3),
+                                 orientation=SimpleNamespace(x=0., y=0., z=0., w=1.)))
+    scene = SimpleNamespace(
+        attached_workpiece=('right', 0.), tool_tip_offset_z_m=.2,
+        current_arm_pose=lambda side: pose(-.1 if side == 'right' else .1),
+        report=lambda state, **details: reports.append((state, details)),
+        publish_workpiece_pose=published.append,
+    )
+    VisionTargets.capture_attachment(scene, 'left')
+    assert scene.attached_workpiece == ('left', 0.)
+    assert scene.workpiece_relative[0] == pytest.approx((0., -.2, .2))
+    assert reports[-1] == ('workpiece_transferred', {'arm': 'left'})
+
+    scene.post_grasp_targets = [('left_approach', 'cartesian', None, None)]
+    scene.handover_y_offset_m = .07
+    scene.target_publishers = {'left': SimpleNamespace(
+        get_subscription_count=lambda: 1, publish=sent.append)}
+    scene.get_clock = lambda: SimpleNamespace(now=lambda: SimpleNamespace(to_msg=lambda: None))
+    VisionTargets.send_post_grasp_next(scene)
+    assert sent[-1].pose.position.y == pytest.approx(.03)
+
+
+def test_reverse_handover_waits_for_left_pre_feedback(monkeypatch):
+    VisionTargets = import_scene_node(monkeypatch)
+    reports = []
+    scene = SimpleNamespace(
+        state='waiting', control_state='running', last_task_id=None,
+        waiting_task_id='right-transfer-task', preset_targets=[],
+        post_grasp_targets=[('right_transfer', 'joints', (1.,) * 7, None)],
+        left_handover_joints=(2.,) * 7,
+        attached_workpiece=('right', 0.), interval=1.,
+        report=lambda state, **details: reports.append((state, details)),
+    )
+    VisionTargets.on_control_status(scene, SimpleNamespace(data=json.dumps({
+        'state': 'completed', 'task_id': 'right-transfer-task'})))
+    assert scene.post_grasp_targets == [('left_pre', 'joints', (2.,) * 7, None)]
+    assert scene.attached_workpiece[0] == 'right'
+    scene.state = 'waiting'
+    scene.waiting_task_id = 'left-pre-task'
+    VisionTargets.on_control_status(scene, SimpleNamespace(data=json.dumps({
+        'state': 'completed', 'task_id': 'left-pre-task'})))
+    assert [step[0] for step in scene.post_grasp_targets] == [
+        'left_approach', 'left_handover_grasp']
+    assert reports[-1][0] == 'handover_waiting'
 
 
 def test_right_retreat_then_pre_before_handover_completes(monkeypatch):

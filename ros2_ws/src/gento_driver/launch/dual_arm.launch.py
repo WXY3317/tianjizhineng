@@ -116,6 +116,8 @@ def generate_launch_description():
                                             '-0.19600047499896323, -1.5263951506241609, '
                                             '-1.1898433109620943, -0.5670400206804377, '
                                             '-1.070166084152843]'),
+        DeclareLaunchArgument('scene_right_post_grasp_joints', default_value='[]'),
+        DeclareLaunchArgument('scene_left_handover_joints', default_value='[]'),
         DeclareLaunchArgument('scene_front_left_post_grasp_joints',
                               default_value='[2.840, 0.40, -2.850, -1.57, -2.01, 0.50, -1.03]'),
         DeclareLaunchArgument('scene_front_right_post_grasp_joints',
@@ -144,6 +146,8 @@ def generate_launch_description():
                  'allow_tool_z_rotation': ParameterValue(LaunchConfiguration('scene_allow_tool_z_rotation'), value_type=bool),
                  'left_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_left_post_grasp_joints'), value_type=str),
                  'right_handover_joints': ParameterValue(LaunchConfiguration('scene_right_handover_joints'), value_type=str),
+                 'right_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_right_post_grasp_joints'), value_type=str),
+                 'left_handover_joints': ParameterValue(LaunchConfiguration('scene_left_handover_joints'), value_type=str),
                  'front_left_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_front_left_post_grasp_joints'), value_type=str),
                  'front_right_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_front_right_post_grasp_joints'), value_type=str),
                  'handover_y_offset_m': ParameterValue(LaunchConfiguration('scene_handover_y_offset_m'), value_type=float),

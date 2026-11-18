@@ -30,13 +30,13 @@ MQTT 视觉目标是 `body_base` 下的工件位姿；工件原点作为夹具�
 }
 ```
 
-当前执行 `无遮挡正面` 和 `无遮挡背面`。背面固定由左臂抓取并继续原交接流程；正面按 `position1` 的 Y 值选臂：Y ≥ 0.05 m 用左臂，Y ≤ -0.05 m 用右臂。正面抓取后回退 `position1`、该臂 `pre` 姿态，再到对应的 `front_left_post_grasp_joints` 或 `front_right_post_grasp_joints`；不启动左右臂交接。其他四种标签会拒绝。
+当前执行 `无遮挡正面` 和 `无遮挡背面`。正面和背面均按 `position1` 的 Y 值选臂：Y ≥ 0.05 m 用左臂，Y ≤ -0.05 m 用右臂。正面抓取后回退 `position1`、该臂 `pre` 姿态，再到对应的 `front_left_post_grasp_joints` 或 `front_right_post_grasp_joints`；不启动左右臂交接。其他四种标签会拒绝。背面右臂交接的两组关节角默认未配置，右臂背面目标会在运动前拒绝；测量后用 `right_post_grasp_joints` 与 `left_handover_joints` 设置各七个弧度值。
 
 位置单位为米，姿态为 `body_base` 下的 `xyzw` 单位四元数，两个目标共用姿态。
 按 `position1`、`position2` 顺序执行。
-两点分别表示同一只手臂的预抓取位置和工件实际位置；正面模式下两点选出的手臂不同时会拒绝。
+两点分别表示同一只手臂的预抓取位置和工件实际位置；两点选出的手臂不同时会拒绝。
 `position2` 可以省略；恰好为 `(0,0,0)` 时视为占位并跳过。
-正面模式下，非占位目标 Y = 0 会被拒绝。MQTT retained 消息被忽略。
+两种模式下，非占位目标 Y = 0 会被拒绝。MQTT retained 消息被忽略。
 
 节点直接使用 MQTT 给出的 `body_base` 工件位姿，换算为法兰位姿后依次发布：
 `position1` 使用 `/gento_control/{left,right}/target_pose_ptp`，按关节空间轨迹到目标；
@@ -49,7 +49,7 @@ MQTT 视觉目标是 `body_base` 下的工件位姿；工件原点作为夹具�
 需要控制节点；绕轴候选先尝试原始姿态，再按绝对角度从小到大尝试。
 可在 `/scene/status` 查看发送、完成及拒绝原因。
 
-到达 `position2` 后，scene 向所选手臂夹爪发送 27 mm 命令，等待夹爪到位或触发电流阈值并保持当前位置。电流保持可能发生在 27 mm 之前，不能单凭反馈确认抓牢；收到 `awaiting_attach` 状态后，操作者确认实物已夹牢，再手动调用下面的附着服务。背面模式会依次回退到 `position1`、左臂 `pre`、躯干六轴回零、左臂 `left_post_grasp_joints`，之后自动交接右臂。正面模式会依次回退到 `position1`、所选手臂 `pre`、该臂的正面终点关节角，不进行交接。每段运动均等待完成反馈才继续。
+到达 `position2` 后，scene 向所选手臂夹爪发送 27 mm 命令，等待夹爪到位或触发电流阈值并保持当前位置。电流保持可能发生在 27 mm 之前，不能单凭反馈确认抓牢；收到 `awaiting_attach` 状态后，操作者确认实物已夹牢，再手动调用下面的附着服务。背面模式会依次回退到 `position1`、抓取臂 `pre`、躯干六轴回零、该臂交接点，再交给另一只手臂。左抓取使用 `left_post_grasp_joints` 和 `right_handover_joints`；右抓取使用 `right_post_grasp_joints` 和 `left_handover_joints`，接收臂直线靠近 7 cm、抓取、原抓取臂松开后回退。正面模式会依次回退到 `position1`、所选手臂 `pre`、该臂的正面终点关节角，不进行交接。每段运动均等待完成反馈才继续。
 
 scene 将所选绕轴角和法兰到夹具尖端的偏移作为固定变换，
 每次收到该手臂的新鲜法兰位姿，就在 `/scene/workpiece_pose` 发布工件在 `body_base` 下的估计位姿。
