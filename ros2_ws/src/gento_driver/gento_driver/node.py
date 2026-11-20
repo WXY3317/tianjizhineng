@@ -50,15 +50,22 @@ class Bridge(Node):
         if self.get_parameter('use_sim_time').value: raise ValueError('Real hardware requires wall clock')
         import ipaddress
         self.c.ip=str(ipaddress.IPv4Address(self.c.ip))
-        values=[self.c.speed,self.c.acc,self.c.max_delta,self.c.timeout,self.c.tolerance,
+        values=[self.c.speed,self.c.acc,self.c.timeout,self.c.tolerance,
                 self.c.publish_rate,self.c.command_max_age,self.c.sdk_length_to_m,self.c.cartesian_path_tolerance,
                 self.c.cartesian_speed,self.c.cartesian_angular_speed,self.c.cartesian_joint_speed,self.c.cartesian_joint_acc,
                 self.c.body_speed,self.c.body_acc,self.c.body_cartesian_speed,self.c.body_cartesian_angular_speed,
                 self.c.body_cartesian_joint_speed,self.c.body_cartesian_joint_acc,
                 self.c.body_position_tolerance_mm,self.c.body_orientation_tolerance_deg]
         finite(values)
-        if min(values)<=0 or max(self.c.speed,self.c.acc,self.c.body_speed,self.c.body_acc)>10 or self.c.publish_rate>100:
-            raise ValueError('Invalid hardware limits/configuration')
+        if min(values)<=0:
+            raise ValueError('Hardware limits/configuration must be positive')
+        if self.c.speed>100:
+            raise ValueError(f'speed must be at most 100%, got {self.c.speed}%')
+        for name in ('acc', 'body_speed', 'body_acc'):
+            if getattr(self.c, name)>10:
+                raise ValueError(f'{name} must be at most 10%, got {getattr(self.c, name)}%')
+        if self.c.publish_rate>100:
+            raise ValueError(f'publish_rate must be at most 100 Hz, got {self.c.publish_rate} Hz')
         finite([self.c.body_z_min_m,self.c.body_z_max_m])
         if self.c.body_z_min_m>=self.c.body_z_max_m:
             raise ValueError('body_z_min_m must be less than body_z_max_m')
@@ -179,7 +186,7 @@ class Bridge(Node):
                                              f'[{self.c.body_z_min_m}, {self.c.body_z_max_m}] m in {self.c.body_frame}')
                         model=LunaBodyKinematics(self.engine.body_limits)
                         solved=model.inverse(args['matrix'],args['reference'],
-                                             max_joint_delta_deg=self.c.max_delta,
+                                             max_joint_delta_deg=None,
                                              checkpoint=self.engine.check_cancel)
                         self.engine.check_cancel()
                         if not solved.success:

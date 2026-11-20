@@ -79,7 +79,7 @@ def validate_goal(goal, snapshot, hardware, now_ns, check_freshness=True, planni
                 # command to the controller's measured limits.
                 epsilon=1e-10  # degrees, far below encoder resolution
                 if not lo-epsilon<=value<=hi+epsilon:
-                    raise ValueError(f'object{obj} joint{i+1} exceeds limits/max_delta')
+                    raise ValueError(f'object{obj} joint{i+1} exceeds limits')
                 q[i]=min(hi,max(lo,value))
         if obj == 3 and len(points)==1: continue
         caps = arm_limits[obj]

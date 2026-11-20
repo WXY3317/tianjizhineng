@@ -14,6 +14,10 @@ ROS 2 Humble 工作空间，提供双臂、躯干、夹爪控制，关节与法�
 # 自动交叉编译 ARM64 SDK、同步并在远端编译工作区全部 ROS 包，不启动机器人或夹爪
 ./deploy_arm.sh
 
+# 一条命令启动夹爪、真机驱动/控制和视觉场景；按是否需要夹爪标零选择
+./run_all.sh first --build
+./run_all.sh second
+
 # 启动二选一；--build 表示先编译，后续启动可省略
 ./run_feedback_only.sh --build  # driver + feedback，开放执行接口，control 单独启动
 ./run_real_robot.sh --build    # driver + feedback + control，并构建 scene；允许控制
@@ -41,6 +45,8 @@ ROS 2 Humble 工作空间，提供双臂、躯干、夹爪控制，关节与法�
 `run_control_only.sh --build` 可先编译控制包及其依赖。不要重复启动 control。
 两个终端须使用相同的 ROS_DOMAIN_ID 和可互通的 DDS 配置。只有 driver 建立 SDK 连接，control 通过 ROS 接口使用它。
 `run_scene.sh` 只启动视觉目标节点，不启动真机驱动；须确保 control 与 feedback 已运行。
+`run_all.sh` 在一个终端管理夹爪和双臂/场景两个 launch 进程，退出时一同停止。
+可通过 `./run_all.sh second scene_dry_run:=true` 让场景只预览。
 其默认 MQTT Broker 为本机 `127.0.0.1:1883`，也可传入
 `mqtt_host:=... mqtt_port:=... mqtt_topic:=...`。默认主题为 `/vision_target`。
 
@@ -88,6 +94,7 @@ ros2 topic echo /gento_control/status
 | `body/target_pose_ptp` | `geometry_msgs/msg/PoseStamped`，求躯干终点逆解并执行关节位置运动；末端不保证直线 |
 | `body/ik_result` | `std_msgs/msg/String`，逆解结果 JSON，含六轴角度和弧度 |
 | `left/target_joints`、`right/target_joints` | `sensor_msgs/msg/JointState`，完整的 7 个关节名称与位置，rad |
+| `dual/target_joints` | `sensor_msgs/msg/JointState`，左右臂共 14 个关节名称与位置，rad；一次任务同步执行 |
 | `body/target_joints` | `sensor_msgs/msg/JointState`，完整的 6 个关节名称与位置，rad |
 | `head/target_joints` | `sensor_msgs/msg/JointState`，完整的 2 个关节名称与位置，rad |
 
@@ -148,11 +155,11 @@ ros2 topic pub --once /gento_control/left/target_joints sensor_msgs/msg/JointSta
 
 `scene` 默认订阅 MQTT `/vision_target`。消息使用米和 `xyzw` 单位四元数，
 `position1`、`position2` 是 `body_base` 下依次执行的工件位置，也是夹具尖端目标，二者共用 `orientation`。
-MQTT 须包含 `label` 字符串。`无遮挡正面` 和 `无遮挡背面` 均按 `position1` 的 Y ≥ 0.05 m 选左臂、Y ≤ -0.05 m 选右臂。正面抓取后不交接；背面抓取后交给另一臂。背面右臂交接需先配置 `scene_right_post_grasp_joints` 和 `scene_left_handover_joints`。全零 `position2` 为占位并跳过。
+MQTT 须包含 `label` 字符串。`无遮挡正面` 和 `无遮挡背面` 均按 `position1` 的 Y ≥ 0.05 m 选左臂、Y ≤ -0.05 m 选右臂。正面抓取后双臂依次到 `pre`、躯干回零、双臂到 `home`；背面抓取后交给另一臂，再依次回到 `pre` 和 `home`。背面右臂交接需先配置 `scene_right_post_grasp_joints` 和 `scene_left_handover_joints`。全零 `position2` 为占位并跳过。
 节点直接使用 `body_base` 工件位姿，再按法兰局部 +Z 默认 0.20 m 的夹具长度换算法兰目标。默认 `dry_run:=false` 会执行运动；设置 `dry_run:=true` 可预览法兰位置和姿态。MQTT retained 消息会被忽略。查看 `/scene/status` 了解处理结果。
 完整消息格式见 [scene 功能包说明](src/scene/README.md)。
 
-躯干位姿通过 `/gento_control/body/target_pose` 发送，`frame_id` 设为 `body_base`。该话题执行末端直线运动；`/gento_control/body/target_pose_ptp` 只求终点逆解后发送关节位置命令，末端路径不保证直线；只预览逆解时使用 `/gento_control/body/preview_pose`，结果发布到 `/gento_control/body/ik_result` 并在 control 日志打印。以当前反馈位姿为起点修改目标，必须重新填写时间戳。逆解约束完整位置与朝向，并在 `max_delta` 和有效限位内优先接近当前关节角；J2 额外限制为 [-50°, 80°]。关节角执行仍使用 `/gento_control/body/target_joints`。详见 [躯干话题用法](src/gento_driver/BODY_KINEMATICS.md#ros-话题反馈和控制)。
+躯干位姿通过 `/gento_control/body/target_pose` 发送，`frame_id` 设为 `body_base`。该话题执行末端直线运动；`/gento_control/body/target_pose_ptp` 只求终点逆解后发送关节位置命令，末端路径不保证直线；只预览逆解时使用 `/gento_control/body/preview_pose`，结果发布到 `/gento_control/body/ik_result` 并在 control 日志打印。以当前反馈位姿为起点修改目标，必须重新填写时间戳。逆解约束完整位置与朝向，并在有效关节限位内优先接近当前关节角；J2 额外限制为 [-50°, 80°]。关节角执行仍使用 `/gento_control/body/target_joints`。详见 [躯干话题用法](src/gento_driver/BODY_KINEMATICS.md#ros-话题反馈和控制)。
 
 `target_pose` 现在从当前 `BD_J6` 位姿到目标做位置直线插补和姿态 SLERP，沿同一逆解分支求出关节锚点，再生成 50 Hz 关节样本。下发前逐点检查正解位姿、关节限位、速度和加速度；driver 按时间顺序发送关节目标并监控实际末端到线段的偏差。`target_joints` 仍是单点关节目标，不走此直线规划。轨迹点由控制器跟踪，实机路径误差受 `cartesian_path_tolerance` 监控，不能把模型直线等同于物理上的零误差直线。
 
@@ -207,7 +214,7 @@ ros2 topic pub --once /gento_control/body/target_joints sensor_msgs/msg/JointSta
   position: [J1, J2, J3, J4, J5, J6]}"
 ```
 
-预览求解及执行均受有效关节限位和 `max_delta` 约束。第 2 轴额外限制为 ±50°，即约 ±0.872665 rad。目标不排队；在另一终端观察状态，预览等待 `previewed`，执行等待 `completed` 后再发送下一条新目标：
+预览求解及执行均受有效关节限位约束。第 2 轴额外限制为 ±50°，即约 ±0.872665 rad。目标不排队；在另一终端观察状态，预览等待 `previewed`，执行等待 `completed` 后再发送下一条新目标：
 
 ```bash
 ros2 topic echo /gento_control/status
@@ -346,13 +353,13 @@ ros2 topic pub --once /right_gripper/command gripper/msg/GripperCommand '{action
 | 参数 | 含义 |
 | --- | --- |
 | `ip` | 机器人控制器地址，与部署用 SSH 地址不同 |
-| `speed`、`acc` | 手臂/头部 POSITION 比例及手臂规划速度、加速度百分比，范围 `(0,10]` |
+| `speed` | 手臂/头部 POSITION 速度比例及手臂规划速度百分比，范围 `(0,100]`，默认 12% |
+| `acc` | 手臂/头部 POSITION 加速度比例及手臂规划加速度百分比，范围 `(0,10]` |
 | `cartesian_speed`、`cartesian_angular_speed` | 手臂末端线速度 m/s、姿态角速度 rad/s 上限 |
 | `cartesian_joint_speed`、`cartesian_joint_acc` | 手臂关节速度 °/s、加速度 °/s² 上限 |
 | `body_speed`、`body_acc` | 躯干 POSITION 比例及规划速度、加速度百分比，范围 `(0,10]` |
 | `body_cartesian_speed`、`body_cartesian_angular_speed` | 躯干 `BD_J6` 末端线速度 m/s、姿态角速度 rad/s 上限 |
 | `body_cartesian_joint_speed`、`body_cartesian_joint_acc` | 躯干关节速度 °/s、加速度 °/s² 上限 |
-| `max_delta` | 每关节相对本次起点的最大位移，°，不是相邻点步长 |
 | `body_z_min_m`、`body_z_max_m` | 躯干 `BD_J6` 位姿逆解目标与结果的高度范围，`body_base` 中，默认 0.55–0.76 m |
 | `tolerance`、`timeout` | 最终关节到位容差 °、执行超时 s |
 | `body_position_tolerance_mm`、`body_orientation_tolerance_deg` | 躯干末端到位容差，默认 1 mm / 0.2°；与关节容差同时满足并持续 0.5 秒才完成 |

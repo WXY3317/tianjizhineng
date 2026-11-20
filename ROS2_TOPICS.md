@@ -10,6 +10,7 @@
 | --- | --- |
 | `/gento_control/left/target_joints` | 左臂七轴绝对关节目标 |
 | `/gento_control/right/target_joints` | 右臂七轴绝对关节目标 |
+| `/gento_control/dual/target_joints` | 左右臂共十四轴绝对关节目标，同一任务同步执行 |
 | `/gento_control/left/target_pose` | 左臂法兰绝对位姿，末端按直线轨迹运动 |
 | `/gento_control/right/target_pose` | 右臂法兰绝对位姿，末端按直线轨迹运动 |
 | `/gento_control/left/target_pose_ptp` | 左臂法兰绝对位姿，按关节空间轨迹运动 |
@@ -78,7 +79,8 @@ ros2 topic pub --once /gento_control/body/preview_pose geometry_msgs/msg/PoseSta
 
 | 控制入口 | 作用 |
 | --- | --- |
-| `/scene/arm_position` | `0`：左右臂依次到初始关节位置；`1`：依次到准备位置；`2`：躯干 TCP 到配置位姿；`9`：依次到下班回收姿态 |
+| `/scene/arm_position` | `0`：左右臂同步到初始关节位置；`1`：同步到准备位置；`2`：躯干 TCP 到配置位姿；`9`：同步到下班回收姿态 |
+| `/scene/start`（`std_msgs/msg/String`） | 发送 `start`，依次执行 `pre`（原 `data:1`）和 `body_photo`（原 `data:2`）；完成前不接受新预设 |
 | `/scene/restore_tool_z` | 在当前法兰位置撤销上一次由 scene 执行的夹具局部 Z 轴旋转 |
 | `/scene/attach_workpiece`（`std_srvs/srv/Trigger`） | 第 5 步人工确认左夹爪抓牢后调用；启动左臂回退、准备位、躯干回零和左臂交接位运动 |
 | `/scene/detach_workpiece`（`std_srvs/srv/Trigger`） | 工件实际释放后结束位姿跟踪 |
@@ -88,7 +90,7 @@ ros2 topic pub --once /gento_control/body/preview_pose geometry_msgs/msg/PoseSta
 
 `/scene/arm_position` 的编号和七轴弧度目标由 `scene/config/arm_positions.json` 配置。
 每项写 `name`，再填写双臂 `left`/`right` 七轴弧度数组，或躯干 `body_pose` 的位置（米）和朝向（x/y/z/w）；可添加其他 Int8 编号。`1=pre` 供抓取流程使用。
-先移动左臂，完成后再移动右臂；任一步失败即停止。需以 `dry_run:=false` 启动 scene。
+双臂目标在一个控制任务中同步执行；任务失败即停止。需以 `dry_run:=false` 启动 scene。
 配置修改后重启 scene；可通过 `arm_positions_file:=路径`（真机整体启动为
 `scene_arm_positions_file:=路径`）选择另一份配置。
 
@@ -97,6 +99,7 @@ ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 0}'  # 到�
 ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 1}'  # 到准备位置
 ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 2}'  # 躯干到配置位姿
 ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 9}'  # 到下班回收姿态
+ros2 topic pub --once /scene/start std_msgs/msg/String '{data: start}'  # 先 pre，再 body_photo
 
 ros2 service call /scene/restore_tool_z std_srvs/srv/Trigger '{}'
 # 分别在终端中观察状态与工件位姿：
@@ -108,9 +111,9 @@ ros2 service call /scene/attach_workpiece std_srvs/srv/Trigger '{}'
 ros2 service call /scene/detach_workpiece std_srvs/srv/Trigger '{}'
 ```
 
-scene 的 MQTT 工件目标须包含字符串 `label`。当前支持 `无遮挡背面`（同样按 Y 选臂，抓取后交接到另一臂）和 `无遮挡正面`（`position1` 的 Y ≥ 0.05 m 用左臂，Y ≤ -0.05 m 用右臂；抓取后回到对应准备姿态和正面终点，不交接）；其他标签拒绝。`position1` 通过 `/gento_control/{left,right}/target_pose_ptp` 执行；完成后等待 `interval` 秒，`position2` 通过 `/gento_control/{left,right}/target_pose` 执行。第二步继承第一步选定的法兰姿态和绕轴角度。位置单位为米，姿态为 `body_base` 下的单位四元数。`position2` 可省略或填全零占位。工件原点作为夹具尖端目标，法兰到尖端的局部 Z 偏移默认 0.20 m。默认 `dry_run:=false`，预览时设置 `dry_run:=true`。
+scene 的 MQTT 工件目标须包含字符串 `label`。当前支持 `无遮挡背面`（同样按 Y 选臂，抓取后交接到另一臂）和 `无遮挡正面`（`position1` 的 Y ≥ 0.05 m 用左臂，Y ≤ -0.05 m 用右臂；抓取后双臂回到 `pre`、躯干回零、双臂回到 `home`，不交接）；其他标签拒绝。`position1` 通过 `/gento_control/{left,right}/target_pose_ptp` 执行；完成后等待 `interval` 秒，`position2` 通过 `/gento_control/{left,right}/target_pose` 执行。第二步继承第一步选定的法兰姿态和绕轴角度。位置单位为米，姿态为 `body_base` 下的单位四元数。`position2` 可省略或填全零占位。工件原点作为夹具尖端目标，法兰到尖端的局部 Z 偏移默认 0.20 m。默认 `dry_run:=false`，预览时设置 `dry_run:=true`。
 
-所选手臂到 `position2` 后，scene 自动发送该夹爪 27 mm 命令并等待反馈；`awaiting_attach` 后由操作者确认夹牢并调用附着服务。背面模式下，抓取臂回退、到 `pre`、躯干回零，再到该臂交接点，随后自动交接给另一臂。背面右臂抓取须先配置 `scene_right_post_grasp_joints` 和 `scene_left_handover_joints` 两组七轴角度，否则在运动前拒绝。正面模式下，所选手臂回退、到 `pre`，再到对应的正面终点关节角；不交接。每段运动等待控制节点报告完成；夹爪到位本身不证明工件已可靠持有。
+所选手臂到 `position2` 后，scene 自动发送该夹爪 27 mm 命令并等待反馈；`awaiting_attach` 后由操作者确认夹牢并调用附着服务。背面模式下，抓取臂回退、到 `pre`、躯干回零，再到该臂交接点，随后自动交接给另一臂。背面右臂抓取须先配置 `scene_right_post_grasp_joints` 和 `scene_left_handover_joints` 两组七轴角度，否则在运动前拒绝。背面交接完成后双臂依次回到 `pre` 和 `home`。正面模式下，抓取臂回退后双臂依次到 `pre`，躯干回零，再依次到 `home`；不交接。每段运动等待控制节点报告完成；夹爪到位本身不证明工件已可靠持有。
 
 附着期间，scene 根据法兰反馈持续发布工件估计位姿。交接时由双臂法兰反馈求接收臂法兰到工件的固定平移与旋转，随后改用接收臂跟踪。当前尚未实现右臂放置流程。放置目标若由视觉给出，须用工件目标位姿乘以右法兰到工件固定变换的逆，得到右法兰目标；不能只旋转一个角度。
 

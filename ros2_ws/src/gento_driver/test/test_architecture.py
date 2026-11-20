@@ -26,6 +26,20 @@ from test_bridge import DualRobot,FX_InvKineSolverParams
 from gento_driver import sdk_ops as helpers
 
 
+def test_bridge_accepts_twelve_percent_arm_speed_without_hardware():
+    rclpy.init(args=['--ros-args', '-p', 'ip:=127.0.0.1', '-p', 'speed:=12.0'], domain_id=219)
+    hardware = SimpleNamespace(connect=lambda: None, close=lambda: None)
+    driver = None
+    try:
+        driver = Bridge(hardware)
+        assert driver.c.speed == 12.0
+        assert driver.c.body_speed == 5.0
+    finally:
+        if driver is not None:
+            driver.destroy_node()
+        rclpy.shutdown()
+
+
 def until(predicate,timeout=6.):
     end=time.monotonic()+timeout
     while time.monotonic()<end:
@@ -157,7 +171,7 @@ def test_arm_action_clamps_limit_roundoff_but_rejects_actual_violation():
     plans,_=validate_goal(goal,state,hardware,2_000_000_000)
     assert plans[0][0][1]==105.
     goal.trajectories[0].points[0].positions[1]=math.radians(105.+1e-6)
-    with pytest.raises(ValueError,match='object0 joint2 exceeds limits/max_delta'):
+    with pytest.raises(ValueError,match='object0 joint2 exceeds limits'):
         validate_goal(goal,state,hardware,2_000_000_000)
 
 
@@ -249,6 +263,21 @@ def test_end_to_end_planning_execution_and_feedback_record_have_one_link(graph):
     assert record['samples'] and record['samples'][0]['joint_matching']
     # Driver has no position/pose target subscriptions: those belong to control.
     assert not any('target_pose' in s.topic_name or 'target_joints' in s.topic_name for s in g.driver.subscriptions)
+
+
+def test_dual_joint_topic_starts_both_arms_in_one_driver_action(graph):
+    g=graph
+    pub=g.client.create_publisher(JointState,'/gento_control/dual/target_joints',1)
+    until(lambda:pub.get_subscription_count()>0)
+    msg=JointState()
+    msg.header.stamp=g.client.get_clock().now().to_msg()
+    msg.name=JOINT_NAMES
+    msg.position=[.01]+[0.]*6+[.02]+[0.]*6
+    pub.publish(msg)
+    until(lambda:('run',3) in g.robot.calls)
+    until(lambda:not g.control.busy)
+    assert ('upload',0) in g.robot.calls and ('upload',1) in g.robot.calls
+    assert sum(call==('run',3) for call in g.robot.calls)==1
 
 
 def test_pose_ptp_uses_one_endpoint_ik_and_joint_trajectory(graph):
@@ -653,7 +682,7 @@ def test_readonly_body_pose_feedback_uses_geometry_without_limit_reads(graph):
 def test_driver_applies_body_caps_before_accepting_joint_commands(graph):
     limits=snapshot(graph)['body_limits']
     assert limits[0]==[-11.,11.]
-    assert limits[1]==[-50.,50.]
+    assert limits[1]==[-50.,80.]
     assert limits[4]==[-30.,30.]
     assert limits[5]==[-170.,170.]
 

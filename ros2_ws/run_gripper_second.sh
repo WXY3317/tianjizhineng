@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start both grippers with the launch file's default parameters.
+# Reuse confirmed zero positions and enable both grippers at startup.
 set -e
 
 workspace_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,4 +22,4 @@ if [[ ! -f install/gripper/share/gripper/package.xml ]]; then
   exit 1
 fi
 source install/setup.bash
-exec ros2 launch gripper dual_gripper.launch.py "$@"
+exec ros2 launch gripper dual_gripper.launch.py auto_enable:=true "$@"

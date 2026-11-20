@@ -12,11 +12,13 @@ def generate_launch_description():
         'port': '/dev/gripper_rs485', 'baud_rate': '115200',
         'left_id': '1', 'right_id': '2', 'feedback_rate_hz': '10.0',
         'left_auto_home': 'false', 'right_auto_home': 'false',
+        'auto_enable': 'false',
         'left_use_existing_zero': 'true', 'right_use_existing_zero': 'true',
         'left_current_threshold_a': '1.0', 'right_current_threshold_a': '1.0',
-        'left_speed_mps': '0.003', 'right_speed_mps': '0.003',
+        'left_speed_mps': '0.008', 'right_speed_mps': '0.008',
     }
     parameters = {'dual_gripper': True,
+                  'auto_enable': ParameterValue(LaunchConfiguration('auto_enable'), value_type=bool),
                   'left.calibration_path': calibration,
                   'right.calibration_path': calibration}
     for name, kind in [('port', str), ('baud_rate', int), ('feedback_rate_hz', float)]:

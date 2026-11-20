@@ -5,12 +5,12 @@ from .cartesian import prepare_cartesian
 from .conversions import finite
 
 
-def validate_target(start,target,limits,max_delta):
+def validate_target(start,target,limits):
     if len(target)!=7: raise ValueError('Expected seven joints')
     finite(target)
     for index,(a,b,(lo,hi)) in enumerate(zip(start,target,limits)):
         if not lo<=b<=hi:
-            raise ValueError(f'joint{index+1} exceeds limits/max_delta')
+            raise ValueError(f'joint{index+1} exceeds limits')
 
 
 class Planner:
@@ -63,7 +63,7 @@ class Planner:
         finite(joints)
         for i,(q,start,(lo,hi)) in enumerate(zip(joints,self.snapshot['body'],self.snapshot['body_limits'])):
             if not lo<=q<=hi:
-                raise ValueError(f'Body joint{i+1} exceeds limits/max_delta')
+                raise ValueError(f'Body joint{i+1} exceeds limits')
         return {3:[joints]},{'body_target_matrix':matrix,'body_ik':result}
 
     def body_cartesian(self,matrix):
@@ -81,7 +81,7 @@ class Planner:
 
     def joint(self,arm,target):
         start=self.snapshot['joints'][arm]
-        validate_target(start,target,self.limits[arm],self.c.max_delta)
+        validate_target(start,target,self.limits[arm])
         limits=self.cartesian_rate_limits[arm]
         duration=max([1.]+[1.875*abs(b-a)/v for a,b,v in zip(start,target,limits['speed'])]
                      +[math.sqrt(5.774*abs(b-a)/v) for a,b,v in zip(start,target,limits['acceleration'])]) * 1.02
@@ -95,6 +95,34 @@ class Planner:
             path.append([a+s*(b-a) for a,b in zip(start,target)])
         return {arm:path},{'planned_duration_s':steps/50}
 
+    def dual_joint(self, targets):
+        """Plan both arms on one 20 ms timeline for one driver action."""
+        if len(targets) != 2:
+            raise ValueError('Expected left and right joint targets')
+        duration = 1.
+        for arm, target in enumerate(targets):
+            start = self.snapshot['joints'][arm]
+            validate_target(start, target, self.limits[arm])
+            limits = self.cartesian_rate_limits[arm]
+            duration = max(duration, *[1.875 * abs(b-a) / v
+                                       for a, b, v in zip(start, target, limits['speed'])],
+                           *[math.sqrt(5.774 * abs(b-a) / v)
+                             for a, b, v in zip(start, target, limits['acceleration'])])
+        steps = math.ceil(duration * 1.02 * 50)
+        if steps + 1 > 5000 or steps / 50 + 1 >= self.c.timeout:
+            raise ValueError('Dual-arm joint trajectory exceeds timeout/capacity')
+        paths = {}
+        for arm, target in enumerate(targets):
+            start = self.snapshot['joints'][arm]
+            path = []
+            for index in range(steps + 1):
+                self.check_cancel()
+                t = index / steps
+                s = t*t*t*(10+t*(-15+6*t))
+                path.append([a+s*(b-a) for a, b in zip(start, target)])
+            paths[arm] = path
+        return paths, {'planned_duration_s': steps / 50, 'synchronized_arms': True}
+
     def head(self,target):
         start=self.snapshot['head']
         if len(start)!=2 or len(target)!=2 or len(self.snapshot['head_limits'])!=2:
@@ -102,7 +130,7 @@ class Planner:
         finite(target)
         for index,(a,b,(lo,hi)) in enumerate(zip(start,target,self.snapshot['head_limits'])):
             if not lo<=b<=hi:
-                raise ValueError(f'head joint{index+1} exceeds limits/max_delta')
+                raise ValueError(f'head joint{index+1} exceeds limits')
         limits=self.snapshot['head_rate_limits']
         duration=max([1.]+[1.875*abs(b-a)/v for a,b,v in zip(start,target,limits['speed'])]
                      +[math.sqrt(5.774*abs(b-a)/v) for a,b,v in zip(start,target,limits['acceleration'])]) * 1.02

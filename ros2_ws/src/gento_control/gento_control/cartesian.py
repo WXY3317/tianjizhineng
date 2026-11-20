@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from .conversions import pose_matrix, quaternion
 
 FREQUENCY = 50
+MAX_IK_STEP_DEG = 1.3  # Joint values from SDK IK are in degrees; former cutoff was 1 degree.
 
 
 def interpolate(start, goal, fraction):
@@ -111,10 +112,12 @@ def _sample(engine, starts, poses, goals, moving, steps):
             raise ValueError(f'Cartesian IK point {index}/{steps}, path={s*100:.3f}%, TCP_m={positions}: {exc}') from exc
         for arm in moving:
             q = solved[arm]
-            engine.h.validate_target(starts[arm], q, engine.limits[arm], c.max_delta)
+            engine.h.validate_target(starts[arm], q, engine.limits[arm])
             delta = [x-y for x, y in zip(q, previous[arm])]
-            if max(map(abs, delta)) > 1.:
-                raise ValueError(f'arm{arm} Cartesian IK jump at point {index}')
+            if max(map(abs, delta)) > MAX_IK_STEP_DEG:
+                raise ValueError(f'arm{arm} Cartesian IK jump at point {index}: '
+                                 f'max joint step {max(map(abs, delta)):.3f} deg, '
+                                 f'limit {MAX_IK_STEP_DEG:.3f} deg')
             velocity = [x*FREQUENCY for x in delta]
             acceleration = [(x-y)*FREQUENCY for x, y in zip(velocity, velocities[arm])]
             record(arm, index, 'joint_speed', velocity, engine.cartesian_rate_limits[arm]['speed'])

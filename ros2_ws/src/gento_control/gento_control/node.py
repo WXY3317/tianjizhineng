@@ -64,6 +64,8 @@ class Control(Node):
                 lambda msg,a=arm:self.submit('joints',a,msg),1))
             self.subs.append(self.create_subscription(Vector3Stamped,f'{prefix}/{side}/rotate_tcp',
                 lambda msg,a=arm:self.submit('rotate_tcp',a,msg),1))
+        self.subs.append(self.create_subscription(JointState,f'{prefix}/dual/target_joints',
+            lambda msg:self.submit('dual_joints',-1,msg),1))
         self.subs.append(self.create_subscription(JointState,f'{prefix}/body/target_joints',lambda m:self.submit('body',3,m),1))
         self.subs.append(self.create_subscription(JointState,f'{prefix}/head/target_joints',lambda m:self.submit('head',2,m),1))
         self.subs.append(self.create_subscription(PoseStamped,f'{prefix}/body/target_pose',lambda m:self.submit('body_pose',3,m),1))
@@ -196,6 +198,15 @@ class Control(Node):
             elif kind=='joints':
                 if msg.velocity or msg.effort: raise ValueError('Position targets only')
                 plans,info=planner.joint(arm,joint_target(arm,msg.name,msg.position))
+            elif kind=='dual_joints':
+                if msg.velocity or msg.effort: raise ValueError('Position targets only')
+                if len(msg.name)!=14 or len(set(msg.name))!=14 or set(msg.name)!=set(JOINT_NAMES) or len(msg.position)!=14:
+                    raise ValueError('Expected exactly fourteen named left/right arm joints')
+                values=dict(zip(msg.name,msg.position))
+                plans,info=planner.dual_joint([
+                    joint_target(a,JOINT_NAMES[a*7:(a+1)*7],
+                                 [values[name] for name in JOINT_NAMES[a*7:(a+1)*7]])
+                    for a in (0,1)])
             elif kind=='head':
                 if msg.velocity or msg.effort: raise ValueError('Position targets only')
                 if not snapshot['config']['enable_head_control']:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rehome both grippers at startup without reusing existing zero positions.
+# Rehome and then enable both grippers at startup.
 set -e
 
 workspace_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,4 +24,4 @@ fi
 source install/setup.bash
 exec ros2 launch gripper dual_gripper.launch.py \
   left_use_existing_zero:=false right_use_existing_zero:=false \
-  left_auto_home:=true right_auto_home:=true "$@"
+  left_auto_home:=true right_auto_home:=true auto_enable:=true "$@"

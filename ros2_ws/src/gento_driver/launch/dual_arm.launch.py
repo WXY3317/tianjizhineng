@@ -37,16 +37,14 @@ def generate_launch_description():
         'enable_head_control': ('true', bool),
         # 机器人控制器 IPv4 地址，不是部署用 ARM 主机的 SSH 地址。
         'ip': (CONTROLLER_IP, str),
-        # 手臂/头部启动 POSITION 比例及离线规划速度百分比：5.0=5%，允许 (0,10]；不是末端 m/s。
+        # 手臂/头部启动 POSITION 比例及离线规划速度百分比：12.0=12%，允许 (0,100]；不是末端 m/s。
         # 已校验轨迹播放时临时使用 SDK 全局 100%，避免重复限速；结束/停止后恢复。
-        'speed': ('10.0', float),
+        'speed': ('12.0', float),
         # 手臂/头部启动 POSITION 比例及离线规划加速度百分比：5.0=5%，允许 (0,10]；播放时同上。
         'acc': ('6.0', float),
         # 躯干 POSITION 比例及离线规划速度/加速度百分比，独立于手臂，范围 (0,10]。
-        'body_speed': ('10.0', float),
+        'body_speed': ('8.0', float),
         'body_acc': ('6.0', float),
-        # 兼容旧启动参数；关节目标不再受相对起点角度限制，仍检查控制器实际关节限位。
-        'max_delta': ('120.0', float),
         # 运动执行超时，单位秒；不含离线规划时间。直线轨迹规划也须为到位确认预留时间。
         'timeout': ('60.0', float),
         # 关节到位容差，单位度；满足容差并持续 0.5 秒才完成，手臂还需结束轨迹下发/播放。
@@ -62,15 +60,15 @@ def generate_launch_description():
         # 完整上传点集由控制器播放；拆分架构仅支持 trajectory。
         'cartesian_execution': ('trajectory', str),
         # 实际反馈 TCP 到规划线段的最大距离，单位 m；默认 5 mm，超出时软件急停。
-        'cartesian_path_tolerance': ('0.008', float),
+        'cartesian_path_tolerance': ('0.01', float),
         # 手臂末端直线规划的线速度上限，单位 m/s；含平滑加减速。
-        'cartesian_speed': ('0.08', float),
+        'cartesian_speed': ('0.10', float),
         # 手臂末端姿态 SLERP 的角速度上限，单位 rad/s。
-        'cartesian_angular_speed': ('0.2', float),
+        'cartesian_angular_speed': ('0.25', float),
         # 手臂直线 IK 关节速度配置上限，单位度/s；实际还受各关节 VelMax × 控制器比例 × 90% 约束。
-        'cartesian_joint_speed': ('20.0', float),
+        'cartesian_joint_speed': ('25.0', float),
         # 手臂直线 IK 关节加速度配置上限，单位度/s²；实际还受各关节 AccMax × 控制器比例 × 90% 约束。
-        'cartesian_joint_acc': ('25.0', float),
+        'cartesian_joint_acc': ('30.0', float),
         # 躯干 BD_J6 直线逆解独立限速；实际速度还受六轴额定值、body_speed/body_acc 与轨迹重定时约束。
         'body_cartesian_speed': ('0.08', float),  # m/s
         'body_cartesian_angular_speed': ('0.2', float),  # rad/s
@@ -116,13 +114,12 @@ def generate_launch_description():
                                             '-0.19600047499896323, -1.5263951506241609, '
                                             '-1.1898433109620943, -0.5670400206804377, '
                                             '-1.070166084152843]'),
-        DeclareLaunchArgument('scene_right_post_grasp_joints', default_value='[]'),
-        DeclareLaunchArgument('scene_left_handover_joints', default_value='[]'),
-        DeclareLaunchArgument('scene_front_left_post_grasp_joints',
-                              default_value='[2.840, 0.40, -2.850, -1.57, -2.01, 0.50, -1.03]'),
-        DeclareLaunchArgument('scene_front_right_post_grasp_joints',
-                              default_value='[0.220, -0.4, -0.20, -1.520, -1.190, -0.560, -1.1]'),
-        DeclareLaunchArgument('scene_handover_y_offset_m', default_value='0.07'),
+        DeclareLaunchArgument('scene_right_post_grasp_joints',
+                              default_value='[2.84704, 0.46903, -2.82737, -1.54347, -1.98059, 0.51953, -1.08505]'),
+        DeclareLaunchArgument('scene_left_handover_joints',
+                              default_value='[0.21863, -0.49051, -0.19696, -1.55473, -1.15677, -1.01652]'),
+        DeclareLaunchArgument('scene_handover_y_offset_m', default_value='0.065'),
+        DeclareLaunchArgument('scene_left_handover_y_offset_m', default_value='0.063'),
         DeclareLaunchArgument('start_control', default_value='true', description='Start control node when enable_control is true'),
         Node(package='gento_driver', executable='bridge',
                                                  name='gento_driver', output='screen', parameters=[params]),
@@ -148,9 +145,8 @@ def generate_launch_description():
                  'right_handover_joints': ParameterValue(LaunchConfiguration('scene_right_handover_joints'), value_type=str),
                  'right_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_right_post_grasp_joints'), value_type=str),
                  'left_handover_joints': ParameterValue(LaunchConfiguration('scene_left_handover_joints'), value_type=str),
-                 'front_left_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_front_left_post_grasp_joints'), value_type=str),
-                 'front_right_post_grasp_joints': ParameterValue(LaunchConfiguration('scene_front_right_post_grasp_joints'), value_type=str),
                  'handover_y_offset_m': ParameterValue(LaunchConfiguration('scene_handover_y_offset_m'), value_type=float),
+                 'left_handover_y_offset_m': ParameterValue(LaunchConfiguration('scene_left_handover_y_offset_m'), value_type=float),
                  'arm_positions_file': LaunchConfiguration('scene_arm_positions_file')}],
              condition=IfCondition(LaunchConfiguration('start_scene'))),
         GroupAction(condition=IfCondition(LaunchConfiguration('enable_control')), actions=[

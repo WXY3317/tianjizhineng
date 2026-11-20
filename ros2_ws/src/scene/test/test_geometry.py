@@ -23,13 +23,12 @@ def test_pictured_payload_retains_two_distinct_targets():
     assert [side for side, _ in route_targets(targets)] == ['right']
 
 
-def test_targets_route_by_y_and_keep_order():
+def test_targets_route_by_position1_y_and_keep_order():
     targets = parse_targets('''{"position1":{"x":0,"y":0.2,"z":0.3},
         "position2":{"x":0,"y":-0.1,"z":0.4},
         "orientation":{"x":0,"y":0,"z":0,"w":1}}''')
-    assert [side for side, _ in route_targets(targets)] == ['left', 'right']
-    with pytest.raises(ValueError, match='nonzero Y'):
-        route_targets([((.1, 0., .3), targets[0][1])])
+    assert [side for side, _ in route_targets(targets)] == ['left', 'left']
+    assert route_targets([((.1, 0., .3), targets[0][1])])[0][0] == 'left'
 
 
 def test_labeled_front_and_back_route_before_motion():
@@ -41,10 +40,10 @@ def test_labeled_front_and_back_route_before_motion():
     front = back.replace('无遮挡背面', '无遮挡正面')
     label, targets = parse_vision_message(front)
     assert [side for side, _ in route_targets(targets, label=label)] == ['right', 'right']
-    with pytest.raises(ValueError, match='0.05'):
-        route_targets([((.12, .049, .39), targets[0][1])], label='无遮挡正面')
-    with pytest.raises(ValueError, match='0.05'):
-        route_targets([((.12, -.049, .39), targets[0][1])], label='无遮挡背面')
+    for y, side in ((.05, 'left'), (.049, 'left'), (0., 'left'),
+                    (-.049, 'right'), (-.05, 'right')):
+        assert route_targets([((.12, y, .39), targets[0][1])], label='无遮挡正面')[0][0] == side
+        assert route_targets([((.12, y, .39), targets[0][1])], label='无遮挡背面')[0][0] == side
     with pytest.raises(ValueError, match='Unsupported grasp label'):
         route_targets(targets, label='无遮挡侧面')
     with pytest.raises(ValueError, match='label'):

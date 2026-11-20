@@ -35,7 +35,31 @@ def test_planner_cancel_and_joint_limit_rejection():
     cancel.set()
     with pytest.raises(ValueError,match='cancelled'): planner.joint(0,[1.]*7)
     cancel.clear()
-    with pytest.raises(ValueError,match='max_delta'):planner.joint(0,[10.]*7)
+    with pytest.raises(ValueError,match='limits'):planner.joint(0,[200.]*7)
+
+
+def test_dual_joint_plan_shares_one_timeline_and_checks_both_arms():
+    planner=Planner(snapshot(),lambda *args:None,threading.Event())
+    plans,info=planner.dual_joint([[1.]*7,[2.]*7])
+    assert list(plans)==[0,1]
+    assert len(plans[0])==len(plans[1])
+    assert plans[0][0]==plans[1][0]==[0.]*7
+    assert plans[0][-1]==[1.]*7 and plans[1][-1]==[2.]*7
+    assert info['synchronized_arms']
+    with pytest.raises(ValueError,match='limits'):
+        planner.dual_joint([[1.]*7,[200.]*7])
+
+
+def test_dual_joint_allows_pre_to_home_joint2_change_over_120_degrees():
+    source=snapshot()
+    source['joints']=[[0.,45.84,0.,0.,0.,0.,0.],
+                      [0.,45.84,0.,0.,0.,0.,0.]]
+    planner=Planner(source,lambda *args:None,threading.Event())
+    targets=[[0.,-83.08,0.,0.,0.,0.,0.],
+             [0.,-83.08,0.,0.,0.,0.,0.]]
+    plans,_=planner.dual_joint(targets)
+    assert plans[0][-1][1]==pytest.approx(-83.08)
+    assert plans[1][-1][1]==pytest.approx(-83.08)
 
 
 def test_pose_ptp_solves_endpoint_and_plans_joint_motion_without_cartesian_samples():

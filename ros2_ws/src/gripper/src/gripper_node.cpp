@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <string>
 
 // A single-threaded executor owns all SDK operations, including blocking ZERO.
 class GripperNode : public rclcpp::Node {
@@ -17,6 +18,7 @@ class GripperNode : public rclcpp::Node {
   GripperNode() : Node("gripper") {
     const auto port = declare_parameter<std::string>("port", "/dev/ttyUSB0");
     const bool dual = declare_parameter<bool>("dual_gripper", false);
+    const bool auto_enable = declare_parameter<bool>("auto_enable", false);
     const int baud = declare_parameter<int>("baud_rate", 115200);
     const double rate = declare_parameter<double>("feedback_rate_hz", 10.0);
     if (!std::isfinite(rate) || rate < 0.1 || rate > 100.0)
@@ -39,11 +41,23 @@ class GripperNode : public rclcpp::Node {
           default_calibration);
       add_gripper("", "", port, id, baud, calibration);
     }
+    if (auto_enable) {
+      for (auto& side : sides_) {
+        const auto result = side->controller->command({gripper_demo::Action::Enable});
+        if (!result.accepted)
+          throw std::runtime_error((side->name.empty() ? "gripper" : side->name) +
+                                   " automatic enable failed: " + result.detail);
+        RCLCPP_INFO(get_logger(), "%s automatic enable confirmed",
+                    side->name.empty() ? "gripper" : side->name.c_str());
+      }
+    }
     timer_ = create_wall_timer(std::chrono::duration<double>(1.0/rate), [this] { for (auto& side : sides_) publish_state(*side); });
-    RCLCPP_INFO(get_logger(), "Ready on %s with %zu device(s); no automatic motion", port.c_str(), sides_.size());
+    RCLCPP_INFO(get_logger(), "Ready on %s with %zu device(s); auto_enable=%s",
+                port.c_str(), sides_.size(), auto_enable ? "true" : "false");
   }
  private:
   struct Side {
+    std::string name;
     float speed_mps;
     std::uint64_t next_command_id{1};
     std::unique_ptr<gripper_demo::Controller> controller;
@@ -69,6 +83,7 @@ class GripperNode : public rclcpp::Node {
     const float speed = static_cast<float>(configured_speed);
     if (speed <= 0) throw std::invalid_argument(prefix + "speed_mps is too small");
     auto side = std::make_unique<Side>();
+    side->name = name;
     side->speed_mps = speed;
     side->controller = std::make_unique<gripper_demo::Controller>(
         gripper_demo::make_hardware(port, id, baud, calibration), threshold);

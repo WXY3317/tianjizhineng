@@ -50,7 +50,7 @@ def plan_body_line(snapshot, goal, rates, checkpoint):
         t = index/ANCHORS
         desired = interpolate(start, goal, blend(t))
         hint = [a+blend(t)*(b-a) for a,b in zip(origin,solved_goal.joints_deg)]
-        solved = model.inverse(desired, previous, max_joint_delta_deg=min(c.max_delta,5.),
+        solved = model.inverse(desired, previous, max_joint_delta_deg=5.,
                                checkpoint=checkpoint, local_only=True, max_nfev=80,
                                seed_joints_deg=hint, position_tolerance_mm=.05,
                                orientation_tolerance_deg=.005)
@@ -90,7 +90,7 @@ def plan_body_line(snapshot, goal, rates, checkpoint):
             checkpoint()
             for joint,(value,initial,(lo,hi)) in enumerate(zip(q,origin,limits)):
                 if not lo-1e-10<=value<=hi+1e-10:
-                    raise ValueError(f'Body Cartesian joint{joint+1} exceeds limits/max_delta at point {index}')
+                    raise ValueError(f'Body Cartesian joint{joint+1} exceeds limits at point {index}')
             actual=model.forward(q)
             if not path_min-.1<=actual[2][3]<=path_max+.1:
                 raise ValueError(f'Body Cartesian height envelope exceeded at point {index}')

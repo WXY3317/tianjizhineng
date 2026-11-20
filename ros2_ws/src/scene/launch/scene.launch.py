@@ -19,11 +19,10 @@ def generate_launch_description():
                                   '-0.19600047499896323, -1.5263951506241609, '
                                   '-1.1898433109620943, -0.5670400206804377, '
                                   '-1.070166084152843]', str),
-        'right_post_grasp_joints': ('[]', str),
-        'left_handover_joints': ('[]', str),
-        'front_left_post_grasp_joints': ('[2.840, 0.40, -2.850, -1.57, -2.01, 0.50, -1.03]', str),
-        'front_right_post_grasp_joints': ('[0.220, -0.4, -0.20, -1.520, -1.190, -0.560, -1.1]', str),
+        'right_post_grasp_joints': ('[2.84704,0.46903,-2.82737,-1.54347,-1.98059,0.51953,-1.08505]', str),
+        'left_handover_joints': ('[0.21863,-0.49051,-0.19696,-1.55473,-1.15677,-0.54807,-1.01652]', str),
         'handover_y_offset_m': ('0.065', float),
+        'left_handover_y_offset_m': ('0.063', float),
     }
 
     return LaunchDescription([DeclareLaunchArgument(k, default_value=v)

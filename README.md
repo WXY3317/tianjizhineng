@@ -11,25 +11,19 @@ cd ros2_ws
 
 ## 启动（在 tianji 上运行）
 
-每个运行中的节点使用单独终端；两个夹爪脚本按情况选一个。
+一条命令启动夹爪、真机控制和视觉场景；按夹爪是否需要重新标零选择模式。
 
 ```bash
 cd /home/nvidia/wxy/tianjizhineng/ros2_ws
 
-# 首次启动或断电后：左右夹爪自动标零
-./run_gripper_frist.sh
+# 首次启动或断电后：夹爪重新标零并使能
+./run_all.sh first
 
-# 同一上电周期内已标零：沿用零位重启夹爪节点
-./run_gripper_second.sh
+# 同一上电周期内已标零：沿用零位并使能
+./run_all.sh second
 
-# 真机驱动与控制
-./run_real_robot.sh
-
-# 视觉场景：默认实际执行，允许工具 Z 轴旋转
-./run_scene.sh
-
-# 视觉场景：只预览，不发送运动命令
-./run_scene.sh dry_run:=true
+# 只预览视觉目标，不执行场景运动
+./run_all.sh second scene_dry_run:=true
 ```
 
 

@@ -128,6 +128,8 @@ ros2 launch gripper gripper.launch.py # 原单夹爪模式保持可用
 ros2 launch gripper dual_gripper.launch.py
 ```
 
+`ros2_ws/run_gripper_frist.sh` 会先自动标零再依次使能左右夹爪；`ros2_ws/run_gripper_second.sh` 会确认现有零点后依次使能。任一侧零点确认或使能失败时节点启动失败。直接运行双夹爪 launch 时 `auto_enable` 默认为 `false`，需要时可设置 `auto_enable:=true`。
+
 双夹爪默认 `left_auto_home=false`、`right_auto_home=false`、`left_use_existing_zero=false`、`right_use_existing_zero=false`，左右电流阈值均为 0.8 A。仅在当前上电周期已确认零点有效时，才按侧设置 `use_existing_zero:=true`；它与同侧 `auto_home:=true` 不能同时使用。
 双夹爪 launch 固定两侧共用 `config/calibration.csv`，不再提供左右标定路径参数；仍可分别设置 `left_current_threshold_a`、`right_current_threshold_a`。
 左右速度通过 `left_speed_mps`、`right_speed_mps` 分别设置，均默认 `0.003 m/s`，启动后只读。

@@ -58,7 +58,7 @@ def parse_vision_message(payload):
 
 
 def route_targets(targets, *, label=None):
-    """Choose arm by body_base Y sign; omit an all-zero second placeholder."""
+    """Choose one arm from position1 Y; omit an all-zero second placeholder."""
     routed = []
     if label not in (None, '无遮挡正面', '无遮挡背面'):
         raise ValueError(f'Unsupported grasp label: {label}')
@@ -66,11 +66,9 @@ def route_targets(targets, *, label=None):
         position = target[0]
         if index == 1 and position == (0., 0., 0.):
             continue
-        if label in ('无遮挡正面', '无遮挡背面') and index == 0 and abs(position[1]) < .05:
-            raise ValueError(f'{label} position1 requires Y >= 0.05 m or <= -0.05 m')
-        if position[1] == 0.:
-            raise ValueError(f'position{index+1} needs nonzero Y to choose an arm')
-        routed.append(('left' if position[1] > 0. else 'right', target))
+        side = (routed[0][0] if routed else
+                'left' if position[1] >= 0. else 'right')
+        routed.append((side, target))
     return routed
 
 
