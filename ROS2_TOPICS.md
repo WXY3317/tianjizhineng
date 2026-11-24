@@ -28,6 +28,18 @@ ros2 topic pub --once /gento_control/right/target_joints sensor_msgs/msg/JointSt
   '{header: {stamp: now}, name: [right_joint_1, right_joint_2, right_joint_3, right_joint_4, right_joint_5, right_joint_6, right_joint_7], position: [0.25, -0.45, 0.30, -1.00, 0.0, 0.0, 0.0]}'
 ```
 
+左右夹具尖端在 `body_base` 下的估计位姿持续发布到
+`/gento_feedback/left/tool_tip_pose_body_base` 和
+`/gento_feedback/right/tool_tip_pose_body_base`（`geometry_msgs/msg/PoseStamped`）。
+它们使用法兰反馈与局部 `+Z` 方向的夹具偏移计算；默认偏移为 0.20 m，
+可通过启动参数 `scene_tool_tip_offset_z_m` 配置。反馈来自模型和关节角，
+并非夹具尖端的独立传感器测量。
+
+```bash
+ros2 topic echo /gento_feedback/left/tool_tip_pose_body_base --once
+ros2 topic echo /gento_feedback/right/tool_tip_pose_body_base --once
+```
+
 法兰位姿目标使用 `body_base` 坐标，位置为米，姿态为单位四元数 `x/y/z/w`。下例分别使用左臂直线轨迹和右臂关节空间轨迹。将话题后缀在 `target_pose` 与 `target_pose_ptp` 之间替换，即可切换轨迹方式；关节空间轨迹不保证法兰路径为直线。
 
 ```bash
@@ -79,48 +91,34 @@ ros2 topic pub --once /gento_control/body/preview_pose geometry_msgs/msg/PoseSta
 
 | 控制入口 | 作用 |
 | --- | --- |
-| `/scene/arm_position` | `0`：左右臂同步到初始关节位置；`1`：同步到准备位置；`2`：躯干 TCP 到配置位姿；`9`：同步到下班回收姿态 |
-| `/scene/start`（`std_msgs/msg/String`） | 发送 `start`，依次执行 `pre`（原 `data:1`）和 `body_photo`（原 `data:2`）；完成前不接受新预设 |
-| `/scene/restore_tool_z` | 在当前法兰位置撤销上一次由 scene 执行的夹具局部 Z 轴旋转 |
-| `/scene/attach_workpiece`（`std_srvs/srv/Trigger`） | 第 5 步人工确认左夹爪抓牢后调用；启动左臂回退、准备位、躯干回零和左臂交接位运动 |
-| `/scene/detach_workpiece`（`std_srvs/srv/Trigger`） | 工件实际释放后结束位姿跟踪 |
-| MQTT `vs/workpiece/6d_pose` | 提交工件位姿；`position1` 使用关节空间轨迹，`position2` 使用法兰直线轨迹 |
-| `/scene/status`（`std_msgs/msg/String`） | JSON 状态；含 `awaiting_attach`、`handover_started`、`handover_waiting`、`post_grasp_completed` 和 `rejected` |
-| `/scene/workpiece_pose`（`geometry_msgs/msg/PoseStamped`） | 根据当前持有臂的法兰反馈推算的工件位姿，坐标系为 `body_base` |
+| `/scene/start`（`std_msgs/msg/String`） | `start`：同时向两夹爪发送 0 mm，双方到位后双臂到 `pre`、躯干到 `body_photo`；`end`：躯干六轴回零、双臂同步到 `home`，再向两夹爪同时发送 0 mm 并分别等待到位 |
+| `/scene/arm_position`（`std_msgs/msg/Int8`） | 单独执行配置编号：`0=init`、`1=pre`、`2=body_photo`、`3=body_home`、`9=home` |
+| `/scene/restore_tool_z`（`std_srvs/srv/Trigger`） | 在当前法兰位置撤销 scene 上一次工具局部 Z 轴旋转 |
+| `/scene/attach_workpiece` / `/scene/detach_workpiece`（`std_srvs/srv/Trigger`） | 手动附着 / 解除工件跟踪；正常自动抓取不需要手动附着 |
+| `/scene/status`（`std_msgs/msg/String`） | JSON：`state` 为 `running`、`success` 或 `failed`；`event` 保留 `arm_position_completed`、`start_completed`、`post_grasp_completed`、`rejected` 等步骤事件。`success` 仅在两次抓取及全部收尾完成后发布，失败原因在 `reason` |
+| `/scene/workpiece_pose`（`geometry_msgs/msg/PoseStamped`） | 根据持有臂法兰反馈推算工件位姿，坐标系 `body_base` |
 
-`/scene/arm_position` 的编号和七轴弧度目标由 `scene/config/arm_positions.json` 配置。
-每项写 `name`，再填写双臂 `left`/`right` 七轴弧度数组，或躯干 `body_pose` 的位置（米）和朝向（x/y/z/w）；可添加其他 Int8 编号。`1=pre` 供抓取流程使用。
-双臂目标在一个控制任务中同步执行；任务失败即停止。需以 `dry_run:=false` 启动 scene。
-配置修改后重启 scene；可通过 `arm_positions_file:=路径`（真机整体启动为
-`scene_arm_positions_file:=路径`）选择另一份配置。
+预设位置来自 `ros2_ws/src/scene/config/arm_positions.json`。`data: 3` 向躯干发送六轴绝对关节角 `[0, 0, 0, 0, 0, 0]`，不是末端 XYZ 回零。`data: 2` 把 `body_photo` 的配置位姿发到 `/gento_control/body/target_pose`，执行末端直线轨迹；若当前 J6 偏离 0 超过 0.01 rad，先依据最新反馈将 J4 增加 0.15 rad，并等待完成。自动抓取中的 `body_photo_restore` 仍按配置的 `body_pose_ptp` 执行。修改配置后重启 scene；随真机启动时可用 `scene_arm_positions_file:=绝对路径` 覆盖配置。
 
 ```bash
-ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 0}'  # 到初始位置
-ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 1}'  # 到准备位置
-ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 2}'  # 躯干到配置位姿
-ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 9}'  # 到下班回收姿态
-ros2 topic pub --once /scene/start std_msgs/msg/String '{data: start}'  # 先 pre，再 body_photo
-
-ros2 service call /scene/restore_tool_z std_srvs/srv/Trigger '{}'
-# 分别在终端中观察状态与工件位姿：
+ros2 topic pub --once /scene/start std_msgs/msg/String '{data: start}'
+ros2 topic pub --once /scene/start std_msgs/msg/String '{data: end}'
+ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 1}'  # 双臂到 pre
+ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 2}'  # 躯干沿直线到 body_photo
+ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 3}'  # 躯干六轴回零
 ros2 topic echo /scene/status
-ros2 topic echo /scene/workpiece_pose
-# 看到 /scene/status 的 awaiting_attach，且确认所选夹爪已抓牢后：
-ros2 service call /scene/attach_workpiece std_srvs/srv/Trigger '{}'
-# 工件实际释放后：
-ros2 service call /scene/detach_workpiece std_srvs/srv/Trigger '{}'
 ```
 
-scene 的 MQTT 工件目标须包含字符串 `label`。当前支持 `无遮挡背面`（同样按 Y 选臂，抓取后交接到另一臂）和 `无遮挡正面`（`position1` 的 Y ≥ 0.05 m 用左臂，Y ≤ -0.05 m 用右臂；抓取后双臂回到 `pre`、躯干回零、双臂回到 `home`，不交接）；其他标签拒绝。`position1` 通过 `/gento_control/{left,right}/target_pose_ptp` 执行；完成后等待 `interval` 秒，`position2` 通过 `/gento_control/{left,right}/target_pose` 执行。第二步继承第一步选定的法兰姿态和绕轴角度。位置单位为米，姿态为 `body_base` 下的单位四元数。`position2` 可省略或填全零占位。工件原点作为夹具尖端目标，法兰到尖端的局部 Z 偏移默认 0.20 m。默认 `dry_run:=false`，预览时设置 `dry_run:=true`。
+运行时 scene 必须设置 `dry_run:=false`，且上一任务已完成。正常抓取前无需调用 `/scene/attach_workpiece`：有效的 `position2` 到位后，scene 自动依次使能两个夹爪、让抓取侧夹爪张开到 27 mm；到位或触发电流限制保持后，自动附着工件并回退。若 `position2` 缺失或是全零占位，不会自动附着和进入完整回退。夹爪电流限制保持只满足程序继续条件，不能证明实际夹牢。
 
-所选手臂到 `position2` 后，scene 自动发送该夹爪 27 mm 命令并等待反馈；`awaiting_attach` 后由操作者确认夹牢并调用附着服务。背面模式下，抓取臂回退、到 `pre`、躯干回零，再到该臂交接点，随后自动交接给另一臂。背面右臂抓取须先配置 `scene_right_post_grasp_joints` 和 `scene_left_handover_joints` 两组七轴角度，否则在运动前拒绝。背面交接完成后双臂依次回到 `pre` 和 `home`。正面模式下，抓取臂回退后双臂依次到 `pre`，躯干回零，再依次到 `home`；不交接。每段运动等待控制节点报告完成；夹爪到位本身不证明工件已可靠持有。
-
-附着期间，scene 根据法兰反馈持续发布工件估计位姿。交接时由双臂法兰反馈求接收臂法兰到工件的固定平移与旋转，随后改用接收臂跟踪。当前尚未实现右臂放置流程。放置目标若由视觉给出，须用工件目标位姿乘以右法兰到工件固定变换的逆，得到右法兰目标；不能只旋转一个角度。
+随 `run_all_first.sh` / `run_all_second.sh` 启动时，scene 默认订阅 MQTT `/vision_target`；单独运行 `run_scene.sh` 时默认订阅 `vs/workpiece/6d_pose`。消息须含 `label`、`position1`、`orientation`，自动抓取还须提供有效 `position2`。只处理 `无遮挡正面` 和 `无遮挡背面`，其他标签与 retained 消息被忽略。位置单位为米，姿态是 `body_base` 下的 `xyzw` 单位四元数；位置是夹具尖端目标，法兰到尖端默认沿局部 +Z 相距 0.20 m。第一次按 `position1.Y≥0` 选左臂，否则选右臂；第二次按第一件所在手臂和流程分支选臂，详见 [抓取流程 2.0](抓取流程2.0.txt) 与 [流程图](抓取流程2.0.mmd)。
 
 ```bash
-mosquitto_pub -h 127.0.0.1 -t vs/workpiece/6d_pose -m \
-  '{"position1":{"x":0.55,"y":0.25,"z":0.65},"position2":{"x":0.55,"y":0.25,"z":0.62},"orientation":{"x":0,"y":0,"z":0,"w":1}}'
+mosquitto_pub -h 127.0.0.1 -t /vision_target -m \
+  '{"label":"无遮挡正面","position1":{"x":0.65,"y":0.15,"z":0.50},"position2":{"x":0.65,"y":0.15,"z":0.45},"orientation":{"x":0,"y":0,"z":0,"w":1}}'
 ```
+
+上述 MQTT 数值仅示意消息格式，不能直接作为现场抓取目标。抓取过程和异常处理见 [scene 功能包说明](ros2_ws/src/scene/README.md)。
 
 ## 夹爪
 

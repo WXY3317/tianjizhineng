@@ -160,6 +160,30 @@ def test_bd_j6_arm_feedback_is_published_without_changing_control():
         node.close();node.destroy_node();rclpy.shutdown()
 
 
+def test_tool_tip_pose_body_base_tracks_both_flange_poses():
+    from unittest.mock import MagicMock
+    rclpy.init(args=[],domain_id=224)
+    node=Feedback()
+    try:
+        for side in ('left','right'):
+            node.output_publishers[f'{side}/tool_tip_pose_body_base']=MagicMock()
+        source=raw()
+        source['config']['body_frame']='body_base'
+        source['arm_bases_in_body']=[[[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]]*2
+        # Local tool +Z points along body +X after this 90-degree Y rotation.
+        source['matrices']=[[[0,0,1,100],[0,1,0,200],[-1,0,0,300],[0,0,0,1]]]*2
+        node.on_raw(String(data=json.dumps(source)))
+        for side in ('left','right'):
+            tip=node.output_publishers[f'{side}/tool_tip_pose_body_base'].publish.call_args[0][0]
+            assert tip.header.frame_id=='body_base'
+            assert (tip.header.stamp.sec,tip.header.stamp.nanosec)==(123,4)
+            assert (tip.pose.position.x,tip.pose.position.y,tip.pose.position.z)==pytest.approx((.3,.2,.3))
+            assert tip.pose.orientation.y==pytest.approx(2**-.5)
+            assert tip.pose.orientation.w==pytest.approx(2**-.5)
+    finally:
+        node.close();node.destroy_node();rclpy.shutdown()
+
+
 def test_status_before_plan_is_merged_by_session_and_task(tmp_path):
     rclpy.init(args=[],domain_id=224)
     node=Feedback()

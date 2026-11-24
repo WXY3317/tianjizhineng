@@ -146,6 +146,8 @@ class VisionTargets(Node):
         self.preset_name = None
         self.preset_body_j4_pending = False
         self.start_sequence_stage = None
+        self.parallel_gripper_pending = {}
+        self.workflow_state = 'running'
         self.target_publishers = {
             side: self.create_publisher(PoseStamped, f'/gento_control/{side}/target_pose', 1)
             for side in ('left', 'right')}
@@ -191,9 +193,17 @@ class VisionTargets(Node):
         self.mqtt.on_message = self.on_message
         self.mqtt.connect_async(host, port, keepalive=30)
         self.mqtt.loop_start()
+        self.report('waiting_for_target')
 
     def report(self, state, **details):
-        self.status_pub.publish(String(data=json.dumps({'state': state, **details})))
+        if state in ('grasp_started', 'start_started', 'end_started'):
+            self.workflow_state = 'running'
+        elif state == 'post_grasp_completed':
+            self.workflow_state = 'success'
+        elif state == 'rejected':
+            self.workflow_state = 'failed'
+        self.status_pub.publish(String(data=json.dumps({
+            'state': self.workflow_state, 'event': state, **details})))
         if state == 'rejected':
             self.get_logger().warning(str(details.get('reason', state)))
         else:
@@ -403,6 +413,36 @@ class VisionTargets(Node):
         return True
 
     def on_gripper_state(self, side, message):
+        if side in getattr(self, 'parallel_gripper_pending', {}):
+            sent_at = self.parallel_gripper_pending[side]
+            if time.monotonic() - sent_at < .1:
+                return
+            if not message.valid or message.error_code or not message.enabled:
+                sequence = self.start_sequence_stage
+                self.parallel_gripper_pending.clear()
+                self.start_sequence_stage = None
+                self.state = 'fault'
+                self.report('rejected', reason=f'{side} gripper invalid or fault during {sequence}')
+                return
+            if (message.at_target and abs(message.position_m) <= .002 and
+                    abs(message.target_position_m) <= .002):
+                del self.parallel_gripper_pending[side]
+                is_start = self.start_sequence_stage == 'start_grippers'
+                self.report('gripper_completed', arm=side,
+                            step=f'{"start" if is_start else "end"}_{side}_close',
+                            completion='at_target', position_m=message.position_m)
+                if not self.parallel_gripper_pending:
+                    if is_start:
+                        self.start_sequence_stage = 'pre'
+                        self.state = 'idle'
+                        VisionTargets.on_arm_position(self, SimpleNamespace(data=1))
+                        if self.state != 'waiting' or self.preset_name != 'pre':
+                            self.start_sequence_stage = None
+                    else:
+                        self.start_sequence_stage = None
+                        self.state = 'idle'
+                        self.report('end_completed')
+            return
         if getattr(self, 'gripper_enable_pending', None) is not None:
             pending_side, sent_at = self.gripper_enable_pending
             if side != pending_side or time.monotonic() - sent_at < .1:
@@ -428,6 +468,7 @@ class VisionTargets(Node):
         if not message.valid or message.error_code or not message.enabled:
             self.gripper_pending = None
             self.state = 'fault'
+            self.start_sequence_stage = None
             self.report('rejected', reason=f'{side} gripper invalid or fault at {step}')
             return
         at_target = (message.at_target and
@@ -481,12 +522,16 @@ class VisionTargets(Node):
                 self.next_at = time.monotonic() + .2
             else:
                 self.state = 'idle'
+                completed_two_grasps = len(self.front_grasp_arms) == 2
                 self.attached_workpiece = None
                 self.workpiece_relative = None
                 self.front_grasp_arms.clear()
                 self.back_first_arm = None
                 self.back_second_payload = None
-                self.report('post_grasp_completed', arm=side)
+                if completed_two_grasps:
+                    self.report('post_grasp_completed', arm=side)
+                else:
+                    self.report('rejected', reason='Final gripper closes finished without two completed grasps')
 
     def capture_attachment(self, receiving):
         releasing = 'left' if receiving == 'right' else 'right'
@@ -563,7 +608,7 @@ class VisionTargets(Node):
                 self.report('rejected', reason='No fresh body joint feedback for J4 clearance')
                 return False
             target = list(joints)
-            target[3] = .1
+            target[3] += .15
         elif step in ('left_j1_clearance', 'right_j1_clearance'):
             joints = self.current_arm_joints(side)
             if joints is None:
@@ -703,7 +748,7 @@ class VisionTargets(Node):
             pose_kind = next((kind for kind in ('body_pose', 'body_pose_ptp')
                               if (position, kind) in self.arm_positions), None)
             if pose_kind is not None:
-                publisher = (self.body_pose_publisher if pose_kind == 'body_pose'
+                publisher = (self.body_pose_publisher if (position == 'body_photo' or pose_kind == 'body_pose')
                              else self.body_pose_ptp_publisher)
                 if publisher.get_subscription_count() == 0:
                     self.report('rejected', reason='No body pose control subscriber')
@@ -724,7 +769,7 @@ class VisionTargets(Node):
                         target.header.stamp = self.get_clock().now().to_msg()
                         target.name = [f'body_joint_{index}' for index in range(1, 7)]
                         target.position = list(joints)
-                        target.position[3] = .1
+                        target.position[3] += .15
                         self.waiting_task_id = None
                         self.saw_motion = False
                         self.sent_at = time.monotonic()
@@ -763,26 +808,65 @@ class VisionTargets(Node):
             self.send_preset_next()
 
     def on_start(self, message):
-        """Run the existing pre and body_photo presets in order."""
-        if message.data != 'start':
-            self.report('rejected', reason='Expected /scene/start data: start')
+        """Run the requested start or end sequence with completion feedback."""
+        if message.data not in ('start', 'end'):
+            self.report('rejected', reason='Expected /scene/start data: start or end')
             return
         if self.start_sequence_stage is not None:
             self.report('rejected', reason='Start sequence is already active')
             return
-        if self.state != 'idle' or self.preset_name is not None:
+        if (getattr(self, 'dry_run', False) or self.state != 'idle' or self.preset_name is not None or
+                getattr(self, 'queue', None) is not None or getattr(self, 'restore_mode', False) or
+                getattr(self, 'control_state', None) in ('running', 'recovering') or
+                getattr(self, 'attached_workpiece', None) is not None):
             self.report('rejected', reason='Scene is busy; start requires idle state')
             return
-        self.start_sequence_stage = 'pre'
-        VisionTargets.on_arm_position(self, SimpleNamespace(data=1))
-        if self.state != 'waiting' or self.preset_name != 'pre':
+        if any(self.gripper_publishers[side].get_subscription_count() == 0
+               for side in ('left', 'right')):
+            self.report('rejected', reason='Both gripper command subscribers are required')
+            return
+        if message.data == 'end':
+            if (self.arm_positions.get(3) is None or
+                    (self.arm_positions[3], 'body_joints') not in self.arm_positions or
+                    self.arm_positions.get(9) is None or
+                    any((self.arm_positions[9], side) not in self.arm_positions
+                        for side in ('left', 'right')) or
+                    self.body_joint_publisher.get_subscription_count() == 0 or
+                    self.dual_joint_publisher.get_subscription_count() == 0):
+                self.report('rejected', reason='End requires body_home, both home arms and control subscribers')
+                return
+            self.start_sequence_stage = 'end_body'
+            self.report('end_started')
+            VisionTargets.on_arm_position(self, SimpleNamespace(data=3))
+            if self.state != 'waiting' or self.preset_name != self.arm_positions[3]:
+                self.start_sequence_stage = None
+            return
+        self.start_sequence_stage = 'start_grippers'
+        self.report('start_started')
+        self.send_parallel_grippers('start')
+
+    def send_parallel_grippers(self, sequence):
+        if any(self.gripper_publishers[side].get_subscription_count() == 0
+               for side in ('left', 'right')):
             self.start_sequence_stage = None
+            self.state = 'fault'
+            self.report('rejected', reason=f'Both gripper command subscribers are required at {sequence}')
+            return
+        sent_at = time.monotonic()
+        self.parallel_gripper_pending = {side: sent_at for side in ('left', 'right')}
+        self.state = 'parallel_gripper_waiting'
+        for side in ('left', 'right'):
+            command = GripperCommand()
+            command.action = GripperCommand.MOVE
+            command.position_m = 0.
+            self.gripper_publishers[side].publish(command)
+            self.report('gripper_sent', arm=side, step=f'{sequence}_{side}_close', position_m=0.)
 
     def send_body_pose_preset(self):
         position = self.preset_name
         pose_kind = next(kind for kind in ('body_pose', 'body_pose_ptp')
                          if (position, kind) in self.arm_positions)
-        publisher = (self.body_pose_publisher if pose_kind == 'body_pose'
+        publisher = (self.body_pose_publisher if (position == 'body_photo' or pose_kind == 'body_pose')
                      else self.body_pose_ptp_publisher)
         xyz, xyzw = self.arm_positions[position, pose_kind]
         target = PoseStamped()
@@ -1029,6 +1113,10 @@ class VisionTargets(Node):
                     if getattr(self, 'start_sequence_stage', None) == 'body_photo':
                         self.start_sequence_stage = None
                         self.report('start_completed')
+                    elif getattr(self, 'start_sequence_stage', None) == 'end_body':
+                        self.start_sequence_stage = 'end_home'
+                        self.state = 'next'
+                        self.next_at = time.monotonic() + .2
             elif state in ('rejected', 'fault', 'stopped'):
                 self.last_task_id = task_id
                 self.preset_body_j4_pending = False
@@ -1048,6 +1136,10 @@ class VisionTargets(Node):
                     self.preset_name = None
                     if getattr(self, 'start_sequence_stage', None) == 'pre':
                         self.start_sequence_stage = 'body_photo'
+                        self.state = 'next'
+                        self.next_at = time.monotonic() + .2
+                    elif getattr(self, 'start_sequence_stage', None) == 'end_home':
+                        self.start_sequence_stage = 'end_grippers'
                         self.state = 'next'
                         self.next_at = time.monotonic() + .2
                     else:
@@ -1143,7 +1235,7 @@ class VisionTargets(Node):
                             self.report('awaiting_second_target', required_arm=(
                                 'right' if self.front_grasp_arms[0] == 'left' else 'left'))
                         else:
-                            self.report('post_grasp_completed', arm=self.attached_workpiece[0])
+                            self.report('rejected', reason='Post-grasp steps ended before both final gripper closes')
             elif state in ('rejected', 'fault', 'stopped'):
                 step = self.post_grasp_targets[0][0]
                 self.last_task_id = task_id
@@ -1311,6 +1403,14 @@ class VisionTargets(Node):
                 os.unlink(temporary)
 
     def tick(self):
+        if self.state == 'parallel_gripper_waiting':
+            if time.monotonic() - min(self.parallel_gripper_pending.values()) > 15.:
+                sequence = self.start_sequence_stage
+                self.parallel_gripper_pending.clear()
+                self.start_sequence_stage = None
+                self.state = 'fault'
+                self.report('rejected', reason=f'{sequence} grippers did not both reach 0 mm within 15 s')
+            return
         if self.state == 'gripper_waiting':
             sent_at = (self.gripper_enable_pending[1] if self.gripper_enable_pending is not None
                        else self.gripper_pending[3])
@@ -1321,6 +1421,7 @@ class VisionTargets(Node):
                 self.gripper_move_after_enable = None
                 self.gripper_pending = None
                 self.state = 'fault'
+                self.start_sequence_stage = None
                 self.report('rejected', reason=('Gripper enable not confirmed within 15 s' if enabling
                                                 else 'Gripper did not reach target within 15 s'))
             return
@@ -1332,7 +1433,14 @@ class VisionTargets(Node):
             return
         if self.state == 'next':
             if time.monotonic() >= self.next_at:
-                if (getattr(self, 'start_sequence_stage', None) == 'body_photo'
+                if getattr(self, 'start_sequence_stage', None) == 'end_home':
+                    self.state = 'idle'
+                    VisionTargets.on_arm_position(self, SimpleNamespace(data=9))
+                    if self.state != 'waiting' or self.preset_name != self.arm_positions[9]:
+                        self.start_sequence_stage = None
+                elif getattr(self, 'start_sequence_stage', None) == 'end_grippers':
+                    self.send_parallel_grippers('end')
+                elif (getattr(self, 'start_sequence_stage', None) == 'body_photo'
                         and self.preset_name is None):
                     self.state = 'idle'
                     VisionTargets.on_arm_position(self, SimpleNamespace(data=2))
@@ -1410,6 +1518,9 @@ class VisionTargets(Node):
                 second_grasp = False
                 second_turn = False
                 second_small_turn = False
+            if not self.dry_run:
+                self.report('grasp_started', grasp=2 if second_grasp else 1,
+                            arm=routed[0][0], label=label)
             self.targets = []
             self.target_index = 0
             self.position1_solution = None
@@ -1425,7 +1536,7 @@ class VisionTargets(Node):
             self.second_arm_prepare_pending = False
             self.second_turn_after_prepare = False
             x = parsed[0][0][0]
-            self.body_shift_m = -.20 if x <= .60 else .20 if x >= .75 else 0.
+            self.body_shift_m = -.25 if x <= .60 else .25 if x >= .75 else 0.
             self.yaw_candidates = None
             self.yaw_index = 0
             for side, target in routed:

@@ -15,8 +15,8 @@ ROS 2 Humble 工作空间，提供双臂、躯干、夹爪控制，关节与法�
 ./deploy_arm.sh
 
 # 一条命令启动夹爪、真机驱动/控制和视觉场景；按是否需要夹爪标零选择
-./run_all.sh first --build
-./run_all.sh second
+./run_all_first.sh
+./run_all_second.sh
 
 # 启动二选一；--build 表示先编译，后续启动可省略
 ./run_feedback_only.sh --build  # driver + feedback，开放执行接口，control 单独启动
@@ -45,8 +45,8 @@ ROS 2 Humble 工作空间，提供双臂、躯干、夹爪控制，关节与法�
 `run_control_only.sh --build` 可先编译控制包及其依赖。不要重复启动 control。
 两个终端须使用相同的 ROS_DOMAIN_ID 和可互通的 DDS 配置。只有 driver 建立 SDK 连接，control 通过 ROS 接口使用它。
 `run_scene.sh` 只启动视觉目标节点，不启动真机驱动；须确保 control 与 feedback 已运行。
-`run_all.sh` 在一个终端管理夹爪和双臂/场景两个 launch 进程，退出时一同停止。
-可通过 `./run_all.sh second scene_dry_run:=true` 让场景只预览。
+`run_all_first.sh` 和 `run_all_second.sh` 在一个终端管理夹爪和双臂/场景两个 launch 进程，退出时一同停止。
+可通过 `./run_all_second.sh scene_dry_run:=true` 让场景只预览。
 其默认 MQTT Broker 为本机 `127.0.0.1:1883`，也可传入
 `mqtt_host:=... mqtt_port:=... mqtt_topic:=...`。默认主题为 `/vision_target`。
 
@@ -100,7 +100,7 @@ ros2 topic echo /gento_control/status
 
 目标是绝对值，必须带新鲜时间戳。JointState 不接受 velocity/effort。任务不排队，等待 `completed` 后再发下一条。以下为话题发布格式示例，数值不代表机器人当前位置，执行前应替换为现场确认过的目标；不要连续执行全部示例。
 
-手臂位姿目标若无需末端直线，可把话题换为 `/gento_control/left/target_pose_ptp` 或 `/gento_control/right/target_pose_ptp`，消息内容与 `target_pose` 相同。该接口求终点逆解后生成关节轨迹，仍校验限位、速度、加速度、起点和执行反馈；不能保证夹具中途避障。scene 仍使用直线 `target_pose` 接口。
+手臂位姿目标若无需末端直线，可把话题换为 `/gento_control/left/target_pose_ptp` 或 `/gento_control/right/target_pose_ptp`，消息内容与 `target_pose` 相同。该接口求终点逆解后生成关节轨迹，仍校验限位、速度、加速度、起点和执行反馈；不能保证夹具中途避障。scene 的 `position1` 使用 `target_pose_ptp`，`position2` 使用直线 `target_pose`。
 
 `rotate_tcp` 是相对当前反馈姿态的角度增量，消息的 `frame_id` 必须是 `body_base`。例如左臂绕固定 X 轴旋转 10°：
 
@@ -143,7 +143,7 @@ ros2 topic pub --once /gento_control/left/target_joints sensor_msgs/msg/JointSta
 
 ```
 
-双臂位姿目标标准坐标系为固定在躯干第 1 轴中心的 `body_base`；程序使用当前躯干角度转换到 SDK 臂基座后逆解，不依赖设备 TF。`/gento_feedback/left|right/tcp_pose_body_base` 给出统一坐标反馈；`/gento_feedback/left|right/tcp_pose_bd_j6` 给出相对当前躯干末端 `BD_J6` 的位姿，仅用于反馈，不作为逆解目标。旧 `left|right/tcp_pose` 仍为各自 SDK 基座坐标。安装变换包含控制器 DH 中 SDK 基座到第 1 轴中心的 158.6 mm 偏移；双臂零位法兰相对 `BD_J6` 的 Y 约为 ±0.8296 m。躯干 `body/tcp_pose` 来自当前六轴反馈角的本地正解，末端为 `BD_J6`，不是外部测量。旧 `/gento_dual_arm/...` 话题已移除。
+双臂位姿目标标准坐标系为固定在躯干第 1 轴中心的 `body_base`；程序使用当前躯干角度转换到 SDK 臂基座后逆解，不依赖设备 TF。`/gento_feedback/left|right/tcp_pose_body_base` 给出统一坐标下的法兰反馈；`/gento_feedback/left|right/tool_tip_pose_body_base` 根据法兰反馈与法兰局部 +Z 偏移持续发布夹具尖端估计位姿，偏移默认 0.20 m，随 `scene_tool_tip_offset_z_m` 一起配置。`/gento_feedback/left|right/tcp_pose_bd_j6` 给出相对当前躯干末端 `BD_J6` 的位姿，仅用于反馈，不作为逆解目标。旧 `left|right/tcp_pose` 仍为各自 SDK 基座坐标。安装变换包含控制器 DH 中 SDK 基座到第 1 轴中心的 158.6 mm 偏移；双臂零位法兰相对 `BD_J6` 的 Y 约为 ±0.8296 m。躯干 `body/tcp_pose` 来自当前六轴反馈角的本地正解，末端为 `BD_J6`，不是外部测量。旧 `/gento_dual_arm/...` 话题已移除。
 
 `BD_J6` 双臂反馈和躯干末端位姿同时通过独立 MQTT 节点发往设备原有配置的 `127.0.0.1:1883`，主题为
 `gento/feedback/left/tcp_pose_bd_j6`、`gento/feedback/right/tcp_pose_bd_j6` 和 `gento/feedback/body_pose_bd_j6`。躯干消息的 `frame_id` 为 `body_base`。
@@ -153,11 +153,9 @@ ros2 topic pub --once /gento_control/left/target_joints sensor_msgs/msg/JointSta
 
 ### MQTT 视觉目标场景
 
-`scene` 默认订阅 MQTT `/vision_target`。消息使用米和 `xyzw` 单位四元数，
-`position1`、`position2` 是 `body_base` 下依次执行的工件位置，也是夹具尖端目标，二者共用 `orientation`。
-MQTT 须包含 `label` 字符串。`无遮挡正面` 和 `无遮挡背面` 均按 `position1` 的 Y ≥ 0.05 m 选左臂、Y ≤ -0.05 m 选右臂。正面抓取后双臂依次到 `pre`、躯干回零、双臂到 `home`；背面抓取后交给另一臂，再依次回到 `pre` 和 `home`。背面右臂交接需先配置 `scene_right_post_grasp_joints` 和 `scene_left_handover_joints`。全零 `position2` 为占位并跳过。
-节点直接使用 `body_base` 工件位姿，再按法兰局部 +Z 默认 0.20 m 的夹具长度换算法兰目标。默认 `dry_run:=false` 会执行运动；设置 `dry_run:=true` 可预览法兰位置和姿态。MQTT retained 消息会被忽略。查看 `/scene/status` 了解处理结果。
-完整消息格式见 [scene 功能包说明](src/scene/README.md)。
+随 `run_all_first.sh` / `run_all_second.sh` 启动时，scene 默认订阅 MQTT `/vision_target`，执行模式为 `scene_dry_run:=false`；单独运行 `run_scene.sh` 的默认主题是 `vs/workpiece/6d_pose`。两种入口的主题均可通过各自的启动参数覆盖。
+消息必须包含 `label`、`position1` 和 `orientation`；自动抓取还需要有效的 `position2`。位置单位为米，姿态为 `xyzw` 单位四元数，坐标系为 `body_base`；`position1` 和 `position2` 是夹具尖端目标，法兰局部 +Z 到尖端默认相距 0.20 m。只处理 `无遮挡正面` 和 `无遮挡背面`；其他标签和 retained 消息被忽略。第一次按 `position1.Y≥0` 选左臂，`Y<0` 选右臂；第二次选臂由第一次抓取情况决定，见 [抓取流程 2.0](../抓取流程2.0.txt)。
+scene 到 `position2` 后会使能夹爪、张开抓取侧夹爪并自动记录工件附着；不需要人工调用附着服务。通过 `/scene/status` 的 JSON `state` 观察总体状态：两次抓取及收尾完成后为 `success`，未完成时为 `running`，报错时为 `failed`；具体步骤在 `event`，成功事件为 `post_grasp_completed`。手动发送 `/scene/start` 的 `start` 时会同时命令两夹爪到 0 mm，双方到位后双臂到 `pre`、躯干到 `body_photo`；发送 `end` 时依次执行躯干六轴回零、双臂同步到 `home`，最后向两夹爪同时发 0 mm 并等待双方完成。两命令都要求 scene 空闲且没有附着工件。完整消息和状态说明见 [scene 功能包说明](src/scene/README.md)。
 
 躯干位姿通过 `/gento_control/body/target_pose` 发送，`frame_id` 设为 `body_base`。该话题执行末端直线运动；`/gento_control/body/target_pose_ptp` 只求终点逆解后发送关节位置命令，末端路径不保证直线；只预览逆解时使用 `/gento_control/body/preview_pose`，结果发布到 `/gento_control/body/ik_result` 并在 control 日志打印。以当前反馈位姿为起点修改目标，必须重新填写时间戳。逆解约束完整位置与朝向，并在有效关节限位内优先接近当前关节角；J2 额外限制为 [-50°, 80°]。关节角执行仍使用 `/gento_control/body/target_joints`。详见 [躯干话题用法](src/gento_driver/BODY_KINEMATICS.md#ros-话题反馈和控制)。
 

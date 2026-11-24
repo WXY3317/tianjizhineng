@@ -1,87 +1,58 @@
 flowchart TD
-    A([收到第一条非 retained MQTT]) --> B{标签有效?}
-    B -- 否：其他标签 --> A
-    B -. 消息格式错误 .-> ERR([拒绝并报告原因])
-    B -- 是 --> C[按第一条 position1.Y 选臂<br/>Y≥0 左臂；Y<0 右臂]
-    C --> D[第一次抓取前调整躯干<br/>-10 cm≤Y≤10 cm：J6 左臂 -0.5 / 右臂 +0.5 rad<br/>X≤60 cm 后移 20 cm；X≥75 cm 前移 20 cm]
-    D --> E[抓取臂到 position1]
-    E --> F{position2 有效?}
-    F -- 否 --> STOP([停止：不自动附着或回退])
-    F -- 是 --> G[等待 interval，规划直线下降到 position2<br/>保持 position1 的法兰姿态]
-    G --> GCHK{下降段结果}
-    GCHK -- 完成 --> H[依次使能双夹爪<br/>抓取侧夹爪张开到 27 mm]
-    GCHK -- 规划被拒绝且尚未运动 --> GALT{还有工具 Z 姿态可试?<br/>最多追加 4 次}
-    GALT -- 是 --> GROT[在 position1 换工具局部 Z 角度<br/>重新规划下降]
-    GROT --> G
-    GALT -- 否 --> ERR
-    GCHK -- 运动中失败 --> ERR
-    H --> I[到位或电流限制保持后自动附着<br/>抓取臂退回 position1]
-    I --> J{第一条标签}
+    START([等待新的非 retained MQTT]) --> LABEL{标签为无遮挡正面或无遮挡背面?}
+    LABEL -- 否 --> START
+    LABEL -- 是 --> ARM[按第一条 position1.Y 选臂<br/>Y≥0 左臂；Y<0 右臂]
+    ARM --> FIRST_BODY[第一次抓取准备<br/>-10 cm≤Y≤10 cm：J6 左 -0.5／右 +0.5 rad<br/>position1.X≤60 cm：躯干 X 后移 25 cm<br/>position1.X≥75 cm：躯干 X 前移 25 cm]
+    FIRST_BODY --> P1[抓取臂到 position1<br/>未运动前 IK 失败可尝试工具 Z 姿态]
+    P1 --> P2{position2 有效且非全零?}
+    P2 -- 否 --> STOP([未完成自动抓取：state=running<br/>不附着或回退])
+    P2 -- 是 --> DOWN[等待 interval，保持法兰姿态<br/>沿直线下降到 position2]
+    DOWN --> RESULT{下降结果}
+    RESULT -- 规划被拒绝且尚未运动 --> RETRY{还有工具 Z 候选?<br/>最多追加 4 次}
+    RETRY -- 是 --> P1
+    RETRY -- 否 --> ERROR([/scene/status：state=failed<br/>event=rejected，停止])
+    RESULT -- 运动中失败 --> ERROR
+    RESULT -- 完成 --> GRIP[依次使能左右夹爪<br/>抓取侧张开至 27 mm 或电流保持]
+    GRIP --> ATTACH[自动附着工件<br/>抓取臂退回 position1]
+    ATTACH --> FIRST_KIND{第一条标签}
 
-    J -- 无遮挡正面 --> FP[按最新关节反馈，仅改抓取臂 J1<br/>左 +1.5／右 -1.5 rad，等待完成<br/>仅改躯干 J4 到 0.1 rad，等待完成<br/>双臂同步到 pre；必须回 body_photo]
-    FP --> FW([等待第二条非 retained MQTT])
-    FW --> FVALID{第二条标签是无遮挡正面或无遮挡背面?}
-    FVALID -- 否 --> FW
-    FVALID -- 是 --> FA{第一次抓取臂}
-    FA -- 左臂 --> FR{第二条 position1.Y≥5 cm?}
-    FR -- 是 --> FRPREP[右臂到关节预备位<br/>-1.5, 0.8, 2.0, -1.0, 0, 0, 0]
-    FRPREP --> FRJ[保持躯干前五轴<br/>J6 到 +1.57 rad]
-    FR -- 否 --> FRSM{第二条 Y≥-10 cm?}
-    FRSM -- 是 --> FRHALF[J6 到 +0.5 rad]
-    FRSM -- 否 --> FRD[右臂准备抓第二件]
-    FRHALF --> FRD
-    FRJ --> FRD
-    FA -- 右臂 --> FL{第二条 position1.Y<-5 cm?}
-    FL -- 是 --> FLPREP[左臂到关节预备位<br/>1.5, 0.8, -2.0, -1.0, 0, 0, 0]
-    FLPREP --> FLJ[保持躯干前五轴<br/>J6 到 -1.57 rad]
-    FL -- 否 --> FLSM{第二条 Y≤10 cm?}
-    FLSM -- 是 --> FLHALF[J6 到 -0.5 rad]
-    FLSM -- 否 --> FLD[左臂准备抓第二件]
-    FLHALF --> FLD
-    FLJ --> FLD
-    FRD --> FEND[按第二条 X 判断前后平移<br/>第二件抓取并退回 position1<br/>按最新反馈仅改抓取臂 J1：左 +1.5／右 -1.5 rad<br/>完成后仅改躯干 J4 到 0.1 rad<br/>完成后双臂同步到 pre；按需回 body_photo]
-    FLD --> FEND
-    FEND --> FIN[躯干回零；双臂同步到 home<br/>左、右夹爪依次闭合到 0 mm]
+    FIRST_KIND -- 无遮挡正面 --> FRONT_RETURN[抓取臂 J1 到左 +1.5／右 -1.5 rad<br/>躯干 J4 按最新反馈 +0.15 rad<br/>双臂同步到 pre；必须恢复 body_photo]
+    FIRST_KIND -- 无遮挡背面 --> BACK_RETURN[抓取臂 J1 到左 +1.5／右 -1.5 rad<br/>躯干 J4 按最新反馈 +0.15 rad<br/>抓取臂单独到 pre；必须恢复 body_photo]
+    FRONT_RETURN --> FRONT_WAIT([等待第二条合法 MQTT])
+    BACK_RETURN --> BACK_WAIT([等待第二条合法 MQTT])
+    FRONT_WAIT --> FRONT_ARM[第二次固定用另一只手臂<br/>无论第二条标签正面或背面，均不交接]
+    BACK_WAIT --> BODY_HOME[暂存第二条 MQTT<br/>躯干六轴到 body_home]
+    BODY_HOME --> TRANSFER{第一次抓取臂}
+    TRANSFER -- 左臂 --> RIGHT_RECEIVE[左臂到 left_post_grasp_joints<br/>右臂到 right_handover_joints，沿 +Y 靠近 6.5 cm<br/>右夹爪张开并持有第一件；左夹爪闭合]
+    TRANSFER -- 右臂 --> LEFT_RECEIVE[右臂到 right_post_grasp_joints<br/>左臂到 left_handover_joints，沿 -Y 靠近 6.3 cm<br/>左夹爪张开并持有第一件；右夹爪闭合]
+    RIGHT_RECEIVE --> TRANSFER_RETURN[接收臂退回交接预备位<br/>双臂同步回 pre，躯干到 body_photo]
+    LEFT_RECEIVE --> TRANSFER_RETURN
+    TRANSFER_RETURN --> BACK_ARM[重放第二条 MQTT<br/>第二次仍用第一次的抓取臂，不再交接]
 
-    J -- 无遮挡背面 --> BP[按最新关节反馈，仅改抓取臂 J1<br/>左 +1.5／右 -1.5 rad，等待完成<br/>仅改躯干 J4 到 0.1 rad，等待完成<br/>抓取臂单独到 pre；必须回 body_photo]
-    BP --> BW([等待第二条非 retained MQTT])
-    BW --> BVALID{第二条标签是无遮挡正面或无遮挡背面?}
-    BVALID -- 否 --> BW
-    BVALID -- 是：暂存消息 --> BH[躯干到 body_home]
-    BH --> BA{第一次抓取臂}
-    BA -- 左臂 --> BL[左臂到 left_post_grasp_joints<br/>右臂到 right_handover_joints<br/>右臂沿 +Y 靠近 6.5 cm]
-    BL --> BLT[右夹爪张开或电流限制保持<br/>左夹爪闭合；右臂退回交接预备位<br/>第一件在右臂]
-    BA -- 右臂 --> BR[右臂到 right_post_grasp_joints<br/>左臂到 left_handover_joints<br/>左臂沿 -Y 靠近 6.3 cm]
-    BR --> BRT[左夹爪张开或电流限制保持<br/>右夹爪闭合；左臂退回交接预备位<br/>第一件在左臂]
-    BLT --> BPRE[双臂同步回 pre<br/>躯干到 body_photo]
-    BRT --> BPRE
-    BPRE --> BS{第一次抓取臂}
-    BS -- 左臂 --> BYL{第二条 position1.Y<-5 cm?}
-    BYL -- 是 --> BLPREP[左臂到关节预备位<br/>1.5, 0.8, -2.0, -1.0, 0, 0, 0]
-    BLPREP --> BJMINUS[J6 到 -1.57 rad]
-    BYL -- 否 --> BYLSM{第二条 Y≤10 cm?}
-    BYLSM -- 是 --> BYLHALF[J6 到 -0.5 rad]
-    BYLSM -- 否 --> BLD[左臂准备抓第二件]
-    BYLHALF --> BLD
-    BJMINUS --> BLD
-    BS -- 右臂 --> BYR{第二条 position1.Y≥5 cm?}
-    BYR -- 是 --> BRPREP[右臂到关节预备位<br/>-1.5, 0.8, 2.0, -1.0, 0, 0, 0]
-    BRPREP --> BJPLUS[J6 到 +1.57 rad]
-    BYR -- 否 --> BYRSM{第二条 Y≥-10 cm?}
-    BYRSM -- 是 --> BYRHALF[J6 到 +0.5 rad]
-    BYRSM -- 否 --> BRD[右臂准备抓第二件]
-    BYRHALF --> BRD
-    BJPLUS --> BRD
-    BLD --> BEND[按第二条 X 判断前后平移<br/>第二件抓取并退回 position1<br/>按最新反馈仅改抓取臂 J1：左 +1.5／右 -1.5 rad<br/>完成后仅改躯干 J4 到 0.1 rad<br/>完成后双臂同步到 pre；按需回 body_photo]
-    BRD --> BEND
-    BEND --> FIN
+    FRONT_ARM --> SECOND_SIDE{第二次抓取臂}
+    BACK_ARM --> SECOND_SIDE
+    SECOND_SIDE -- 右臂 --> RIGHT_Y{第二条 position1.Y}
+    RIGHT_Y -- Y≥5 cm --> RIGHT_BIG[右臂到预备关节角<br/>关节角 -1.5, 0.8, 2.0, -1.0, 0, 0, 0<br/>J6 绝对目标 +1.57 rad]
+    RIGHT_Y -- -10 cm≤Y<5 cm --> RIGHT_SMALL[J6 绝对目标 +0.5 rad]
+    RIGHT_Y -- Y<-10 cm --> SECOND_X
+    RIGHT_BIG --> SECOND_X
+    RIGHT_SMALL --> SECOND_X
+    SECOND_SIDE -- 左臂 --> LEFT_Y{第二条 position1.Y}
+    LEFT_Y -- Y<-5 cm --> LEFT_BIG[左臂到预备关节角<br/>关节角 1.5, 0.8, -2.0, -1.0, 0, 0, 0<br/>J6 绝对目标 -1.57 rad]
+    LEFT_Y -- -5 cm≤Y≤10 cm --> LEFT_SMALL[J6 绝对目标 -0.5 rad]
+    LEFT_Y -- Y>10 cm --> SECOND_X
+    LEFT_BIG --> SECOND_X
+    LEFT_SMALL --> SECOND_X
 
-    FIN --> DONE([/scene/status：post_grasp_completed])
-    E -. 拒绝、故障或超时 .-> ERR
-    G -. 其他拒绝、故障或超时 .-> ERR
-    H -. 反馈无效或超时 .-> ERR
+    SECOND_X[按第二条 position1.X 决定躯干 X 是否前后平移 25 cm] --> SECOND_GRASP[第二次抓取：position1 → position2<br/>使能夹爪、张开、自动附着并退回 position1]
+    SECOND_GRASP --> SECOND_RETURN[抓取臂 J1 到左 +1.5／右 -1.5 rad<br/>躯干 J4 按最新反馈 +0.15 rad<br/>双臂同步到 pre<br/>本次动过 J6 或平移过 X 时恢复 body_photo]
+    SECOND_RETURN --> FINISH[躯干六轴回零<br/>双臂同步到 home<br/>左右夹爪依次闭合到 0 mm]
+    FINISH --> DONE([/scene/status：state=success<br/>event=post_grasp_completed])
+    FIRST_BODY -. 拒绝、故障或超时 .-> ERROR
+    GRIP -. 反馈无效或超时 .-> ERROR
+    SECOND_GRASP -. 拒绝、故障或超时 .-> ERROR
 
-    classDef terminal fill:#e8f5e9,stroke:#388e3c,color:#111;
+    classDef success fill:#e8f5e9,stroke:#388e3c,color:#111;
     classDef stopped fill:#ffebee,stroke:#c62828,color:#111;
-    class DONE terminal;
-    class ERR,STOP stopped;
+    class DONE success;
+    class ERROR,STOP stopped;

@@ -117,14 +117,16 @@ def generate_launch_description():
         DeclareLaunchArgument('scene_right_post_grasp_joints',
                               default_value='[2.84704, 0.46903, -2.82737, -1.54347, -1.98059, 0.51953, -1.08505]'),
         DeclareLaunchArgument('scene_left_handover_joints',
-                              default_value='[0.21863, -0.49051, -0.19696, -1.55473, -1.15677, -1.01652]'),
+                              default_value='[0.21863, -0.49051, -0.19696, -1.55473, -1.15677, -0.54807, -1.01652]'),
         DeclareLaunchArgument('scene_handover_y_offset_m', default_value='0.065'),
         DeclareLaunchArgument('scene_left_handover_y_offset_m', default_value='0.063'),
         DeclareLaunchArgument('start_control', default_value='true', description='Start control node when enable_control is true'),
         Node(package='gento_driver', executable='bridge',
                                                  name='gento_driver', output='screen', parameters=[params]),
         Node(package='gento_feedback', executable='feedback', name='gento_feedback',
-             output='screen', parameters=[{'trajectory_log_dir': ParameterValue(LaunchConfiguration('trajectory_log_dir'), value_type=str)}],
+             output='screen', parameters=[{
+                 'trajectory_log_dir': ParameterValue(LaunchConfiguration('trajectory_log_dir'), value_type=str),
+                 'tool_tip_offset_z_m': ParameterValue(LaunchConfiguration('scene_tool_tip_offset_z_m'), value_type=float)}],
              condition=IfCondition(LaunchConfiguration('start_feedback'))),
         Node(package='gento_feedback', executable='mqtt_feedback', name='gento_mqtt_feedback',
              output='screen', parameters=[{

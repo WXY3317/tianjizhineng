@@ -64,6 +64,10 @@ class Feedback(Node):
     def __init__(self):
         super().__init__('gento_feedback')
         self.declare_parameter('trajectory_log_dir','~/.ros/gento_trajectories')
+        self.declare_parameter('tool_tip_offset_z_m', .20)
+        self.tool_tip_offset_z_m=float(self.get_parameter('tool_tip_offset_z_m').value)
+        if not math.isfinite(self.tool_tip_offset_z_m) or not -1. <= self.tool_tip_offset_z_m <= 1.:
+            raise ValueError('tool_tip_offset_z_m must be finite and within [-1, 1] m')
         self.trace=None
         self.task_statuses=OrderedDict()
         self.last_raw=None
@@ -76,7 +80,9 @@ class Feedback(Node):
         for suffix in ('joint_states','body/joint_states','head/joint_states','full_joint_states'):
             self.output_publishers[suffix]=self.create_publisher(JointState,f'{prefix}/{suffix}',1)
         for suffix in ('left/tcp_pose','right/tcp_pose','left/tcp_pose_body_base',
-                       'right/tcp_pose_body_base','left/tcp_pose_bd_j6',
+                       'right/tcp_pose_body_base',
+                       'left/tool_tip_pose_body_base','right/tool_tip_pose_body_base',
+                       'left/tcp_pose_bd_j6',
                        'right/tcp_pose_bd_j6','body/tcp_pose'):
             self.output_publishers[suffix]=self.create_publisher(PoseStamped,f'{prefix}/{suffix}',1)
         for suffix in ('status','joint_errors'):
@@ -171,6 +177,14 @@ class Feedback(Node):
                     body_pose.pose.position.x,body_pose.pose.position.y,body_pose.pose.position.z=[body_matrix[i][3] for i in range(3)]
                     body_pose.pose.orientation.x,body_pose.pose.orientation.y,body_pose.pose.orientation.z,body_pose.pose.orientation.w=quaternion(body_matrix)
                     self.publish(f'{side}/tcp_pose_body_base',body_pose)
+                    tip_pose=PoseStamped()
+                    tip_pose.header.stamp=body_pose.header.stamp
+                    tip_pose.header.frame_id=body_pose.header.frame_id
+                    tip_pose.pose.position.x=body_pose.pose.position.x+body_matrix[0][2]*self.tool_tip_offset_z_m
+                    tip_pose.pose.position.y=body_pose.pose.position.y+body_matrix[1][2]*self.tool_tip_offset_z_m
+                    tip_pose.pose.position.z=body_pose.pose.position.z+body_matrix[2][2]*self.tool_tip_offset_z_m
+                    tip_pose.pose.orientation=body_pose.pose.orientation
+                    self.publish(f'{side}/tool_tip_pose_body_base',tip_pose)
                     if raw.get('body_matrix') is not None:
                         j6_matrix=pose_relative_to_frame(raw['body_matrix'],body_matrix)
                         j6_pose=PoseStamped()

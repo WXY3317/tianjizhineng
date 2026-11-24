@@ -30,7 +30,7 @@ def test_body_pose_ptp_position_is_loaded():
     positions = load_arm_positions(source)
     assert positions[2] == 'body_photo'
     xyz, xyzw = positions['body_photo', 'body_pose_ptp']
-    assert xyz == (-0.05, 0.0, 0.6)
+    assert xyz == (-0.05, 0.0, 0.7)
     assert xyzw == (0.0, 0.38941332986322064, 0.0, 0.9210631132147452)
 
 

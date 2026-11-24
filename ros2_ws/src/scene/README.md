@@ -13,6 +13,8 @@ cd ~/wxy/tianjizhineng/ros2_ws
 
 MQTT 视觉目标是 `body_base` 下的工件位姿；工件原点作为夹具尖端目标，工件局部 Z 轴作为夹具局部 Z 轴方向，绕该轴的角度允许调整。控制器逆解目标表示第 7 轴法兰。默认夹具尖端相对法兰沿法兰局部 +Z 方向偏移 0.20 m，坐标轴平行。scene 直接按目标姿态减去这段偏移，得到发给手臂的法兰目标。请先在 `dry_run:=true` 核对法兰目标方向；若实际沿局部 -Z，使用 `tool_tip_offset_z_m:=-0.20`。随真机启动时对应参数为 `scene_tool_tip_offset_z_m`。
 
+持续查看左右夹具尖端估计位姿可订阅 `/gento_feedback/left/tool_tip_pose_body_base` 与 `/gento_feedback/right/tool_tip_pose_body_base`；反馈节点使用同一个 `scene_tool_tip_offset_z_m` 启动参数计算，`header.frame_id=body_base`。这两个话题不依赖工件附着状态；`/scene/workpiece_pose` 仍仅表示附着工件的估计位姿。
+
 也可以在真机启动命令中传入 `start_scene:=true` 一起启动。此选项默认关闭；
 收到新 MQTT 目标后才会向双臂控制话题发布命令。
 
@@ -30,9 +32,8 @@ MQTT 视觉目标是 `body_base` 下的工件位姿；工件原点作为夹具�
 }
 ```
 
-当前执行 `无遮挡正面` 和 `无遮挡背面`。正面和背面均按 `position1` 的 Y 值选臂：Y ≥ 0 用左臂，Y < 0 用右臂。当 -0.10 m ≤ Y ≤ 0.10 m 时，先发送躯干六轴关节目标 `[0, 0.86725, -1.50561, -0.16162, 0, J6]`，左臂对应 J6=-0.5，右臂对应 J6=0.5；收到躯干运动完成反馈后才发送 `position1`。正面第一次抓取后回退 `position1`，双臂同步到 `pre`，等待第二条 MQTT 目标；若目标仍由同一只手臂抓取，则跳过第二次抓取并执行收尾；若目标属于另一侧，无论标记为无遮挡正面或无遮挡背面，都执行第二次抓取且不进行左右臂交接。第二次抓取并回到双臂 `pre` 后，躯干回零，双臂同步到 `home`，最后两只夹爪依次闭合到 0 mm；不启动左右臂交接。其他四种标签会拒绝。背面第一次抓取后先等第二条 MQTT：若仍选中第一次的抓取臂，则先交接给另一臂，双臂回 `pre`、躯干回 `body_photo` 后用原抓取臂执行暂存目标；第二件即使标为背面也不再交接。若第二条选中另一臂，则跳过第二次抓取并收尾。背面右臂交接默认使用 `right_post_grasp_joints=[2.84704, 0.46903, -2.82737, -1.54347, -1.98059, 0.51953, -1.08505]` 和 `left_handover_joints=[0.21863, -0.49051, -0.19696, -1.55473, -1.15677, -0.54807, -1.01652]`（弧度）；可通过同名参数覆盖。
-抓取前若执行了上述 J6 预备动作，本次抓取臂回到 `pre`（正面流程为双臂到 `pre`）后，会先把腰部末端发送到配置编号 2 的 `body_photo` 位姿，并等待控制节点完成，再等待第二条目标。该目标使用 `body_pose_ptp` 关节空间运动。
-抓取前还按 `position1` 的 X 值调整腰部末端：X ≤ 0.60 m 时沿 `body_base` 的 X 轴移动 -0.10 m，X ≥ 0.75 m 时移动 +0.10 m，其余不移动。平移以新鲜的 `/gento_feedback/body/tcp_pose` 位姿为起点，保持 Y、Z 和姿态不变；如果 Y 也触发上述 J6 预备动作，则先完成 J6，再读取腰部末端位姿并平移，完成后才发送手臂目标。缺少新鲜反馈或平移被控制器拒绝时停止抓取。
+当前执行 `无遮挡正面` 和 `无遮挡背面`。第一次按 `position1.Y≥0` 选左臂，否则选右臂；`position2` 沿用同一手臂。第一次抓取前在 -0.10 m≤Y≤0.10 m 时，发送躯干 J6 绝对目标：左臂 -0.5 rad、右臂 +0.5 rad。第二次选臂由第一次抓取臂决定：正面第一次抓取后换另一臂，背面第一次抓取后先把第一件交给另一臂，第二次仍由原抓取臂抓。第二条标签正面或背面均抓取，不再按标签重复交接；其他标签在入队前忽略。每次抓取退回 position1 后，先把抓取臂 J1 送到左 +1.5／右 -1.5 rad，再按最新躯干反馈将 J4 增加 0.15 rad，随后回 pre。第一次必须恢复 body_photo，第二次仅在本次转过 J6 或移动过躯干 X 时恢复。自动抓取结束后躯干六轴回零、双臂同步到 home、两侧夹爪依次闭合。完整分支见 [抓取流程 2.0](../../../抓取流程2.0.txt)。自动抓取的 body_photo 恢复使用配置中的 `body_pose_ptp`；手动 `/scene/arm_position data:2` 使用直线 `target_pose`。
+抓取前还按 `position1` 的 X 值调整腰部末端：X ≤ 0.60 m 时沿 `body_base` 的 X 轴移动 -0.25 m，X ≥ 0.75 m 时移动 +0.25 m，其余不移动。平移以新鲜的 `/gento_feedback/body/tcp_pose` 位姿为起点，保持 Y、Z 和姿态不变；如果 Y 也触发上述 J6 预备动作，则先完成 J6，再读取腰部末端位姿并平移，完成后才发送手臂目标。缺少新鲜反馈或平移被控制器拒绝时停止抓取。
 
 位置单位为米，姿态为 `body_base` 下的 `xyzw` 单位四元数，两个目标共用姿态。
 按 `position1`、`position2` 顺序执行。
@@ -49,19 +50,26 @@ MQTT 视觉目标是 `body_base` 下的工件位姿；工件原点作为夹具�
 单独启动可用 `interval:=秒数` 覆盖；随真机一起启动可用 `scene_interval:=秒数` 覆盖。
 执行期间收到的新 MQTT 消息会被忽略。`position2` 为全零占位或省略时不会发送第二步。
 需要控制节点；绕轴候选先尝试原始姿态，再按绝对角度从小到大尝试。
-可在 `/scene/status` 查看发送、完成及拒绝原因。
+可在 `/scene/status` 查看总体 `state` 和具体 `event`，拒绝原因在 `reason`。
 
 到达 `position2` 后，scene 依次向左、右夹爪发送 ENABLE 命令并等待各自的有效使能反馈，然后向所选手臂夹爪发送 27 mm 命令，等待夹爪到位或触发电流阈值并保持当前位置。电流保持可能发生在 27 mm 之前；这两种完成反馈都会自动记录工件附着并启动回退，无需手动调用附着服务。背面第一次抓取会回退到 `position1`、抓取臂 `pre`，再等待第二条 MQTT 目标。第二条若仍由同一臂抓取，则先让躯干回零，完成双臂交接，再依次让双臂回 `pre`、躯干回 `body_photo`，最后执行暂存的第二条目标；第二件即使是背面也不再交接。第二条若选中另一臂，则跳过第二次抓取并收尾。左抓取交接使用 `left_post_grasp_joints` 和 `right_handover_joints`，右接收臂沿 +Y 靠近 6.5 cm；右抓取交接使用 `right_post_grasp_joints` 和 `left_handover_joints`，左接收臂沿 -Y 靠近 6.3 cm。正面模式第一次抓取后等待第二条 MQTT 目标；同侧目标跳过第二次抓取并进入收尾，另一侧的无遮挡正面或无遮挡背面目标完成第二次抓取后进入收尾，不进行交接。收尾依次让躯干回零、双臂同步回 `home`、两只夹爪闭合到 0 mm。每段运动均等待完成反馈才继续。
 
 scene 将所选绕轴角和法兰到夹具尖端的偏移作为固定变换，
 每次收到该手臂的新鲜法兰位姿，就在 `/scene/workpiece_pose` 发布工件在 `body_base` 下的估计位姿。
-四段运动期间也持续更新，工件姿态按法兰反馈乘以先前局部 Z 轴旋转的逆旋转求得。`header.stamp` 沿用法兰位姿的时间戳。服务成功只表示退回命令已发送；左臂到交接点查看 `handover_started`，全部完成查看 `post_grasp_completed`，失败查看 `rejected`。释放工件时调用分离服务，停止发布。夹爪达到目标或触发电流保持时自动附着；电流保持不保证实物已夹牢。scene 重启后需重新建立附着状态。
+四段运动期间也持续更新，工件姿态按法兰反馈乘以先前局部 Z 轴旋转的逆旋转求得。`header.stamp` 沿用法兰位姿的时间戳。服务成功只表示退回命令已发送；左臂到交接点查看 `handover_started`，两次抓取和收尾全部完成查看 `state=success`、`event=post_grasp_completed`；失败查看 `state=failed`、`event=rejected` 及 `reason`，其余流程为 `state=running`。释放工件时调用分离服务，停止发布。夹爪达到目标或触发电流保持时自动附着；电流保持不保证实物已夹牢。scene 重启后需重新建立附着状态。
 
 ```bash
 ros2 topic echo /scene/status
 ros2 topic echo /scene/workpiece_pose
 ros2 service call /scene/detach_workpiece std_srvs/srv/Trigger '{}'
 ```
+
+`/scene/status` 是 `std_msgs/msg/String`，`data` 为 JSON。例如，等待第二条目标时为
+`{"state":"running","event":"awaiting_second_target","required_arm":"right"}`；
+两次抓取、躯干回零、双臂回 `home` 和左右夹爪闭合都完成后为
+`{"state":"success","event":"post_grasp_completed","arm":"right"}`；
+出错时为 `{"state":"failed","event":"rejected","reason":"..."}`。
+节点启动时发布 `running`，新一轮抓取开始时也会恢复为 `running`。
 
 左臂到达交接点后，右臂自动先到 `right_handover_joints`；控制节点确认到位后等待 `interval`（默认 1.0 秒），再保持姿态沿 `body_base` 的 +Y 直线运动 6.5 cm。随后右夹爪到 27 mm 或触发电流保持，切换工件附着到右臂，左夹爪到 0 mm，右臂先退回预备交接关节位，再到 `right_arm_joint_pre` 准备姿态。右夹爪到位时根据双臂当前法兰反馈计算右法兰到工件的完整固定变换，并用右臂反馈持续发布工件位姿。`right_handover_joints`、`handover_y_offset_m`（右接收臂）和 `left_handover_y_offset_m`（左接收臂）可在单独启动时覆盖，随真机启动时加 `scene_` 前缀。夹爪反馈错误或 15 秒未到位时流程停止，需检查现场并重启 scene。
 
@@ -70,13 +78,13 @@ ros2 service call /scene/detach_workpiece std_srvs/srv/Trigger '{}'
 
 左右臂关节预设写在 `config/arm_positions.json`，单位弧度。每项包含 Int8 编号和 `name`。双臂关节姿态填写 `left`、`right` 两组七轴弧度数组；
 躯干 TCP 位姿填写 `body_pose.position`（米，body_base 坐标系）和
-`body_pose.orientation`（单位四元数 x/y/z/w），执行末端直线轨迹；填写 `body_pose_ptp` 的相同字段时，只求终点逆解，再由控制器执行关节位置运动，末端不保证直线。躯干关节预设填写 `body_joints` 六轴弧度数组。默认 `0=init`、`1=pre`、`2=body_photo`（关节空间运动）、`3=body_home`、
+`body_pose.orientation`（单位四元数 x/y/z/w），执行末端直线轨迹；填写 `body_pose_ptp` 的相同字段时，只求终点逆解，再由控制器执行关节位置运动，末端不保证直线。躯干关节预设填写 `body_joints` 六轴弧度数组。默认 `0=init`、`1=pre`、`2=body_photo`（通过 `/scene/arm_position` 执行时走直线）、`3=body_home`、
 `9=home`（下班回收）。
 可添加其他编号（-128～127）的姿态；`1=pre` 供抓取流程使用，应保留。
 修改配置后重新启动 scene；也可用 `arm_positions_file:=/绝对路径/arm_positions.json`
 指定另一份文件。通过 `/scene/arm_position`（`std_msgs/msg/Int8`）发送编号；
 双臂关节姿态作为同一个任务发送，左右臂使用同一轨迹时间线；躯干位姿直接发送到
-`/gento_control/body/target_pose`，`body_pose_ptp` 发到 `/gento_control/body/target_pose_ptp`；躯干关节预设发送到 `/gento_control/body/target_joints`。任一步失败即停止。
+`/gento_control/body/target_pose`，`body_pose_ptp` 发到 `/gento_control/body/target_pose_ptp`；编号 2 的 `body_photo` 例外，按配置位姿发到 `/gento_control/body/target_pose` 走直线。若此时 J6 偏离 0 超过 0.01 rad，先按最新反馈将 J4 增加 0.15 rad，再执行位姿目标。躯干关节预设发送到 `/gento_control/body/target_joints`。任一步失败即停止。
 此功能仅在 `dry_run:=false` 且 scene 和控制节点空闲时执行。例如：
 
 ```bash
@@ -86,10 +94,14 @@ ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 2}'
 ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 3}'
 ros2 topic pub --once /scene/arm_position std_msgs/msg/Int8 '{data: 9}'
 ros2 topic pub --once /scene/start std_msgs/msg/String '{data: start}'
+ros2 topic pub --once /scene/start std_msgs/msg/String '{data: end}'
 ```
 
-`/scene/start` 按顺序执行 `pre`（原 `data:1`）和 `body_photo`（原 `data:2`），
-等待前一步完成后再发下一步；中途被拒绝则停止。原来的两个单独命令继续可用。
+`/scene/start` 先同时向左、右夹爪发送闭合到 0 mm 的命令，确认双方都到位后执行 `pre`（原 `data:1`）
+和 `body_photo`（原 `data:2`）。每一步完成后才发下一步；中途被拒绝则停止。
+`/scene/start` 发送 `end` 时，先执行 `body_home`（`data:3`，躯干六轴绝对目标全 0），再同步执行双臂 `home`（`data:9`）；完成后在同一阶段向左、右夹爪分别发出 0 mm 命令，不等待一侧到位才发另一侧。两侧均确认到位才发布 `event=end_completed`；故障或 15 秒超时发布 `event=rejected`。两个命令经同一 RS485 总线处理，物理起动无法保证严格同一时刻。`end` 要求 scene 空闲、`dry_run=false`、没有附着工件。
+原来的两个单独命令继续可用。
+在执行 `ros2 topic pub --once /scene/start ...` 的终端按 Ctrl+C，只会退出这个一次性发布进程；如果 scene 已接收消息，动作会继续。若在运行 `run_all_first.sh` / `run_all_second.sh` 的终端按 Ctrl+C，脚本向两个 launch 发 SIGINT，driver 关闭时会尝试停止正在进行的运动，夹爪节点关闭时会尝试禁用电机；必须查看设备反馈确认停止，不能把 Ctrl+C 当作实体急停。需要立即中断运动时，使用实体急停或向 `/gento_driver/stop` 发布 `std_msgs/msg/Empty`。
 
 随 `run_real_robot.sh` 启动时，使用 `scene_arm_positions_file:=/绝对路径/arm_positions.json` 覆盖配置。
 
